@@ -1,6 +1,0 @@
-{
-  "name": "Girls Who Game Tracker",
-  "description": "Progress tracking app for the Girls Who Game community with Steam login, Discord sync, and real-time team leaderboards.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}
