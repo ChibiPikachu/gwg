@@ -471,25 +471,51 @@ async function createServer() {
     }
 
     const { targetSteamId, team } = req.body;
+    console.log('[Admin] Update Team Start:', { targetSteamId, team });
+    
     const currentUser = (req as any).user;
     const supabase = getSupabase();
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
-
-    // Verify admin role
-    const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!supabase) {
+      console.error('[Admin] Database unavailable');
+      return res.status(500).json({ error: 'Database unavailable' });
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ team })
-      .eq('steamid', targetSteamId);
+    // Verify admin role
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    console.log('[Admin] Verifying Steam ID:', steamId);
+    
+    try {
+      const { data: profile, error: roleError } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ success: true });
+      if (roleError) {
+        console.error('[Admin] Role verification error:', roleError.message);
+        return res.status(403).json({ error: 'Forbidden: Role verify fail' });
+      }
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        console.warn('[Admin] Insufficient permissions for:', steamId, 'Role:', profile?.role);
+        return res.status(403).json({ error: 'Forbidden: Not an admin' });
+      }
+
+      // If team is 'none', we might need to store it as null in DB
+      const dbTeam = team === 'none' ? null : team;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ team: dbTeam })
+        .eq('steamid', targetSteamId);
+
+      if (error) {
+        console.error('[Admin] Update error:', error.message);
+        return res.status(500).json({ error: error.message });
+      }
+      
+      console.log('[Admin] Successfully updated team for:', targetSteamId, 'to:', dbTeam);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[Admin] Internal Exception:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   app.post('/api/logout', (req, res) => {
@@ -531,3 +557,4 @@ if (process.env.VERCEL) {
 }
 
 export default app;
+

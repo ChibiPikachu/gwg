@@ -38,20 +38,27 @@ export default function AdminPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetSteamId, team })
       });
+      
+      const data = await res.json();
+      
       if (res.ok) {
         // Optimistic update
         setUsers(prev => prev.map(u => 
-          (u.steamid === targetSteamId) ? { ...u, team } : u
+          (u.steamid === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u
         ));
+      } else {
+        alert(`Failed to update team: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error('Failed to update team:', err);
+      alert('Failed to update team. Check console for details.');
     } finally {
       setUpdating(null);
     }
   };
 
-  const teams: Team[] = ['blue', 'green', 'purple', 'red'];
+  const teamsAssign: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
+  const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red'];
   const filteredUsers = filterTeam === 'all' ? users : users.filter(u => (u.team || 'none') === filterTeam);
 
   const isAdmin = currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'admins';
@@ -75,7 +82,7 @@ export default function AdminPanel() {
       <section>
         <h2 className="text-xl font-bold mb-6">Filters</h2>
         <div className="flex gap-3">
-          {teams.map(team => (
+          {teamsFilter.map(team => (
             <button
                key={team}
                onClick={() => setFilterTeam(team)}
@@ -128,7 +135,7 @@ export default function AdminPanel() {
                         <span className="text-sm font-bold text-purple-400">{u.discord_name || 'Not linked'}</span>
                      </div>
                   </div>
-                  {u.role === 'admin' && (
+                  {(u.role === 'admin' || u.role === 'admins') && (
                     <div className="ml-auto bg-pink-500/10 text-pink-500 text-[10px] uppercase font-bold px-2 py-1 rounded border border-pink-500/20">
                       Admin
                     </div>
@@ -138,14 +145,14 @@ export default function AdminPanel() {
                <div className="flex flex-col gap-3">
                   <span className="text-[10px] uppercase font-bold opacity-30">Assign to team:</span>
                   <div className="flex gap-2">
-                     {teams.map(team => (
+                     {teamsAssign.map(team => (
                         <button 
                            key={team}
                            disabled={updating === u.steamid}
                            onClick={() => assignTeam(u.steamid, team)}
                            className={cn(
                               "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
-                              u.team === team 
+                              (u.team === team || (!u.team && team === 'none')) 
                                 ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
                                 : "bg-white/5 text-white/40 hover:bg-white/10",
                               updating === u.steamid && "opacity-50 cursor-not-allowed"
