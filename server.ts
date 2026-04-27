@@ -271,28 +271,9 @@ async function createServer() {
     res.json({ success: true, user });
   });
 
-  app.get('/api/me', async (req, res) => {
+  app.get('/api/me', (req, res) => {
     if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
-      const user = (req as any).user;
-      const supabase = getSupabase();
-      
-      if (supabase && user.id) {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('steam_id', user.id)
-            .single();
-            
-          if (data && !error) {
-            return res.json(data);
-          }
-        } catch (err) {
-          console.error('Error fetching profile from Supabase:', err);
-        }
-      }
-      
-      return res.json(user);
+      return res.json((req as any).user);
     }
     // Check if demo query param is set (useful for quick testing)
     if (req.query.demo === 'true') {
