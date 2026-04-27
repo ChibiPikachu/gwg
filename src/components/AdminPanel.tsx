@@ -57,9 +57,10 @@ export default function AdminPanel() {
     }
   };
 
+  const safeUsers = Array.isArray(users) ? users : [];
   const teamsAssign: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
   const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red'];
-  const filteredUsers = filterTeam === 'all' ? users : users.filter(u => (u.team || 'none') === filterTeam);
+  const filteredUsers = filterTeam === 'all' ? safeUsers : safeUsers.filter(u => (u.team || 'none') === filterTeam);
 
   const isAdmin = currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'admins';
 

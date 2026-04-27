@@ -20,11 +20,13 @@ export default function Leaderboard() {
       });
   }, []);
 
+  const safeUsers = Array.isArray(users) ? users : [];
+
   const standings = [
-    { team: 'blue', points: users.filter(u => u.team === 'blue').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'blue').length, rank: 1 },
-    { team: 'purple', points: users.filter(u => u.team === 'purple').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'purple').length, rank: 2 },
-    { team: 'green', points: users.filter(u => u.team === 'green').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'green').length, rank: 3 },
-    { team: 'red', points: users.filter(u => u.team === 'red').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'red').length, rank: 4 },
+    { team: 'blue', points: safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },
+    { team: 'purple', points: safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'purple').length, rank: 2 },
+    { team: 'green', points: safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
+    { team: 'red', points: safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
   ].sort((a, b) => b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
@@ -76,7 +78,7 @@ export default function Leaderboard() {
             {loading ? (
               <div className="p-8 text-center opacity-30">Loading...</div>
             ) : (
-              users.slice(0, 10).map((u, i) => (
+              safeUsers.slice(0, 10).map((u, i) => (
                 <div key={u.steamid} className="flex items-center gap-4 p-4 bg-[#111111] rounded-2xl border border-white/5 group hover:border-white/10 transition-all">
                   <div className="text-sm font-bold opacity-30 w-4">{i + 1}</div>
                   <div className={cn("w-12 h-12 rounded-full p-1 border-2", u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10')}>

@@ -404,7 +404,7 @@ async function createServer() {
             return res.json({
               ...user,
               ...data,
-              isAdmin: data.role === 'admin' // Ensure isAdmin is correctly set based on role
+              isAdmin: data.role === 'admin' || data.role === 'admins' // Ensure isAdmin is correctly set based on role
             });
           }
         } catch (err) {
