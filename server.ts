@@ -31,14 +31,17 @@ async function createServer() {
   app.set('trust proxy', 1);
   app.use(express.json());
   
+  const isCloud = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || (process.env.APP_URL && process.env.APP_URL.includes('https'));
+
   app.use(session({
     secret: process.env.SESSION_SECRET || 'gwg-tracker-secret',
-    resave: true, // Set to true for debugging session persistence
-    saveUninitialized: true, // Set to true to ensure session is created
+    resave: false,
+    saveUninitialized: false,
     name: 'gwg.sid',
+    proxy: true,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: isCloud,
+      sameSite: isCloud ? 'none' : 'lax',
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
       httpOnly: true,
     }
