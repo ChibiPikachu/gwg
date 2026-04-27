@@ -15,9 +15,15 @@ const __dirname = path.dirname(__filename);
 let supabaseClient: any = null;
 function getSupabase() {
   if (!supabaseClient) {
-    const url = process.env.VITE_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return null;
+    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+    
+    if (!url || !key) {
+      console.warn('Supabase credentials missing. Session persistence and profile sync will fail.');
+      return null;
+    }
+    
+    console.log('Initializing Supabase client with URL:', url.substring(0, 10) + '...');
     supabaseClient = createSupabaseClient(url, key);
   }
   return supabaseClient;
@@ -55,14 +61,16 @@ async function createServer() {
           .maybeSingle();
 
         if (error) {
-          console.error('Supabase Session Get Error:', error);
+          console.error('[SessionStore] Get Error for', sid, ':', error);
           return callback(error);
         }
-        if (!data) return callback(null, null);
+        if (!data) {
+          return callback(null, null);
+        }
         
         callback(null, data.data);
       } catch (err) {
-        console.error('Supabase Session Get Exception:', err);
+        console.error('[SessionStore] Get Exception:', err);
         callback(err);
       }
     }
@@ -70,6 +78,7 @@ async function createServer() {
     async set(sid: string, sessionData: any, callback: (err?: any) => void) {
       if (!this.supabase) return callback();
       try {
+        // Calculate expiry
         const expires_at = sessionData.cookie?.expires 
           ? new Date(sessionData.cookie.expires).toISOString()
           : new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
@@ -83,14 +92,14 @@ async function createServer() {
           }, { onConflict: 'id' });
 
         if (error) {
-          console.error('Supabase Session Set Error:', error);
+          console.error('[SessionStore] Set Error for', sid, ':', error);
           if (error.code === '42P01') {
             console.error('CRITICAL: The "sessions" table does not exist in Supabase.');
           }
         }
         callback(error);
       } catch (err) {
-        console.error('Supabase Session Set Exception:', err);
+        console.error('[SessionStore] Set Exception:', err);
         callback(err);
       }
     }
@@ -104,6 +113,7 @@ async function createServer() {
           .eq('id', sid);
         callback(error);
       } catch (err) {
+        console.error('[SessionStore] Destroy Exception:', err);
         callback(err);
       }
     }
@@ -111,7 +121,7 @@ async function createServer() {
 
   app.use(session({
     secret: process.env.SESSION_SECRET || 'gwg-tracker-secret',
-    resave: false,
+    resave: true, // Set to true for debugging store updates
     saveUninitialized: false,
     name: 'gwg.sid',
     proxy: true,
@@ -138,36 +148,30 @@ async function createServer() {
   passport.serializeUser((user: any, done) => done(null, user));
   passport.deserializeUser((user: any, done) => done(null, user));
 
-  // Steam Strategy
-  const steamApiKey = process.env.STEAM_API_KEY;
-  const envFilePath = path.join(process.cwd(), '.env');
-  
-  if (!steamApiKey) {
-    console.warn(`
-⚠️ STEAM_API_KEY is NOT defined in process.env.
-- Current Working Directory: ${process.cwd()}
-- Looking for .env at: ${envFilePath}
-- NODE_ENV: ${process.env.NODE_ENV}
-- Steam login will not function.
-    `);
-  }
-
-  // Use a helper to get the base URL
+  // Derive base URL for auth redirects
   const getAppBaseUrl = (req?: any) => {
     if (process.env.APP_URL) return process.env.APP_URL;
     if (req) {
       let url = `${req.protocol}://${req.get('host')}`;
-      if (url.includes('.run.app') || url.includes('.ais.')) {
+      if (url.includes('.run.app') || url.includes('.ais.') || (req.get('x-forwarded-proto') === 'https')) {
         url = url.replace('http://', 'https://');
       }
       return url;
     }
-    return 'http://localhost:3000';
+    return '';
   };
 
+  // Steam Strategy
+  const steamApiKey = process.env.STEAM_API_KEY;
+  
+  if (!steamApiKey) {
+    console.warn('STEAM_API_KEY is missing. Steam login will not function correctly.');
+  }
+
+  // Strategy options (realm/returnURL will be dynamically handled in routes)
   passport.use(new SteamStrategy({
-    returnURL: (process.env.APP_URL || 'http://localhost:3000') + '/auth/steam/return',
-    realm: process.env.APP_URL || 'http://localhost:3000',
+    returnURL: 'http://localhost:3000/auth/steam/return', // Placeholder
+    realm: 'http://localhost:3000', // Placeholder
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
     profile.identifier = identifier;
@@ -197,13 +201,11 @@ async function createServer() {
 
   // Auth Routes
   app.get('/api/auth/steam/url', (req, res) => {
-    let appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    // Force HTTPS for production/preview urls
-    if (appUrl.includes('.run.app') || appUrl.includes('.ais.')) {
-      appUrl = appUrl.replace('http://', 'https://');
-    }
+    const appUrl = getAppBaseUrl(req);
     const returnTo = `${appUrl}/auth/steam/return`;
     const realm = appUrl;
+    
+    console.log('[Auth] Generating Steam URL. Realm:', realm, 'Return:', returnTo);
     
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
@@ -218,7 +220,7 @@ async function createServer() {
   });
 
   app.get('/api/auth/discord/url', (req, res) => {
-    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const appUrl = getAppBaseUrl(req);
     const params = new URLSearchParams({
       client_id: process.env.DISCORD_CLIENT_ID || '',
       redirect_uri: `${appUrl}/auth/discord/callback`,
@@ -228,13 +230,23 @@ async function createServer() {
     res.json({ url: `https://discord.com/api/oauth2/authorize?${params.toString()}` });
   });
 
-  app.get('/auth/steam', passport.authenticate('steam'));
+  app.get('/auth/steam', (req, res, next) => {
+    const appUrl = getAppBaseUrl(req);
+    // Dynamic override for passport-steam
+    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
+    (passport as any)._strategy('steam')._realm = appUrl;
+    passport.authenticate('steam')(req, res, next);
+  });
   
   app.get(['/auth/steam/return', '/auth/steam/return/'], (req, res, next) => {
+    const appUrl = getAppBaseUrl(req);
+    // Dynamic override for passport-steam
+    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
+    (passport as any)._strategy('steam')._realm = appUrl;
+
     passport.authenticate('steam', (err: any, user: any) => {
       if (err) {
         console.error('Steam Auth Error:', err);
-        // Redirect back with error
         return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
       }
       if (!user) {
@@ -257,8 +269,9 @@ async function createServer() {
               steam_avatar: steamProfile.photos?.[2]?.value || steamProfile.photos?.[0]?.value,
               last_login: new Date().toISOString()
             }, { onConflict: 'steam_id' });
+            console.log('[Auth] Supabase sync success for:', steamProfile.id);
           } catch (dbErr) {
-            console.error('Failed to sync Steam user to Supabase:', dbErr);
+            console.error('[Auth] Failed to sync Steam user to Supabase:', dbErr);
           }
         }
 
@@ -269,10 +282,10 @@ async function createServer() {
               console.error('Session Save Error:', err);
               return res.redirect('/?error=SessionSaveFailed');
             }
-            sendSteamResponse(res, user);
+            res.redirect('/');
           });
         } else {
-          sendSteamResponse(res, user);
+          res.redirect('/');
         }
       });
     })(req, res, next);
