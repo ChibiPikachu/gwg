@@ -239,19 +239,22 @@ async function createServer() {
     const { displayName, status } = req.body;
     const user = (req as any).user;
     const supabase = getSupabase();
+    
+    const steamId = user.id || user.steam_id || user.steamId;
 
-    if (supabase && user.id) {
+    if (supabase && steamId) {
       try {
         const { error } = await supabase.from('profiles').update({
           steam_name: displayName,
           status: status,
           updated_at: new Date().toISOString()
-        }).eq('steam_id', user.id);
+        }).eq('steam_id', steamId);
 
         if (error) throw error;
         
-        // Update session user object
+        // Update session user object mapping
         user.displayName = displayName;
+        user.steam_name = displayName;
         user.status = status;
         
         return res.json({ success: true, user });

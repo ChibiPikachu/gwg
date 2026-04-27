@@ -12,6 +12,14 @@ export default function Profile() {
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  // Sync local state when user data updates (e.g. after successful save)
+  React.useEffect(() => {
+    if (user) {
+      setStatus(user.status || '');
+      setDisplayName(user.steamName || '');
+    }
+  }, [user?.uid, user?.status, user?.steamName]);
+
   if (!user) return null;
 
   const handleSave = async () => {
@@ -36,8 +44,13 @@ export default function Profile() {
   return (
     <div className="p-8 max-w-4xl mx-auto flex flex-col gap-12">
       <section className="flex flex-col md:flex-row gap-8 items-center md:items-start">
-        <div className="w-32 h-32 rounded-full border-4 border-pink-500/30 p-1 relative">
-           <img src={user.steamAvatar || user.discordAvatar} alt={user.steamName} className="w-full h-full rounded-full object-cover" />
+        <div className={cn("w-32 h-32 rounded-full border-4 p-1 relative shadow-2xl", colors.border)}>
+           <img 
+            src={user.steamAvatar || user.discordAvatar} 
+            alt={user.steamName} 
+            className="w-full h-full rounded-full object-cover" 
+            referrerPolicy="no-referrer"
+          />
            {user.isAdmin && (
              <div className="absolute -bottom-2 -right-2 bg-pink-500 text-white p-1.5 rounded-full shadow-lg" title="Admin">
                <Shield size={16} />
@@ -48,17 +61,17 @@ export default function Profile() {
         <div className="flex-1 flex flex-col gap-4 text-center md:text-left">
            <div>
               {isEditing ? (
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 mb-2">
                   <span className="text-[10px] uppercase font-bold opacity-30">Display Name</span>
                   <input 
                     type="text" 
-                    className="text-3xl font-bold bg-white/5 border border-white/10 rounded-lg px-4 py-1 focus:outline-none focus:border-pink-500/50 w-full md:w-auto"
+                    className={cn("text-3xl font-bold bg-white/5 border rounded-lg px-4 py-1 focus:outline-none w-full md:w-auto transition-all", colors.border)}
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                   />
                 </div>
               ) : (
-                <div className="group flex items-center gap-3">
+                <div className="group flex items-center justify-center md:justify-start gap-3">
                   <h1 className="text-3xl font-bold">{user.steamName}</h1>
                   <button 
                     onClick={() => setIsEditing(true)}
@@ -68,13 +81,13 @@ export default function Profile() {
                   </button>
                 </div>
               )}
-              <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-2">
-                 <div className="flex items-center gap-2 opacity-60 text-sm bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+              <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-2">
+                 <div className="flex items-center gap-2 opacity-60 text-sm bg-black/20 px-3 py-1 rounded-full border border-white/5">
                     <img src="https://community.akamai.steamstatic.com/public/shared/images/responsive/header_logo.png" className="w-4 h-4 object-contain invert grayscale" alt="Steam" />
                     <span>Steam ID: {user.steamId}</span>
                  </div>
                  {user.discordName && (
-                   <div className="flex items-center gap-2 opacity-60 text-sm">
+                   <div className="flex items-center gap-2 opacity-60 text-sm bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
                       <Discord size={14} className="text-purple-400" />
                       <span>{user.discordName}</span>
                    </div>
@@ -83,18 +96,18 @@ export default function Profile() {
            </div>
 
            <div className="flex flex-col gap-2 relative max-w-xl">
-              <span className="text-[10px] uppercase font-bold opacity-30">Status</span>
+              <span className="text-[10px] uppercase font-bold opacity-30">Status Message</span>
               <div className="flex items-center gap-3 group">
                 {isEditing ? (
                   <div className="flex-1 flex flex-col gap-4">
                     <input 
                       type="text" 
-                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-pink-500/50"
+                      className={cn("flex-1 bg-white/5 border rounded-lg px-4 py-2 focus:outline-none transition-all", colors.border)}
                       value={status}
                       placeholder="What's on your mind?"
                       onChange={(e) => setStatus(e.target.value)}
                     />
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 justify-center md:justify-start">
                       <button 
                         onClick={handleSave}
                         disabled={isSaving}
@@ -127,7 +140,7 @@ export default function Profile() {
            </div>
 
            {showSuccess && (
-             <div className="text-emerald-400 text-sm font-bold flex items-center gap-2 animate-bounce">
+             <div className="text-emerald-400 text-sm font-bold flex items-center gap-2 animate-bounce justify-center md:justify-start">
                <Check size={14} /> Profile updated successfully!
              </div>
            )}
