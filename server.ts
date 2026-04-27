@@ -279,9 +279,15 @@ async function createServer() {
   });
 
   app.get('/api/auth/discord/url', (req, res) => {
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    if (!clientId) {
+      console.error('[Auth] Discord Sync Error: DISCORD_CLIENT_ID is missing from environment variables.');
+      return res.status(500).json({ error: 'Discord Client ID not configured. Please set DISCORD_CLIENT_ID in the app settings.' });
+    }
+    
     const appUrl = getAppBaseUrl(req);
     const params = new URLSearchParams({
-      client_id: process.env.DISCORD_CLIENT_ID || '',
+      client_id: clientId,
       redirect_uri: `${appUrl}/auth/discord/callback`,
       response_type: 'code',
       scope: 'identify'

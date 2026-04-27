@@ -21,7 +21,7 @@ export default function AdminPanel() {
       const res = await fetch('/api/admin/users');
       if (res.ok) {
         const data = await res.json();
-        setUsers(data);
+        setUsers(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('Failed to fetch users:', err);
@@ -43,9 +43,12 @@ export default function AdminPanel() {
       
       if (res.ok) {
         // Optimistic update
-        setUsers(prev => prev.map(u => 
-          (u.steamid === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u
-        ));
+        setUsers(prev => {
+          if (!Array.isArray(prev)) return prev;
+          return prev.map(u => 
+            (u.steamid === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u
+          );
+        });
       } else {
         alert(`Failed to update team: ${data.error || 'Unknown error'}`);
       }

@@ -125,11 +125,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const syncWithDiscord = async () => {
     try {
       const res = await fetch('/api/auth/discord/url');
-      const { url } = await res.json();
-      window.open(url, 'discord_login', 'width=800,height=700');
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to initialize Discord sync.');
+        return;
+      }
+      if (data.url) {
+        window.open(data.url, 'discord_login', 'width=800,height=700');
+      }
     } catch (error) {
       console.error('Failed to get Discord auth URL:', error);
-      window.open('/auth/discord', 'discord_login', 'width=800,height=700');
+      alert('Internal error initializing Discord sync.');
     }
   };
 

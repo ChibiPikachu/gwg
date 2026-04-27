@@ -11,7 +11,7 @@ export default function Leaderboard() {
     fetch('/api/leaderboard/users')
       .then(res => res.json())
       .then(data => {
-        setUsers(data || []);
+        setUsers(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(err => {

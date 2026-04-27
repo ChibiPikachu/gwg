@@ -12,6 +12,7 @@ import Dashboard from '@/components/Dashboard';
 import MySubmissions from '@/components/MySubmissions';
 import Leaderboard from '@/components/Leaderboard';
 import Profile from '@/components/Profile';
+import MyTeam from '@/components/MyTeam';
 import AdminPanel from '@/components/AdminPanel';
 import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -68,6 +69,7 @@ function AppContent() {
       case 'profile':
         return <Profile />;
       case 'team':
+        return <MyTeam />;
       case 'leaderboard':
         return <Leaderboard />;
       case 'events':
