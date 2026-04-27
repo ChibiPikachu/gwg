@@ -113,11 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/steam/url');
       const { url } = await res.json();
-      window.open(url, 'steam_login', 'width=800,height=600');
+      window.location.href = url;
     } catch (error) {
       console.error('Failed to get Steam auth URL:', error);
       // Fallback to old behavior if API fails for some reason
-      window.open('/auth/steam', 'steam_login', 'width=800,height=600');
+      window.location.href = '/auth/steam';
     }
   };
 
@@ -151,31 +151,3 @@ export function useAuth() {
   }
   return context;
 }
-
-
-const fetchUser = async () => {
-  const steamId = localStorage.getItem('steam_id');
-
-  if (!steamId) {
-    setLoading(false);
-    return;
-  }
-
-  const res = await fetch(`/api/me?steam_id=${steamId}`);
-  const data = await res.json();
-
-  if (data) {
-    setUser({
-      uid: data.steam_id,
-      steamId: data.steam_id,
-      steamName: data.steam_name,
-      steamAvatar: data.steam_avatar,
-      team: data.team || 'blue',
-      isAdmin: data.is_admin ?? true,
-      status: data.status || '',
-      points: data.points || 0
-    });
-  }
-
-  setLoading(false);
-};

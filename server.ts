@@ -140,9 +140,8 @@ async function createServer() {
     passport.authenticate('steam', (err: any, user: any) => {
       if (err) {
         console.error('Steam Auth Error:', err);
-        // If it's a return URL mismatch, try to show a more helpful error
-        const errorMessage = err.openidError?.message || err.message || 'Unknown Auth Error';
-        return res.send(`<html><body><script>console.error("Auth Fail:", "${errorMessage}"); setTimeout(() => window.close(), 3000);</script><p>Auth Error: ${errorMessage}</p><p>Check if you are using localhost vs 127.0.0.1</p></body></html>`);
+        // Redirect back with error
+        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
       }
       if (!user) {
         return res.redirect('/');
@@ -150,7 +149,7 @@ async function createServer() {
       (req as any).logIn(user, async (err: any) => {
         if (err) {
           console.error('Login Error:', err);
-          return res.send(`<html><body><script>window.close();</script><p>Login Error</p></body></html>`);
+          return res.redirect('/?error=LoginFailed');
         }
         
         // Upsert user to Supabase
@@ -181,31 +180,8 @@ async function createServer() {
     })(req, res, next);
   });
 
-res.cookie("steam_id", steamProfile.id, {
-  httpOnly: false,
-  secure: true,
-  sameSite: "lax",
-});
-
   function sendSteamResponse(res: any, user: any) {
-    res.send(`
-      <html><body>
-      <p>Authenticated! Syncing...</p>
-      <script>
-        if (window.opener) {
-          window.opener.postMessage({ type: 'STEAM_AUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
-          setTimeout(() => {
-            try {
-              window.opener.location.reload();
-            } catch (e) {}
-            window.close();
-          }, 500);
-        } else {
-          window.location.href = '/';
-        }
-      </script>
-      </body></html>
-    `);
+    res.redirect('/');
   }
 
   app.get('/auth/discord', passport.authenticate('discord'));
