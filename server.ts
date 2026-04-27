@@ -49,6 +49,14 @@ async function createServer() {
       super();
       this.supabase = getSupabase();
       console.log('SupabaseStore initialized. Client available:', !!this.supabase);
+      if (this.supabase) {
+        // Quick check for table access
+        this.supabase.from('sessions').select('*', { count: 'exact', head: true }).limit(1)
+          .then(({ error }: any) => {
+            if (error) console.error('[SessionStore] Initial table check failed:', error.message);
+            else console.log('[SessionStore] Initial table check successful.');
+          });
+      }
     }
 
     async get(sid: string, callback: (err: any, session?: any) => void) {
@@ -78,6 +86,7 @@ async function createServer() {
     async set(sid: string, sessionData: any, callback: (err?: any) => void) {
       if (!this.supabase) return callback();
       try {
+        console.log('[SessionStore] Setting session:', sid);
         // Calculate expiry
         const expires_at = sessionData.cookie?.expires 
           ? new Date(sessionData.cookie.expires).toISOString()
@@ -152,7 +161,7 @@ async function createServer() {
   const getAppBaseUrl = (req: any) => {
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
     const protocol = req.get('x-forwarded-proto') || req.protocol;
-    const host = req.get('host');
+    const host = req.get('x-forwarded-host') || req.get('host');
     let url = `${protocol}://${host}`;
     if (url.includes('.run.app') || url.includes('.ais.')) {
       url = url.replace('http://', 'https://');
@@ -198,15 +207,23 @@ async function createServer() {
 
   app.get('/auth/steam', (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
-    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
-    (passport as any)._strategy('steam')._realm = appUrl;
+    const strategy = (passport as any)._strategies.steam;
+    if (strategy) {
+      strategy._returnURL = `${appUrl}/auth/steam/return`;
+      strategy._realm = appUrl;
+      console.log('[Auth] Steam login start. ReturnURL:', strategy._returnURL, 'Realm:', strategy._realm);
+    }
     passport.authenticate('steam')(req, res, next);
   });
 
   app.get(['/auth/steam/return', '/auth/steam/return/'], (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
-    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
-    (passport as any)._strategy('steam')._realm = appUrl;
+    const strategy = (passport as any)._strategies.steam;
+    if (strategy) {
+      strategy._returnURL = `${appUrl}/auth/steam/return`;
+      strategy._realm = appUrl;
+      console.log('[Auth] Steam return. Verifying against ReturnURL:', strategy._returnURL);
+    }
 
     passport.authenticate('steam', (err: any, user: any) => {
       if (err) {
@@ -254,13 +271,19 @@ async function createServer() {
 
   app.get('/auth/discord', (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
-    (passport as any)._strategy('discord')._callbackURL = `${appUrl}/auth/discord/callback`;
+    const strategy = (passport as any)._strategies.discord;
+    if (strategy) {
+      strategy._callbackURL = `${appUrl}/auth/discord/callback`;
+    }
     passport.authenticate('discord')(req, res, next);
   });
 
   app.get('/auth/discord/callback', (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
-    (passport as any)._strategy('discord')._callbackURL = `${appUrl}/auth/discord/callback`;
+    const strategy = (passport as any)._strategies.discord;
+    if (strategy) {
+      strategy._callbackURL = `${appUrl}/auth/discord/callback`;
+    }
     passport.authenticate('discord', async (err: any, user: any) => {
       if (err || !user) return res.redirect('/');
       
