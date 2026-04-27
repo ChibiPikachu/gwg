@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     );
 
     if (error) {
-      console.log("❌ Supabase error:", error);
+      console.log("❌ Supabase FULL error:", error);
       return res.status(500).send("Supabase insert failed");
     }
 
