@@ -77,7 +77,6 @@ async function createServer() {
       }
       return url;
     }
-    return 'http://localhost:3000';
   };
 
   passport.use(new SteamStrategy({
