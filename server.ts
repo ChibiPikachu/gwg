@@ -236,7 +236,44 @@ async function createServer() {
       if (!user) return res.redirect('/');
       
       (req as any).logIn(user, async (loginErr: any) => {
-        if (loginErr) return res.redirect('/?error=LoginFailed');
+        if (loginErr) {
+          console.error('❌ Login Error:', loginErr);
+          return res.redirect('/?error=LoginFailed');
+        }
+        
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            // This part extracts the correct ID from Steam's response
+            const steamId = String(user.id || user._json?.steamid);
+            console.log('--- SYNC START ---');
+            console.log('Syncing Steam ID:', steamId);
+
+            const { data, error: syncError } = await supabase.from('profiles').upsert({
+              steam_id: steamId,
+              steam_name: user.displayName || user.personaname || 'Steam User',
+              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
+              last_login: new Date().toISOString()
+            }, { onConflict: 'steam_id' }).select(); // .select() lets us see the result
+            
+            if (syncError) {
+              console.error('❌ Supabase Sync Error:', syncError.message);
+              console.error('Error Details:', syncError.details);
+            } else {
+              console.log('✅ Supabase Sync Success! Data in DB:', data);
+            }
+            console.log('--- SYNC END ---');
+          } catch (dbErr) {
+            console.error('❌ Critical Database Exception:', dbErr);
+          }
+        }
+
+        if ((req as any).session) {
+          (req as any).session.save(() => res.redirect('/'));
+        } else {
+          res.redirect('/');
+        }
+      });
         
         const supabase = getSupabase();
         if (supabase) {
