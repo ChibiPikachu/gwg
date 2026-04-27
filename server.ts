@@ -50,11 +50,15 @@ async function createServer() {
           .eq('id', sid)
           .maybeSingle();
 
-        if (error) return callback(error);
+        if (error) {
+          console.error('Supabase Session Get Error:', error);
+          return callback(error);
+        }
         if (!data) return callback(null, null);
         
         callback(null, data.data);
       } catch (err) {
+        console.error('Supabase Session Get Exception:', err);
         callback(err);
       }
     }
@@ -74,8 +78,15 @@ async function createServer() {
             expires_at
           }, { onConflict: 'id' });
 
+        if (error) {
+          console.error('Supabase Session Set Error:', error);
+          if (error.code === '42P01') {
+            console.error('CRITICAL: The "sessions" table does not exist in Supabase.');
+          }
+        }
         callback(error);
       } catch (err) {
+        console.error('Supabase Session Set Exception:', err);
         callback(err);
       }
     }
@@ -249,7 +260,11 @@ async function createServer() {
 
         // Save session explicitly before sending response
         if ((req as any).session) {
-          (req as any).session.save(() => {
+          (req as any).session.save((err: any) => {
+            if (err) {
+              console.error('Session Save Error:', err);
+              return res.redirect('/?error=SessionSaveFailed');
+            }
             sendSteamResponse(res, user);
           });
         } else {
