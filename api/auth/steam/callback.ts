@@ -1,10 +1,15 @@
 export default function handler(req, res) {
-  return res.status(200).send(`
-    <html>
-      <body>
-        <h2>Callback reached ✅</h2>
-        <pre>${JSON.stringify(req.query, null, 2)}</pre>
-      </body>
-    </html>
-  `);
+  try {
+    const steamId = req.query["openid.claimed_id"]
+      ?.toString()
+      .split("/")
+      .pop();
+
+    return res.status(200).send(`
+      <h2>Step 1 OK</h2>
+      <p>Steam ID: ${steamId}</p>
+    `);
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
 }
