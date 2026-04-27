@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     );
 
     if (error) {
-      console.log("❌ Supabase FULL error:", error);
+      console.log("Supabase FULL error:", error);
       return res.status(500).send("Supabase insert failed");
     }
 
@@ -85,27 +85,4 @@ export default async function handler(req, res) {
     // -----------------------------
     // 5. Success response
     // -----------------------------
-    return res.send(`
-      <html>
-        <body>
-          <h2>Login successful 🎉</h2>
-          <p>Welcome ${player.personaname}</p>
-          <img src="${player.avatarfull}" />
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({
-                type: "STEAM_LOGIN_SUCCESS",
-                user: ${JSON.stringify(player)}
-              }, "*");
-              window.close();
-            }
-          </script>
-        </body>
-      </html>
-    `);
-
-  } catch (err) {
-    console.error("🔥 Fatal error:", err);
-    return res.status(500).send(err.message);
-  }
-}
+    return res.redirect("/");
