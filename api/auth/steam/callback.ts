@@ -45,14 +45,6 @@ export default async function handler(req, res) {
 
     console.log("✅ Steam player:", player.personaname);
 
-    req.session.user = {
-  steam_id: steamId,
-  steam_name: player.personaname,
-  steam_avatar: player.avatarfull
-};
-
-await new Promise(resolve => req.session.save(resolve));
-
     // -----------------------------
     // 3. Init Supabase
     // -----------------------------
