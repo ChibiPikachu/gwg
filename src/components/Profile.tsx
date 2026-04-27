@@ -5,11 +5,31 @@ import { cn } from '@/lib/utils';
 import { TEAM_COLORS } from '@/types';
 
 export default function Profile() {
-  const { user, syncWithDiscord } = useAuth();
+  const { user, syncWithDiscord, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [status, setStatus] = useState(user?.status || '');
+  const [displayName, setDisplayName] = useState(user?.steamName || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   if (!user) return null;
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    const success = await updateProfile({ displayName, status });
+    setIsSaving(false);
+    if (success) {
+      setIsEditing(false);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    }
+  };
+
+  const handleCancel = () => {
+    setStatus(user.status || '');
+    setDisplayName(user.steamName || '');
+    setIsEditing(false);
+  };
 
   const colors = TEAM_COLORS[user.team];
 
@@ -27,7 +47,27 @@ export default function Profile() {
 
         <div className="flex-1 flex flex-col gap-4 text-center md:text-left">
            <div>
-              <h1 className="text-3xl font-bold">{user.steamName}</h1>
+              {isEditing ? (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase font-bold opacity-30">Display Name</span>
+                  <input 
+                    type="text" 
+                    className="text-3xl font-bold bg-white/5 border border-white/10 rounded-lg px-4 py-1 focus:outline-none focus:border-pink-500/50 w-full md:w-auto"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="group flex items-center gap-3">
+                  <h1 className="text-3xl font-bold">{user.steamName}</h1>
+                  <button 
+                    onClick={() => setIsEditing(true)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/5 rounded-full transition-all text-pink-400"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                </div>
+              )}
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-2">
                  <div className="flex items-center gap-2 opacity-60 text-sm">
                     <span className="w-2 h-2 rounded-full bg-blue-400" />
@@ -46,20 +86,31 @@ export default function Profile() {
               <span className="text-[10px] uppercase font-bold opacity-30">Status</span>
               <div className="flex items-center gap-3 group">
                 {isEditing ? (
-                  <div className="flex-1 flex gap-2">
+                  <div className="flex-1 flex flex-col gap-4">
                     <input 
                       type="text" 
-                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-white/20"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-pink-500/50"
                       value={status}
+                      placeholder="What's on your mind?"
                       onChange={(e) => setStatus(e.target.value)}
-                      autoFocus
                     />
-                    <button 
-                      onClick={() => setIsEditing(false)}
-                      className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all"
-                    >
-                      <Check size={18} />
-                    </button>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all font-bold text-sm flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isSaving ? <span className="animate-spin text-xs">●</span> : <Check size={18} />}
+                        Save Changes
+                      </button>
+                      <button 
+                        onClick={handleCancel}
+                        disabled={isSaving}
+                        className="px-6 py-2 bg-white/5 text-white/60 rounded-lg hover:bg-white/10 transition-all font-bold text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -74,6 +125,12 @@ export default function Profile() {
                 )}
               </div>
            </div>
+
+           {showSuccess && (
+             <div className="text-emerald-400 text-sm font-bold flex items-center gap-2 animate-bounce">
+               <Check size={14} /> Profile updated successfully!
+             </div>
+           )}
         </div>
       </section>
 
