@@ -10,6 +10,7 @@ export interface UserProfile {
   discordAvatar?: string;
   team: Team;
   isAdmin: boolean;
+  role?: string;
   status: string;
   points: number;
 }

@@ -403,7 +403,8 @@ async function createServer() {
             // Merge database data with session data for the frontend
             return res.json({
               ...user,
-              ...data
+              ...data,
+              isAdmin: data.role === 'admin' // Ensure isAdmin is correctly set based on role
             });
           }
         } catch (err) {
@@ -435,6 +436,60 @@ async function createServer() {
       });
     }
     res.json(null);
+  });
+
+  // Admin APIs
+  app.get('/api/admin/users', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    // Verify admin role from database
+    const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { data: users, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(users);
+  });
+
+  app.post('/api/admin/update-user-team', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { targetSteamId, team } = req.body;
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    // Verify admin role
+    const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ team })
+      .eq('steamid', targetSteamId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
   });
 
   app.post('/api/logout', (req, res) => {
