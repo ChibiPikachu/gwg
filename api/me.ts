@@ -1,12 +1,28 @@
-export default function handler(req, res) {
-  try {
-    const user = req.session?.user;
+import { createClient } from "@supabase/supabase-js";
 
-    if (!user) {
-      return res.status(200).json(null);
+export default async function handler(req, res) {
+  try {
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    // You need a way to identify user:
+    // simplest: pass steam_id via cookie OR query temporarily
+
+    const steamId = req.query.steam_id;
+
+    if (!steamId) {
+      return res.json(null);
     }
 
-    return res.status(200).json(user);
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("steam_id", steamId)
+      .single();
+
+    return res.json(data);
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
