@@ -5,7 +5,6 @@ import passport from 'passport';
 import { Strategy as SteamStrategy } from 'passport-steam';
 import { Strategy as DiscordStrategy } from 'passport-discord';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { fileURLToPath } from 'url';
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
@@ -306,6 +305,7 @@ async function createServer() {
 
   // Vite middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
