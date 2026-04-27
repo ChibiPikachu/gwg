@@ -50,16 +50,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(data => {
         console.log('Auth data received:', data);
         if (data) {
-          const steamProfile = data;
+          const profile = data;
+          // Support both raw passport profile and Supabase profile structures
           setUser({
-            uid: steamProfile.id || steamProfile.steamId,
-            steamId: steamProfile.id || steamProfile.steamId,
-            steamName: steamProfile.displayName || 'Gamer',
-            steamAvatar: steamProfile.photos?.[2]?.value || steamProfile.photos?.[0]?.value || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
-            team: steamProfile.team || 'blue',
-            isAdmin: steamProfile.isAdmin ?? true,
-            status: steamProfile.status || 'Ready for Event #3',
-            points: steamProfile.points || 0,
+            uid: profile.steam_id || profile.id || profile.steamId,
+            steamId: profile.steam_id || profile.id || profile.steamId,
+            steamName: profile.steam_name || profile.displayName || 'Gamer',
+            steamAvatar: profile.steam_avatar || profile.photos?.[2]?.value || profile.photos?.[0]?.value || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+            team: profile.team || 'blue',
+            isAdmin: profile.is_admin ?? profile.isAdmin ?? true,
+            status: profile.status || 'Ready for Event #3',
+            points: profile.points || 0,
+            discordId: profile.discord_id || profile.discordId,
+            discordName: profile.discord_name || profile.discordName,
+            discordAvatar: profile.discord_avatar || profile.discordAvatar,
           });
         }
         setLoading(false);
@@ -134,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithSteam, syncWithDiscord, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );
