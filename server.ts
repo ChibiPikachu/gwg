@@ -235,9 +235,64 @@ async function createServer() {
     })(req, res, next);
   });
 
-  app.get('/api/me', (req, res) => {
+  app.post('/api/profile/update', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { displayName, status } = req.body;
+    const user = (req as any).user;
+    const supabase = getSupabase();
+
+    if (supabase && user.id) {
+      try {
+        const { error } = await supabase.from('profiles').update({
+          steam_name: displayName,
+          status: status,
+          updated_at: new Date().toISOString()
+        }).eq('steam_id', user.id);
+
+        if (error) throw error;
+        
+        // Update session user object
+        user.displayName = displayName;
+        user.status = status;
+        
+        return res.json({ success: true, user });
+      } catch (err) {
+        console.error('Failed to update profile:', err);
+        return res.status(500).json({ error: 'Failed to update profile' });
+      }
+    }
+    
+    // Fallback if no supabase (demo mode or misconfigured)
+    user.displayName = displayName;
+    user.status = status;
+    res.json({ success: true, user });
+  });
+
+  app.get('/api/me', async (req, res) => {
     if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
-      return res.json((req as any).user);
+      const user = (req as any).user;
+      const supabase = getSupabase();
+      
+      if (supabase && user.id) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('steam_id', user.id)
+            .single();
+            
+          if (data && !error) {
+            return res.json(data);
+          }
+        } catch (err) {
+          console.error('Error fetching profile from Supabase:', err);
+        }
+      }
+      
+      return res.json(user);
     }
     // Check if demo query param is set (useful for quick testing)
     if (req.query.demo === 'true') {

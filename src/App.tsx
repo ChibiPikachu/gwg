@@ -13,7 +13,6 @@ import MySubmissions from '@/components/MySubmissions';
 import Leaderboard from '@/components/Leaderboard';
 import Profile from '@/components/Profile';
 import AdminPanel from '@/components/AdminPanel';
-import AdminSubmissions from '@/components/AdminSubmissions';
 import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -76,8 +75,6 @@ function AppContent() {
       case 'admin-users':
       case 'admin-teams':
         return <AdminPanel />;
-      case 'admin-submissions':
-        return <AdminSubmissions />;
       default:
         return <MySubmissions />;
     }
