@@ -11,6 +11,10 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const APP_URL = process.env.APP_URL;
+if (!APP_URL) {
+  throw new Error("APP_URL is not set");
+}
 
 let supabaseClient: any = null;
 function getSupabase() {
@@ -68,6 +72,8 @@ async function createServer() {
   }
 
   // Use a helper to get the base URL
+
+
   const getAppBaseUrl = (req?: any) => {
     if (process.env.APP_URL) return process.env.APP_URL;
     if (req) {
@@ -77,6 +83,7 @@ async function createServer() {
       }
       return url;
     }
+    return 'http://localhost:3000';
   };
 
   passport.use(new SteamStrategy({
