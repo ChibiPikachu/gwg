@@ -241,14 +241,21 @@ async function createServer() {
         const supabase = getSupabase();
         if (supabase) {
           try {
-            await supabase.from('profiles').upsert({
-              steam_id: user.id,
-              steam_name: user.displayName,
-              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value,
+            console.log('[Auth] Syncing user to Supabase:', user.id);
+            const { error: syncError } = await supabase.from('profiles').upsert({
+              steam_id: String(user.id),
+              steam_name: user.displayName || user.personaname || 'Steam User',
+              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
               last_login: new Date().toISOString()
             }, { onConflict: 'steam_id' });
+            
+            if (syncError) {
+              console.error('[Auth] Supabase sync error:', syncError.message, syncError.details);
+            } else {
+              console.log('[Auth] Supabase sync success for:', user.id);
+            }
           } catch (dbErr) {
-            console.error('Failed to sync user to Supabase:', dbErr);
+            console.error('[Auth] Exception during sync:', dbErr);
           }
         }
 
