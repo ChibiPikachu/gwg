@@ -24,7 +24,7 @@ function getSupabase() {
   return supabaseClient;
 }
 
-async function startServer() {
+async function createServer() {
   const app = express();
   const PORT = 3000;
 
@@ -48,7 +48,7 @@ async function startServer() {
   // Debug middleware for sessions
   app.use((req, res, next) => {
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`${req.method} ${req.url} - Session ID: ${req.sessionID} - User: ${!!(req as any).user}`);
+      console.log(`${req.method} ${req.url} - Session ID: ${(req as any).sessionID} - User: ${!!(req as any).user}`);
     }
     next();
   });
@@ -170,29 +170,37 @@ async function startServer() {
         }
 
         // Save session explicitly before sending response
-        req.session.save(() => {
-          res.send(`
-            <html><body>
-            <p>Authenticated! Syncing...</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'STEAM_AUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
-                setTimeout(() => {
-                  try {
-                    window.opener.location.reload();
-                  } catch (e) {}
-                  window.close();
-                }, 500);
-              } else {
-                window.location.href = '/';
-              }
-            </script>
-            </body></html>
-          `);
-        });
+        if ((req as any).session) {
+          (req as any).session.save(() => {
+            sendSteamResponse(res, user);
+          });
+        } else {
+          sendSteamResponse(res, user);
+        }
       });
     })(req, res, next);
   });
+
+  function sendSteamResponse(res: any, user: any) {
+    res.send(`
+      <html><body>
+      <p>Authenticated! Syncing...</p>
+      <script>
+        if (window.opener) {
+          window.opener.postMessage({ type: 'STEAM_AUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
+          setTimeout(() => {
+            try {
+              window.opener.location.reload();
+            } catch (e) {}
+            window.close();
+          }, 500);
+        } else {
+          window.location.href = '/';
+        }
+      </script>
+      </body></html>
+    `);
+  }
 
   app.get('/auth/discord', passport.authenticate('discord'));
   app.get('/auth/discord/callback', (req, res, next) => {
@@ -245,7 +253,11 @@ async function startServer() {
       // Use passport's logIn to establish session
       return (req as any).logIn(demoUser, (err: any) => {
         if (err) return res.json(null);
-        req.session.save(() => res.json(demoUser));
+        if ((req as any).session) {
+          (req as any).session.save(() => res.json(demoUser));
+        } else {
+          res.json(demoUser);
+        }
       });
     }
     res.json(null);
@@ -256,23 +268,37 @@ async function startServer() {
   });
 
   // Vite middleware
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
+    // On Vercel or in production, serve from dist
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
+      // In a serverless environment, we might need to be careful with paths
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://0.0.0.0:${PORT}`);
+  return { app, PORT };
+}
+
+// For local running
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  createServer().then(({ app, PORT }) => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running at http://0.0.0.0:${PORT}`);
+    });
   });
 }
 
-startServer();
+// Export for Vercel
+export default async (req: any, res: any) => {
+  const { app } = await createServer();
+  return app(req, res);
+};
+
