@@ -13,7 +13,7 @@ import MySubmissions from '@/components/MySubmissions';
 import Leaderboard from '@/components/Leaderboard';
 import Profile from '@/components/Profile';
 import AdminPanel from '@/components/AdminPanel';
-import { Team } from '@/types';
+import { Team } from '@/types'; 
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {

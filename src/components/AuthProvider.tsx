@@ -80,16 +80,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithSteam = async () => {
-    try {
-      const res = await fetch('/api/auth/steam/url');
-      const { url } = await res.json();
-      window.open(url, 'steam_login', 'width=800,height=600');
-    } catch (error) {
-      console.error('Failed to get Steam auth URL:', error);
-      // Fallback to old behavior if API fails for some reason
-      window.open('/auth/steam', 'steam_login', 'width=800,height=600');
+  try {
+    const res = await fetch('/api/auth/steam/url');
+
+    
+    if (!res.ok) {
+      throw new Error(`HTTP error: ${res.status}`);
     }
-  };
+
+    const data = await res.json();
+
+    if (!data.url) {
+      throw new Error('No URL returned from API');
+    }
+
+    window.open(data.url, 'steam_login', 'width=800,height=600');
+
+  } catch (error) {
+    console.error('Steam login failed:', error);
+
+    alert('Steam login is currently unavailable. Check console.');
+  }
+};
 
   const syncWithDiscord = async () => {
     try {
