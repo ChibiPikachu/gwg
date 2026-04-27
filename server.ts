@@ -274,6 +274,7 @@ async function createServer() {
           res.redirect('/');
         }
       });
+      
     })(req, res, next);
   });
 
