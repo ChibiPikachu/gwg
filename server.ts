@@ -158,12 +158,15 @@ async function createServer() {
   passport.deserializeUser((user: any, done) => done(null, user));
 
   // Derive base URL for auth redirects
+  const appBaseUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')).replace(/\/$/, '');
+
   const getAppBaseUrl = (req: any) => {
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('x-forwarded-host') || req.get('host');
     let url = `${protocol}://${host}`;
-    if (url.includes('.run.app') || url.includes('.ais.')) {
+    // Force HTTPS for known cloud domains or if proto is https
+    if (url.includes('.run.app') || url.includes('.ais.') || url.includes('.vercel.app') || protocol === 'https') {
       url = url.replace('http://', 'https://');
     }
     return url.replace(/\/$/, '');
@@ -172,8 +175,8 @@ async function createServer() {
   // Auth Strategies
   const steamApiKey = process.env.STEAM_API_KEY;
   passport.use(new SteamStrategy({
-    returnURL: '{appUrl}/auth/steam/return', // Placeholder
-    realm: '{appUrl}', // Placeholder
+    returnURL: `${appBaseUrl}/auth/steam/return`,
+    realm: appBaseUrl,
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
     profile.identifier = identifier;
@@ -184,7 +187,7 @@ async function createServer() {
   passport.use(new DiscordStrategy({
     clientID: process.env.DISCORD_CLIENT_ID || 'dummy',
     clientSecret: process.env.DISCORD_CLIENT_SECRET || 'dummy',
-    callbackURL: '{appUrl}/auth/discord/callback', // Placeholder
+    callbackURL: `${appBaseUrl}/auth/discord/callback`,
     scope: ['identify']
   }, (accessToken, refreshToken, profile, done) => {
     return done(null, profile);
