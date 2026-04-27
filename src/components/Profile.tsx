@@ -69,8 +69,8 @@ export default function Profile() {
                 </div>
               )}
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-2">
-                 <div className="flex items-center gap-2 opacity-60 text-sm">
-                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                 <div className="flex items-center gap-2 opacity-60 text-sm bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+                    <img src="https://community.akamai.steamstatic.com/public/shared/images/responsive/header_logo.png" className="w-4 h-4 object-contain invert grayscale" alt="Steam" />
                     <span>Steam ID: {user.steamId}</span>
                  </div>
                  {user.discordName && (
