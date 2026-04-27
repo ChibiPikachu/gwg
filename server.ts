@@ -172,8 +172,8 @@ async function createServer() {
   // Auth Strategies
   const steamApiKey = process.env.STEAM_API_KEY;
   passport.use(new SteamStrategy({
-    returnURL: 'http://localhost:3000/auth/steam/return', // Placeholder
-    realm: 'http://localhost:3000', // Placeholder
+    returnURL: '{appUrl}/auth/steam/return', // Placeholder
+    realm: '{appUrl}', // Placeholder
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
     profile.identifier = identifier;
@@ -184,7 +184,7 @@ async function createServer() {
   passport.use(new DiscordStrategy({
     clientID: process.env.DISCORD_CLIENT_ID || 'dummy',
     clientSecret: process.env.DISCORD_CLIENT_SECRET || 'dummy',
-    callbackURL: 'http://localhost:3000/auth/discord/callback', // Placeholder
+    callbackURL: '{appUrl}/auth/discord/callback', // Placeholder
     scope: ['identify']
   }, (accessToken, refreshToken, profile, done) => {
     return done(null, profile);
