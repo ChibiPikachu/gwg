@@ -1,154 +1,197 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, Team } from '@/types';
+import React from 'react';
+import { UserProfile, Team, TEAM_COLORS } from '@/types';
+import { useAuth } from '@/components/AuthProvider';
+import { Search, Settings, Shield, UserX, Trash2, Gamepad2, Disc as Discord } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-interface AuthContextType {
-  user: UserProfile | null;
-  loading: boolean;
-  loginWithSteam: () => void;
-  syncWithDiscord: () => void;
-  logout: () => void;
-  updateProfile: (data: { displayName: string; status: string }) => Promise<boolean>;
-}
+export default function AdminPanel() {
+  const { user: currentUser } = useAuth();
+  const [filterTeam, setFilterTeam] = React.useState<Team | 'all'>('all');
+  const [users, setUsers] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [updating, setUpdating] = React.useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+  React.useEffect(() => {
+    fetchUsers();
+  }, []);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const updateProfile = async (data: { displayName: string; status: string }) => {
+  const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/profile/update', {
+      const res = await fetch('/api/admin/users');
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const assignTeam = async (targetSteamId: string, team: Team) => {
+    setUpdating(targetSteamId);
+    try {
+      const res = await fetch('/api/admin/update-user-team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ targetSteamId, team })
       });
       if (res.ok) {
-        const result = await res.json();
-        if (result.success) {
-          setUser(prev => prev ? {
-            ...prev,
-            steamName: data.displayName,
-            status: data.status
-          } : null);
-          return true;
-        }
+        // Optimistic update
+        setUsers(prev => prev.map(u => 
+          (u.steamid === targetSteamId) ? { ...u, team } : u
+        ));
       }
-      return false;
     } catch (err) {
-      console.error('Update profile error:', err);
-      return false;
+      console.error('Failed to update team:', err);
+    } finally {
+      setUpdating(null);
     }
   };
 
-  // Load initial user state from server session
-  useEffect(() => {
-    const searchParams = window.location.search;
-    console.log('Fetching auth status with params:', searchParams);
-    fetch(`/api/me${searchParams}`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('Auth data received:', data);
-        if (data) {
-          const profile = data;
-          // Support both raw passport profile and Supabase profile structures
-          setUser({
-            uid: profile.steamid || profile.steam_id || profile.id || profile.steamId,
-            steamId: profile.steamid || profile.steam_id || profile.id || profile.steamId,
-            steamName: profile.steam_name || profile.displayName || 'Gamer',
-            steamAvatar: profile.steam_avatar || profile.photos?.[2]?.value || profile.photos?.[0]?.value || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
-            team: profile.team || 'none',
-            isAdmin: profile.isAdmin ?? (profile.role === 'admin' || profile.role === 'admins'),
-            role: profile.role || 'member',
-            status: profile.status || 'Ready for Event #3',
-            points: profile.points || 0,
-            discordId: profile.discord_id || profile.discordId,
-            discordName: profile.discord_name || profile.discordName,
-            discordAvatar: profile.discord_avatar || profile.discordAvatar,
-          } as any);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Auth fetch failed:', err);
-        setLoading(false);
-      });
-  }, []);
+  const teams: Team[] = ['blue', 'green', 'purple', 'red'];
+  const filteredUsers = filterTeam === 'all' ? users : users.filter(u => (u.team || 'none') === filterTeam);
 
-  // Handle postMessage events from auth popups
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Check origin if possible, but '*' for now to be safe in varying dev environments
-      console.log('Received postMessage:', event.data?.type);
-      
-      if (event.data?.type === 'STEAM_AUTH_SUCCESS') {
-        const steamProfile = event.data.user;
-        setUser({
-          uid: steamProfile.id,
-          steamId: steamProfile.id,
-          steamName: steamProfile.displayName || 'Gamer',
-          steamAvatar: steamProfile.photos?.[2]?.value || steamProfile.photos?.[0]?.value,
-          team: 'blue',
-          isAdmin: true,
-          status: 'Authenticated via Steam!',
-          points: 0,
-        });
-      }
-      
-      if (event.data?.type === 'DISCORD_AUTH_SUCCESS') {
-        const discordProfile = event.data.user;
-        setUser(prev => prev ? {
-          ...prev,
-          discordId: discordProfile.id,
-          discordName: discordProfile.username,
-          discordAvatar: `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png`
-        } : null);
-      }
-    };
+  const isAdmin = currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'admins';
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  if (!isAdmin) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center min-h-[50vh] text-center">
+        <Shield size={48} className="text-red-500 mb-4 opacity-50" />
+        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
+        <p className="opacity-50">You do not have permission to access the admin panel.</p>
+      </div>
+    );
+  }
 
-  const loginWithSteam = async () => {
-    try {
-      const res = await fetch('/api/auth/steam/url');
-      const { url } = await res.json();
-      window.location.href = url;
-    } catch (error) {
-      console.error('Failed to get Steam auth URL:', error);
-      // Fallback to old behavior if API fails for some reason
-      window.location.href = '/auth/steam';
-    }
-  };
-
-  const syncWithDiscord = async () => {
-    try {
-      const res = await fetch('/api/auth/discord/url');
-      const { url } = await res.json();
-      window.open(url, 'discord_login', 'width=800,height=700');
-    } catch (error) {
-      console.error('Failed to get Discord auth URL:', error);
-      window.open('/auth/discord', 'discord_login', 'width=800,height=700');
-    }
-  };
-
-  const logout = async () => {
-    await fetch('/api/logout', { method: 'POST' });
-    setUser(null);
-  };
+  if (loading) {
+    return <div className="p-8 text-center opacity-50">Loading users...</div>;
+  }
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
+    <div className="p-8 max-w-6xl mx-auto flex flex-col gap-12">
+      <section>
+        <h2 className="text-xl font-bold mb-6">Filters</h2>
+        <div className="flex gap-3">
+          {teams.map(team => (
+            <button
+               key={team}
+               onClick={() => setFilterTeam(team)}
+               className={cn(
+                  "px-6 py-2 rounded-lg text-sm font-bold transition-all",
+                  filterTeam === team 
+                    ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} border border-${team}-accent ring-1 ring-${team}-accent`
+                    : "bg-white/5 opacity-50 border border-transparent hover:opacity-100"
+               )}
+            >
+              {team.charAt(0).toUpperCase() + team.slice(1)}
+            </button>
+          ))}
+          <button 
+             onClick={() => setFilterTeam('all')}
+             className={cn(
+                "px-6 py-2 rounded-lg text-sm font-bold transition-all bg-white/5 opacity-50",
+                filterTeam === 'all' && "opacity-100 bg-white/10 ring-1 ring-white/20"
+             )}
+          >
+            All users
+          </button>
+        </div>
+      </section>
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+      <section>
+        <h2 className="text-xl font-bold mb-8">All users ({filteredUsers.length})</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+          {filteredUsers.map((u, i) => (
+            <div key={u.steamid} className="flex flex-col gap-5 p-6 bg-[#111111] rounded-2xl border border-white/5 relative group">
+               <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-14 h-14 rounded-full border-2 p-1",
+                    u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "border-white/10"
+                  )}>
+                     <img 
+                       src={u.steam_avatar || 'https://via.placeholder.com/150'} 
+                       alt="" 
+                       className="w-full h-full rounded-full object-cover" 
+                       referrerPolicy="no-referrer"
+                     />
+                  </div>
+                  <div className="flex flex-col">
+                     <div className="flex items-center gap-2">
+                        <span className="text-sm opacity-50">Steam:</span>
+                        <span className="text-sm font-bold text-blue-400">{u.steam_name}</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <span className="text-sm opacity-50">Discord:</span>
+                        <span className="text-sm font-bold text-purple-400">{u.discord_name || 'Not linked'}</span>
+                     </div>
+                  </div>
+                  {u.role === 'admin' && (
+                    <div className="ml-auto bg-pink-500/10 text-pink-500 text-[10px] uppercase font-bold px-2 py-1 rounded border border-pink-500/20">
+                      Admin
+                    </div>
+                  )}
+               </div>
+
+               <div className="flex flex-col gap-3">
+                  <span className="text-[10px] uppercase font-bold opacity-30">Assign to team:</span>
+                  <div className="flex gap-2">
+                     {teams.map(team => (
+                        <button 
+                           key={team}
+                           disabled={updating === u.steamid}
+                           onClick={() => assignTeam(u.steamid, team)}
+                           className={cn(
+                              "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
+                              u.team === team 
+                                ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
+                                : "bg-white/5 text-white/40 hover:bg-white/10",
+                              updating === u.steamid && "opacity-50 cursor-not-allowed"
+                           )}
+                        >
+                           {team}
+                        </button>
+                     ))}
+                     <button 
+                       onClick={() => setSelectedUser(u)}
+                       className="px-3 bg-white/5 text-white/40 rounded-lg hover:bg-white/10 transition-all"
+                     >
+                        <Settings size={14} />
+                     </button>
+                  </div>
+               </div>
+               
+               {/* Modal Overlay */}
+               {selectedUser && selectedUser.steamid === u.steamid && (
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-2xl z-10 flex items-center justify-center p-8">
+                     <div className="bg-[#151515] border border-white/10 rounded-2xl w-full max-w-sm flex flex-col overflow-hidden shadow-2xl">
+                        <div className="p-6 flex flex-col items-center gap-4">
+                           <div className="w-20 h-20 rounded-full border-4 border-pink-500/30 p-1">
+                              <img src={u.steam_avatar} alt="" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                           </div>
+                           <div className="text-center">
+                              <h3 className="text-xl font-bold">{u.steam_name}</h3>
+                              <p className="text-sm opacity-50 mt-1 uppercase tracking-wider">{u.role || 'Member'}</p>
+                           </div>
+                        </div>
+
+                         <div className="px-4 pb-6 flex flex-col gap-2">
+                            <button 
+                              onClick={() => setSelectedUser(null)}
+                              className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl text-sm transition-all border border-white/5 font-bold"
+                            >
+                               Close
+                            </button>
+                         </div>
+                     </div>
+                  </div>
+               )}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 }
