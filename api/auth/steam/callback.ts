@@ -1,13 +1,11 @@
+import { createClient } from '@supabase/supabase-js';
+
 export default async function handler(req, res) {
   try {
     const steamId = req.query["openid.claimed_id"]
       ?.toString()
       .split("/")
       .pop();
-
-    if (!steamId) {
-      return res.status(400).send("No Steam ID found");
-    }
 
     const apiKey = process.env.STEAM_API_KEY;
 
@@ -18,11 +16,23 @@ export default async function handler(req, res) {
     const data = await response.json();
     const player = data?.response?.players?.[0];
 
+    // 👉 SUPABASE PART
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const supabase = createClient(url, key);
+
+    await supabase.from("profiles").upsert({
+      steam_id: steamId,
+      steam_name: player.personaname,
+      steam_avatar: player.avatarfull,
+      last_login: new Date().toISOString()
+    });
+
     return res.status(200).send(`
-      <h2>Step 2 OK 🎉</h2>
-      <p>Steam ID: ${steamId}</p>
-      <p>Name: ${player?.personaname}</p>
-      <img src="${player?.avatarfull}" />
+      <h2>Login Complete 🎉</h2>
+      <p>${player.personaname}</p>
+      <img src="${player.avatarfull}" />
     `);
 
   } catch (err) {
