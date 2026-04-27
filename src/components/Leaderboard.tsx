@@ -1,68 +1,126 @@
 import React from 'react';
-import { Trophy, Medal, Users } from 'lucide-react';
+import { Trophy, Medal, Users, Shield } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 
 export default function Leaderboard() {
+  const [users, setUsers] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    fetch('/api/leaderboard/users')
+      .then(res => res.json())
+      .then(data => {
+        setUsers(data || []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch leaderboard users:', err);
+        setLoading(false);
+      });
+  }, []);
+
   const standings = [
-    { team: 'blue', points: 4500, members: 12, rank: 1 },
-    { team: 'purple', points: 3800, members: 10, rank: 2 },
-    { team: 'green', points: 3200, members: 15, rank: 3 },
-    { team: 'red', points: 2900, members: 8, rank: 4 },
-  ];
+    { team: 'blue', points: users.filter(u => u.team === 'blue').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'blue').length, rank: 1 },
+    { team: 'purple', points: users.filter(u => u.team === 'purple').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'purple').length, rank: 2 },
+    { team: 'green', points: users.filter(u => u.team === 'green').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'green').length, rank: 3 },
+    { team: 'red', points: users.filter(u => u.team === 'red').reduce((acc, u) => acc + (u.points || 0), 0), members: users.filter(u => u.team === 'red').length, rank: 4 },
+  ].sort((a, b) => b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">Team Standings</h1>
-      <p className="opacity-60 mb-12">Real-time competition progress.</p>
+    <div className="p-8 max-w-4xl mx-auto flex flex-col gap-12">
+      <section>
+        <h1 className="text-2xl font-bold mb-2">Team Standings</h1>
+        <p className="opacity-60 mb-8">Real-time competition progress.</p>
 
-      <div className="grid gap-6">
-        {standings.map((s) => (
-          <div 
-            key={s.team}
-            className={cn(
-              "p-6 rounded-2xl border bg-[#111111] flex items-center justify-between shadow-lg",
-              TEAM_COLORS[s.team as Team].border
-            )}
-          >
-            <div className="flex items-center gap-6">
-              <div className="w-12 h-12 flex items-center justify-center bg-black/40 rounded-xl font-bold text-xl">
-                 {s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : s.rank}
-              </div>
-              <div>
-                <h3 className={cn("text-xl font-bold capitalize", TEAM_COLORS[s.team as Team].primary)}>
-                  Team {s.team}
-                </h3>
-                <div className="flex items-center gap-2 opacity-50 text-sm mt-1">
-                  <Users size={14} />
-                  <span>{s.members} members</span>
+        <div className="grid gap-6">
+          {standings.map((s) => (
+            <div 
+              key={s.team}
+              className={cn(
+                "p-6 rounded-2xl border bg-[#111111] flex items-center justify-between shadow-lg transition-all hover:scale-[1.01]",
+                TEAM_COLORS[s.team as Team].border
+              )}
+            >
+              <div className="flex items-center gap-6">
+                <div className="w-12 h-12 flex items-center justify-center bg-black/40 rounded-xl font-bold text-xl border border-white/5">
+                   {s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : s.rank}
+                </div>
+                <div>
+                  <h3 className={cn("text-xl font-bold capitalize", TEAM_COLORS[s.team as Team].primary)}>
+                    Team {s.team}
+                  </h3>
+                  <div className="flex items-center gap-2 opacity-50 text-sm mt-1">
+                    <Users size={14} />
+                    <span>{s.members} members</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex flex-col items-end">
-              <span className="text-3xl font-mono font-bold">{s.points.toLocaleString()}</span>
-              <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1">Total Points</span>
+              <div className="flex flex-col items-end">
+                <span className="text-3xl font-mono font-bold">{s.points.toLocaleString()}</span>
+                <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1">Total Points</span>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-16">
-        <h2 className="text-xl font-bold mb-6">Recent Achievements</h2>
-        <div className="space-y-4">
-           {[1, 2, 3].map(i => (
-             <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5 opacity-60">
-                <div className="w-8 h-8 rounded-full bg-pink-500/20" />
-                <div className="flex-1">
-                   <p className="text-sm border-b border-transparent">
-                     <span className="font-bold text-blue-400">Chibi</span> just earned <span className="font-bold">10 points</span> for <span className="italic">Beyond: Two Souls</span>
-                   </p>
-                </div>
-                <span className="text-[10px] opacity-40">2m ago</span>
-             </div>
-           ))}
+          ))}
         </div>
+      </section>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        <section>
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
+            <Trophy className="text-amber-400" size={24} />
+            Top Members
+          </h2>
+          <div className="space-y-4">
+            {loading ? (
+              <div className="p-8 text-center opacity-30">Loading...</div>
+            ) : (
+              users.slice(0, 10).map((u, i) => (
+                <div key={u.steamid} className="flex items-center gap-4 p-4 bg-[#111111] rounded-2xl border border-white/5 group hover:border-white/10 transition-all">
+                  <div className="text-sm font-bold opacity-30 w-4">{i + 1}</div>
+                  <div className={cn("w-12 h-12 rounded-full p-1 border-2", u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10')}>
+                    <img src={u.steam_avatar} className="w-full h-full rounded-full object-cover" alt="" referrerPolicy="no-referrer" />
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2">
+                       <span className="font-bold truncate">{u.steam_name}</span>
+                       {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className="text-pink-500" />}
+                    </div>
+                    <p className="text-xs opacity-50 italic truncate">"{u.status || 'Chasing achievements...'}"</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono font-bold text-amber-400">{u.points || 0}</div>
+                    <div className="text-[10px] uppercase opacity-30 font-bold">Points</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
+            <Medal className="text-purple-400" size={24} />
+            Recent Activity
+          </h2>
+          <div className="space-y-4">
+             {[1, 2, 3, 4, 5].map(i => (
+               <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5 opacity-60">
+                  <div className="w-8 h-8 rounded-full bg-pink-500/10 flex items-center justify-center">
+                    <Trophy size={14} className="text-pink-500" />
+                  </div>
+                  <div className="flex-1">
+                     <p className="text-xs">
+                       <span className="font-bold text-blue-400">Someone</span> earned <span className="font-bold">10 pts</span>
+                     </p>
+                  </div>
+                  <span className="text-[10px] opacity-40">2m ago</span>
+               </div>
+             ))}
+             <p className="text-center text-xs opacity-30 py-4 italic">Activity feed coming soon...</p>
+          </div>
+        </section>
       </div>
     </div>
   );

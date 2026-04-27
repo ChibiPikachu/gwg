@@ -465,6 +465,20 @@ async function createServer() {
     res.json(users);
   });
 
+  app.get('/api/leaderboard/users', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    // Publicly return limited profiles
+    const { data: users, error } = await supabase
+      .from('profiles')
+      .select('steamid, steam_name, steam_avatar, team, status, points, role')
+      .order('points', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(users);
+  });
+
   app.post('/api/admin/update-user-team', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
