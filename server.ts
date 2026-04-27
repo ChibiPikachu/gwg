@@ -157,7 +157,7 @@ async function createServer() {
   return { app, PORT };
 }
 
-export default async (req: any, res: any) => {
-  const { app } = await createServer();
-  return app(req, res);
-};
+import serverless from "serverless-http";
+
+const { app } = await createServer();
+export default serverless(app);
