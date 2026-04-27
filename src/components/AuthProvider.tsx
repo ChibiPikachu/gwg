@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('No URL returned from API');
     }
 
-    window.open(data.url, 'steam_login', 'width=800,height=600');
+    window.location.href = data.url;
 
   } catch (error) {
     console.error('Steam login failed:', error);
@@ -107,10 +107,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/discord/url');
       const { url } = await res.json();
-      window.open(url, 'discord_login', 'width=800,height=700');
+      window.location.href = url;
     } catch (error) {
       console.error('Failed to get Discord auth URL:', error);
-      window.open('/auth/discord', 'discord_login', 'width=800,height=700');
+      window.location.href = '/auth/discord';
     }
   };
 
