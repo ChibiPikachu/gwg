@@ -31,7 +31,10 @@ async function createServer() {
   app.set('trust proxy', 1);
   app.use(express.json());
   
-  const isCloud = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || (process.env.APP_URL && process.env.APP_URL.includes('https'));
+  const isCloud = process.env.NODE_ENV === 'production' || 
+                  process.env.VERCEL === '1' || 
+                  (process.env.APP_URL && process.env.APP_URL.includes('https')) ||
+                  !!process.env.K_SERVICE; // Cloud Run detection
 
   // Custom Supabase Session Store
   class SupabaseStore extends session.Store {
@@ -39,6 +42,7 @@ async function createServer() {
     constructor() {
       super();
       this.supabase = getSupabase();
+      console.log('SupabaseStore initialized. Client available:', !!this.supabase);
     }
 
     async get(sid: string, callback: (err: any, session?: any) => void) {
@@ -113,8 +117,8 @@ async function createServer() {
     proxy: true,
     store: new SupabaseStore(),
     cookie: {
-      secure: isCloud,
-      sameSite: isCloud ? 'none' : 'lax',
+      secure: true, // Forces secure for cookies in modern browsers/iframes
+      sameSite: 'none', // Critical for cross-origin/iframe contexts
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
       httpOnly: true,
     }
@@ -337,6 +341,16 @@ async function createServer() {
         user.steam_name = displayName;
         user.status = status;
         
+        if ((req as any).session) {
+          return (req as any).session.save((err: any) => {
+            if (err) {
+              console.error('Profile Session Save Error:', err);
+              return res.status(500).json({ error: 'Failed to update session' });
+            }
+            return res.json({ success: true, user });
+          });
+        }
+        
         return res.json({ success: true, user });
       } catch (err) {
         console.error('Failed to update profile:', err);
@@ -355,16 +369,22 @@ async function createServer() {
       const user = (req as any).user;
       const supabase = getSupabase();
       
-      if (supabase && user.id) {
+      const steamId = user.id || user.steam_id || user.steamId;
+      
+      if (supabase && steamId) {
         try {
           const { data, error } = await supabase
             .from('profiles')
             .select('*')
-            .eq('steam_id', user.id)
+            .eq('steam_id', steamId)
             .single();
             
           if (data && !error) {
-            return res.json(data);
+            // Merge database data with session data for the frontend
+            return res.json({
+              ...user,
+              ...data
+            });
           }
         } catch (err) {
           console.error('Error fetching profile from Supabase:', err);
