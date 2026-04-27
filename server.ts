@@ -181,6 +181,12 @@ async function createServer() {
     })(req, res, next);
   });
 
+res.cookie("steam_id", steamProfile.id, {
+  httpOnly: false,
+  secure: true,
+  sameSite: "lax",
+});
+
   function sendSteamResponse(res: any, user: any) {
     res.send(`
       <html><body>

@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const steamId = req.query.steam_id;
 
     if (!steamId) {
-      return res.status(400).json({ error: "Missing steam_id" });
+      return res.status(200).json(null);
     }
 
     const supabase = createClient(
@@ -17,13 +17,13 @@ export default async function handler(req, res) {
       .from("profiles")
       .select("*")
       .eq("steam_id", steamId)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      return res.status(500).json({ error });
+      return res.status(500).json({ error: error.message });
     }
 
-    return res.status(200).json(data);
+    return res.status(200).json(data || null);
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
