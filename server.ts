@@ -235,29 +235,39 @@ async function createServer() {
       }
       if (!user) return res.redirect('/');
       
-      (req as any).logIn(user, async (loginErr: any) => {
-        if (loginErr) return res.redirect('/?error=LoginFailed');
-        
-        const supabase = getSupabase();
-        if (supabase) {
-          try {
-            console.log('[Auth] Syncing user to Supabase:', user.id);
-            const { error: syncError } = await supabase.from('profiles').upsert({
-              steam_id: String(user.id),
-              steam_name: user.displayName || user.personaname || 'Steam User',
-              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
-              last_login: new Date().toISOString()
-            }, { onConflict: 'steam_id' });
-            
-            if (syncError) {
-              console.error('[Auth] Supabase sync error:', syncError.message, syncError.details);
-            } else {
-              console.log('[Auth] Supabase sync success for:', user.id);
-            }
-          } catch (dbErr) {
-            console.error('[Auth] Exception during sync:', dbErr);
-          }
-        }
+      // Inside app.get(['/auth/steam/return', ...])
+(req as any).logIn(user, async (loginErr: any) => {
+  if (loginErr) return res.redirect('/?error=LoginFailed');
+  
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      // Steam IDs can sometimes be in user.id or user._json.steamid
+      const steamId = String(user.id || (user._json && user._json.steamid));
+      
+      console.log('[Auth] Attempting Supabase sync for SteamID:', steamId);
+
+      const { data, error: syncError } = await supabase.from('profiles').upsert({
+        steam_id: steamId,
+        steam_name: user.displayName || (user._json && user._json.personaname) || 'Steam User',
+        steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || (user._json && user._json.avatarfull) || null,
+        last_login: new Date().toISOString()
+      }, { 
+        onConflict: 'steam_id',
+        ignoreDuplicates: false 
+      }).select(); // Added .select() to log what actually happened
+
+      if (syncError) {
+        console.error('[Auth] Supabase sync error details:', syncError.message, syncError.details);
+      } else {
+        console.log('[Auth] Supabase sync success. Rows affected:', data?.length);
+      }
+    } catch (dbErr) {
+      console.error('[Auth] Critical exception during sync:', dbErr);
+    }
+  }
+  // ... rest of the redirect logic
+});
 
         if ((req as any).session) {
           (req as any).session.save(() => res.redirect('/'));
