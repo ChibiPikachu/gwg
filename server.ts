@@ -274,34 +274,6 @@ async function createServer() {
           res.redirect('/');
         }
       });
-        
-        const supabase = getSupabase();
-        if (supabase) {
-          try {
-            console.log('[Auth] Syncing user to Supabase:', user.id);
-            const { error: syncError } = await supabase.from('profiles').upsert({
-              steam_id: String(user.id),
-              steam_name: user.displayName || user.personaname || 'Steam User',
-              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
-              last_login: new Date().toISOString()
-            }, { onConflict: 'steam_id' });
-            
-            if (syncError) {
-              console.error('[Auth] Supabase sync error:', syncError.message, syncError.details);
-            } else {
-              console.log('[Auth] Supabase sync success for:', user.id);
-            }
-          } catch (dbErr) {
-            console.error('[Auth] Exception during sync:', dbErr);
-          }
-        }
-
-        if ((req as any).session) {
-          (req as any).session.save(() => res.redirect('/'));
-        } else {
-          res.redirect('/');
-        }
-      });
     })(req, res, next);
   });
 
