@@ -16,33 +16,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // Load initial user state from server session
-  useEffect(() => {
-    const searchParams = window.location.search;
-    console.log('Fetching auth status with params:', searchParams);
-    fetch(`/api/me${searchParams}`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('Auth data received:', data);
-        if (data) {
-          const steamProfile = data;
-          setUser({
-            uid: steamProfile.id || steamProfile.steamId,
-            steamId: steamProfile.id || steamProfile.steamId,
-            steamName: steamProfile.displayName || 'Gamer',
-            steamAvatar: steamProfile.photos?.[2]?.value || steamProfile.photos?.[0]?.value || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
-            team: steamProfile.team || 'blue',
-            isAdmin: steamProfile.isAdmin ?? true,
-            status: steamProfile.status || 'Ready for Event #3',
-            points: steamProfile.points || 0,
-          });
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Auth fetch failed:', err);
-        setLoading(false);
-      });
-  }, []);
+useEffect(() => {
+  fetch('/api/me')
+    .then(res => res.json())
+    .then(data => {
+      if (data) {
+        setUser({
+          uid: data.steam_id,
+          steamId: data.steam_id,
+          steamName: data.steam_name,
+          steamAvatar: data.steam_avatar,
+          team: 'blue',
+          isAdmin: true,
+          status: 'Logged in',
+          points: 0
+        });
+      }
+      setLoading(false);
+    });
+}, []);
 
   // Handle postMessage events from auth popups
   useEffect(() => {
