@@ -21,7 +21,10 @@ export default async function handler(req, res) {
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     const supabase = createClient(url, key);
-
+console.log("UPSERT DATA:", {
+  steam_id: steamId,
+  steam_name: player.personaname
+});
     await supabase.from("profiles").upsert({
       steam_id: steamId,
       steam_name: player.personaname,
