@@ -1,6 +1,7 @@
 import React from 'react';
 import { LogOut, Moon, Sun } from 'lucide-react';
-import { UserProfile } from '@/types';
+import { UserProfile, TEAM_COLORS } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface TopBarProps {
   user: UserProfile | null;
@@ -9,12 +10,17 @@ interface TopBarProps {
 }
 
 export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) {
+  const colors = user ? TEAM_COLORS[user.team] : null;
+
   return (
     <div className="h-16 flex items-center justify-end px-8 gap-6">
       {user && (
         <div className="flex items-center gap-3 cursor-pointer group" onClick={onProfileClick}>
           <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity">Welcome {user.steamName}!</span>
-          <div className="w-10 h-10 rounded-full border-2 border-pink-500/50 p-0.5 group-hover:border-pink-500 transition-colors">
+          <div className={cn(
+            "w-10 h-10 rounded-full border-2 p-0.5 transition-colors",
+            colors ? `${colors.border.replace('/50', '')}/50 group-hover:${colors.border.replace('/50', '')}` : "border-white/20"
+          )}>
             <img 
               src={user.steamAvatar || user.discordAvatar} 
               alt="Avatar" 

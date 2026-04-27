@@ -40,6 +40,10 @@ export default function Profile() {
   };
 
   const colors = TEAM_COLORS[user.team];
+  const logoColor = user.team === 'blue' ? 'bg-blue-accent' : 
+                    user.team === 'green' ? 'bg-green-accent' : 
+                    user.team === 'purple' ? 'bg-purple-accent' : 
+                    'bg-red-accent';
 
   return (
     <div className="p-8 max-w-4xl mx-auto flex flex-col gap-12">
@@ -52,7 +56,7 @@ export default function Profile() {
             referrerPolicy="no-referrer"
           />
            {user.isAdmin && (
-             <div className="absolute -bottom-2 -right-2 bg-pink-500 text-white p-1.5 rounded-full shadow-lg" title="Admin">
+             <div className={cn("absolute -bottom-2 -right-2 text-white p-1.5 rounded-full shadow-lg", logoColor)} title="Admin">
                <Shield size={16} />
              </div>
            )}
@@ -75,7 +79,7 @@ export default function Profile() {
                   <h1 className="text-3xl font-bold">{user.steamName}</h1>
                   <button 
                     onClick={() => setIsEditing(true)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/5 rounded-full transition-all text-pink-400"
+                    className={cn("opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/5 rounded-full transition-all", colors.primary)}
                   >
                     <Edit2 size={16} />
                   </button>

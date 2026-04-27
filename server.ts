@@ -149,74 +149,96 @@ async function createServer() {
   passport.deserializeUser((user: any, done) => done(null, user));
 
   // Derive base URL for auth redirects
-  const getAppBaseUrl = (req?: any) => {
-    if (process.env.APP_URL) return process.env.APP_URL;
-    if (req) {
-      let url = `${req.protocol}://${req.get('host')}`;
-      if (url.includes('.run.app') || url.includes('.ais.') || (req.get('x-forwarded-proto') === 'https')) {
-        url = url.replace('http://', 'https://');
-      }
-      return url;
+  const getAppBaseUrl = (req: any) => {
+    if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    let url = `${protocol}://${host}`;
+    if (url.includes('.run.app') || url.includes('.ais.')) {
+      url = url.replace('http://', 'https://');
     }
-    return '';
+    return url.replace(/\/$/, '');
   };
 
-  // Steam Strategy
+  // Auth Strategies
   const steamApiKey = process.env.STEAM_API_KEY;
-  
-  if (!steamApiKey) {
-    console.warn('STEAM_API_KEY is missing. Steam login will not function correctly.');
-  }
-
-  // Strategy options (realm/returnURL will be dynamically handled in routes)
   passport.use(new SteamStrategy({
     returnURL: 'http://localhost:3000/auth/steam/return', // Placeholder
     realm: 'http://localhost:3000', // Placeholder
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
     profile.identifier = identifier;
-    profile.id = profile.id || identifier.split('/').pop(); // Ensure ID is present
+    profile.id = profile.id || identifier.split('/').pop();
     return done(null, profile);
   }));
 
-  // Discord Strategy
   passport.use(new DiscordStrategy({
     clientID: process.env.DISCORD_CLIENT_ID || 'dummy',
     clientSecret: process.env.DISCORD_CLIENT_SECRET || 'dummy',
-    callbackURL: `${process.env.APP_URL || 'http://localhost:3000'}/auth/discord/callback`,
+    callbackURL: 'http://localhost:3000/auth/discord/callback', // Placeholder
     scope: ['identify']
   }, (accessToken, refreshToken, profile, done) => {
     return done(null, profile);
   }));
 
-  // Health check
-  app.get('/api/health', (req, res) => {
-    res.json({ 
-      status: 'ok', 
-      uptime: process.uptime(),
-      env: process.env.NODE_ENV,
-      steamKeySet: !!process.env.STEAM_API_KEY
-    });
-  });
-
   // Auth Routes
   app.get('/api/auth/steam/url', (req, res) => {
     const appUrl = getAppBaseUrl(req);
     const returnTo = `${appUrl}/auth/steam/return`;
-    const realm = appUrl;
-    
-    console.log('[Auth] Generating Steam URL. Realm:', realm, 'Return:', returnTo);
-    
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
       'openid.return_to': returnTo,
-      'openid.realm': realm,
+      'openid.realm': appUrl,
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select'
     });
-
     res.json({ url: `https://steamcommunity.com/openid/login?${params.toString()}` });
+  });
+
+  app.get('/auth/steam', (req, res, next) => {
+    const appUrl = getAppBaseUrl(req);
+    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
+    (passport as any)._strategy('steam')._realm = appUrl;
+    passport.authenticate('steam')(req, res, next);
+  });
+
+  app.get(['/auth/steam/return', '/auth/steam/return/'], (req, res, next) => {
+    const appUrl = getAppBaseUrl(req);
+    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
+    (passport as any)._strategy('steam')._realm = appUrl;
+
+    passport.authenticate('steam', (err: any, user: any) => {
+      if (err) {
+        console.error('Steam Auth Error:', err);
+        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
+      }
+      if (!user) return res.redirect('/');
+      
+      (req as any).logIn(user, async (loginErr: any) => {
+        if (loginErr) return res.redirect('/?error=LoginFailed');
+        
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            await supabase.from('profiles').upsert({
+              steam_id: user.id,
+              steam_name: user.displayName,
+              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value,
+              last_login: new Date().toISOString()
+            }, { onConflict: 'steam_id' });
+          } catch (dbErr) {
+            console.error('Failed to sync user to Supabase:', dbErr);
+          }
+        }
+
+        if ((req as any).session) {
+          (req as any).session.save(() => res.redirect('/'));
+        } else {
+          res.redirect('/');
+        }
+      });
+    })(req, res, next);
   });
 
   app.get('/api/auth/discord/url', (req, res) => {
@@ -230,90 +252,34 @@ async function createServer() {
     res.json({ url: `https://discord.com/api/oauth2/authorize?${params.toString()}` });
   });
 
-  app.get('/auth/steam', (req, res, next) => {
+  app.get('/auth/discord', (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
-    // Dynamic override for passport-steam
-    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
-    (passport as any)._strategy('steam')._realm = appUrl;
-    passport.authenticate('steam')(req, res, next);
-  });
-  
-  app.get(['/auth/steam/return', '/auth/steam/return/'], (req, res, next) => {
-    const appUrl = getAppBaseUrl(req);
-    // Dynamic override for passport-steam
-    (passport as any)._strategy('steam')._returnURL = `${appUrl}/auth/steam/return`;
-    (passport as any)._strategy('steam')._realm = appUrl;
-
-    passport.authenticate('steam', (err: any, user: any) => {
-      if (err) {
-        console.error('Steam Auth Error:', err);
-        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
-      }
-      if (!user) {
-        return res.redirect('/');
-      }
-      (req as any).logIn(user, async (err: any) => {
-        if (err) {
-          console.error('Login Error:', err);
-          return res.redirect('/?error=LoginFailed');
-        }
-        
-        // Upsert user to Supabase
-        const supabase = getSupabase();
-        if (supabase) {
-          try {
-            const steamProfile = user;
-            await supabase.from('profiles').upsert({
-              steam_id: steamProfile.id,
-              steam_name: steamProfile.displayName,
-              steam_avatar: steamProfile.photos?.[2]?.value || steamProfile.photos?.[0]?.value,
-              last_login: new Date().toISOString()
-            }, { onConflict: 'steam_id' });
-            console.log('[Auth] Supabase sync success for:', steamProfile.id);
-          } catch (dbErr) {
-            console.error('[Auth] Failed to sync Steam user to Supabase:', dbErr);
-          }
-        }
-
-        // Save session explicitly before sending response
-        if ((req as any).session) {
-          (req as any).session.save((err: any) => {
-            if (err) {
-              console.error('Session Save Error:', err);
-              return res.redirect('/?error=SessionSaveFailed');
-            }
-            res.redirect('/');
-          });
-        } else {
-          res.redirect('/');
-        }
-      });
-    })(req, res, next);
+    (passport as any)._strategy('discord')._callbackURL = `${appUrl}/auth/discord/callback`;
+    passport.authenticate('discord')(req, res, next);
   });
 
-  function sendSteamResponse(res: any, user: any) {
-    res.redirect('/');
-  }
-
-  app.get('/auth/discord', passport.authenticate('discord'));
   app.get('/auth/discord/callback', (req, res, next) => {
+    const appUrl = getAppBaseUrl(req);
+    (passport as any)._strategy('discord')._callbackURL = `${appUrl}/auth/discord/callback`;
     passport.authenticate('discord', async (err: any, user: any) => {
       if (err || !user) return res.redirect('/');
       
       // If user is logged in via Steam, link Discord
       const currentUser = (req as any).user;
       const supabase = getSupabase();
-      if (currentUser && currentUser.id && supabase) {
+      if (currentUser && (currentUser.id || currentUser.steam_id) && supabase) {
         try {
           await supabase.from('profiles').update({
             discord_id: user.id,
             discord_name: user.username,
             discord_avatar: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
-          }).eq('steam_id', currentUser.id);
+          }).eq('steam_id', currentUser.id || currentUser.steam_id);
           
-          // Update local session
-          (req as any).user.discordId = user.id;
-          (req as any).user.discordName = user.username;
+          Object.assign((req as any).user, {
+            discord_id: user.id,
+            discord_name: user.username,
+            discord_avatar: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
+          });
         } catch (dbErr) {
           console.error('Failed to link Discord to Supabase:', dbErr);
         }
@@ -327,7 +293,6 @@ async function createServer() {
       `);
     })(req, res, next);
   });
-
   app.post('/api/profile/update', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });

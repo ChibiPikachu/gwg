@@ -12,6 +12,10 @@ interface SidebarProps {
 
 export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: SidebarProps) {
   const colors = TEAM_COLORS[userTeam];
+  const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
+                    userTeam === 'green' ? 'bg-green-accent' : 
+                    userTeam === 'purple' ? 'bg-purple-accent' : 
+                    'bg-red-accent';
 
   const menuItems = [
     { id: 'submissions', label: 'My submissions', icon: ClipboardList, section: 'member' },
@@ -30,7 +34,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
   return (
     <div className="w-72 bg-[#0c0c0c] border-r border-white/5 h-screen sticky top-0 flex flex-col p-6 overflow-y-auto">
       <div className="flex items-center gap-2 mb-10">
-        <div className="w-10 h-10 bg-pink-500 rounded-full flex items-center justify-center text-white font-display text-xl">
+        <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white font-display text-xl", logoColor)}>
           GWG
         </div>
         <span className="font-display text-xl text-white">Girls Who Game</span>
