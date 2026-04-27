@@ -33,12 +33,74 @@ async function createServer() {
   
   const isCloud = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || (process.env.APP_URL && process.env.APP_URL.includes('https'));
 
+  // Custom Supabase Session Store
+  class SupabaseStore extends session.Store {
+    supabase: any;
+    constructor() {
+      super();
+      this.supabase = getSupabase();
+    }
+
+    async get(sid: string, callback: (err: any, session?: any) => void) {
+      if (!this.supabase) return callback(null, null);
+      try {
+        const { data, error } = await this.supabase
+          .from('sessions')
+          .select('data')
+          .eq('id', sid)
+          .maybeSingle();
+
+        if (error) return callback(error);
+        if (!data) return callback(null, null);
+        
+        callback(null, data.data);
+      } catch (err) {
+        callback(err);
+      }
+    }
+
+    async set(sid: string, sessionData: any, callback: (err?: any) => void) {
+      if (!this.supabase) return callback();
+      try {
+        const expires_at = sessionData.cookie?.expires 
+          ? new Date(sessionData.cookie.expires).toISOString()
+          : new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+
+        const { error } = await this.supabase
+          .from('sessions')
+          .upsert({
+            id: sid,
+            data: sessionData,
+            expires_at
+          }, { onConflict: 'id' });
+
+        callback(error);
+      } catch (err) {
+        callback(err);
+      }
+    }
+
+    async destroy(sid: string, callback: (err?: any) => void) {
+      if (!this.supabase) return callback();
+      try {
+        const { error } = await this.supabase
+          .from('sessions')
+          .delete()
+          .eq('id', sid);
+        callback(error);
+      } catch (err) {
+        callback(err);
+      }
+    }
+  }
+
   app.use(session({
     secret: process.env.SESSION_SECRET || 'gwg-tracker-secret',
     resave: false,
     saveUninitialized: false,
     name: 'gwg.sid',
     proxy: true,
+    store: new SupabaseStore(),
     cookie: {
       secure: isCloud,
       sameSite: isCloud ? 'none' : 'lax',
