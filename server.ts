@@ -250,11 +250,11 @@ async function createServer() {
             console.log('Syncing Steam ID:', steamId);
 
             const { data, error: syncError } = await supabase.from('profiles').upsert({
-              steam_id: steamId,
+              steamid: steamId,
               steam_name: user.displayName || user.personaname || 'Steam User',
               steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
               last_login: new Date().toISOString()
-            }, { onConflict: 'steam_id' }).select(); // .select() lets us see the result
+            }, { onConflict: 'steamid' }).select(); // .select() lets us see the result
             
             if (syncError) {
               console.error('❌ Supabase Sync Error:', syncError.message);
@@ -316,7 +316,7 @@ async function createServer() {
             discord_id: user.id,
             discord_name: user.username,
             discord_avatar: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
-          }).eq('steam_id', currentUser.id || currentUser.steam_id);
+          }).eq('steamid', currentUser.id || currentUser.steam_id || currentUser.steamid);
           
           Object.assign((req as any).user, {
             discord_id: user.id,
@@ -345,15 +345,14 @@ async function createServer() {
     const user = (req as any).user;
     const supabase = getSupabase();
     
-    const steamId = user.id || user.steam_id || user.steamId;
+    const steamId = user.id || user.steamid || user.steam_id || user.steamId;
 
     if (supabase && steamId) {
       try {
         const { error } = await supabase.from('profiles').update({
           steam_name: displayName,
-          status: status,
-          updated_at: new Date().toISOString()
-        }).eq('steam_id', steamId);
+          status: status
+        }).eq('steamid', steamId);
 
         if (error) throw error;
         
@@ -390,14 +389,14 @@ async function createServer() {
       const user = (req as any).user;
       const supabase = getSupabase();
       
-      const steamId = user.id || user.steam_id || user.steamId;
+      const steamId = user.id || user.steamid || user.steam_id || user.steamId;
       
       if (supabase && steamId) {
         try {
           const { data, error } = await supabase
             .from('profiles')
             .select('*')
-            .eq('steam_id', steamId)
+            .eq('steamid', steamId)
             .single();
             
           if (data && !error) {
