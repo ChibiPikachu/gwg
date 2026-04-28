@@ -95,16 +95,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (newData) {
           setUser(prev => prev ? {
             ...prev,
-            steamName: newData.steam_name || prev.steamName,
-            steamAvatar: newData.steam_avatar || prev.steamAvatar,
-            team: newData.team || 'none',
-            role: newData.role || prev.role,
+            steamName: newData.steam_name ?? prev.steamName,
+            steamAvatar: newData.steam_avatar ?? prev.steamAvatar,
+            team: newData.team ?? prev.team,
+            role: newData.role ?? prev.role,
             isAdmin: newData.role === 'admin' || newData.role === 'admins',
-            status: newData.status || prev.status,
-            points: newData.points || prev.points,
-            discordId: newData.discord_id || prev.discordId,
-            discordName: newData.discord_name || prev.discordName,
-            discordAvatar: newData.discord_avatar || prev.discordAvatar,
+            status: newData.status ?? prev.status,
+            points: typeof newData.points === 'number' ? newData.points : prev.points,
+            discordId: newData.discord_id ?? prev.discordId,
+            discordName: newData.discord_name ?? prev.discordName,
+            discordAvatar: newData.discord_avatar ?? prev.discordAvatar,
           } : null);
         }
       })

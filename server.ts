@@ -475,30 +475,40 @@ async function createServer() {
   // Helper to sync points
   async function syncUserPoints(supabase: any, steamid: string) {
     try {
-      // Find active event first
-      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
-      
-      let query = supabase
+      console.log(`[Sync] Starting sync for user ${steamid}`);
+      // We want to sum ALL verified submissions for the user's total points profile
+      const { data: verifiedSubmissions, error: subError } = await supabase
         .from('submissions')
-        .select('points')
+        .select('points, id, status, user_id')
         .eq('user_id', steamid)
         .eq('status', 'verified');
-      
-      // If there is an active event, we only count points for that event for the current "live" standing
-      // Usually, the profile 'points' represents the current season standing
-      if (activeEvent) {
-        query = query.eq('event_id', activeEvent.id);
+
+      if (subError) {
+        console.error(`[Sync] Error fetching submissions for ${steamid}:`, subError);
+        throw subError;
       }
 
-      const { data: verifiedSubmissions, error: subError } = await query;
-      if (subError) throw subError;
+      console.log(`[Sync] Found ${verifiedSubmissions?.length || 0} verified submissions for ${steamid}`);
+      
+      const totalPoints = (verifiedSubmissions || []).reduce((acc: number, sub: any) => {
+        const p = Number(sub.points || 0);
+        console.log(`[Sync] Sub ${sub.id} points: ${sub.points} (casted: ${p})`);
+        return acc + p;
+      }, 0);
+      
+      console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
 
-      const totalPoints = (verifiedSubmissions || []).reduce((acc: number, sub: any) => acc + (sub.points || 0), 0);
-
-      await supabase
+      const { data: updateResult, error: profileError } = await supabase
         .from('profiles')
         .update({ points: totalPoints })
-        .eq('steamid', steamid);
+        .eq('steamid', steamid)
+        .select();
+
+      if (profileError) {
+        console.error(`[Sync] Error updating profile for ${steamid}:`, profileError);
+      } else {
+        console.log(`[Sync] Successfully updated profile for ${steamid}. New data:`, updateResult?.[0]);
+      }
         
       return totalPoints;
     } catch (err) {
@@ -786,9 +796,9 @@ async function createServer() {
       if (updateSubError) throw updateSubError;
 
       // 3. Always sync user points after a verification update
-      await syncUserPoints(supabase, sub.user_id);
+      const newTotal = await syncUserPoints(supabase, sub.user_id);
 
-      res.json({ success: true });
+      res.json({ success: true, pointsAwarded: points, newTotal });
     } catch (err) {
       console.error('Refine failed:', err);
       res.status(500).json({ error: 'Failed to update submission' });
