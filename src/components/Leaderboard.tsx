@@ -2,12 +2,13 @@ import React from 'react';
 import { Trophy, Medal, Users, Shield } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const [users, setUsers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  React.useEffect(() => {
+  const fetchUsers = React.useCallback(() => {
     fetch('/api/leaderboard/users')
       .then(res => res.json())
       .then(data => {
@@ -19,6 +20,28 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         setLoading(false);
       });
   }, []);
+
+  React.useEffect(() => {
+    fetchUsers();
+
+    // Subscribe to real-time updates for profiles
+    const channel = supabase
+      .channel('leaderboard-profiles')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'profiles' 
+      }, () => {
+        // Simple approach: Refetch when any profile changes
+        // More efficient would be updating local state, but this ensures consistency with API filters
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchUsers]);
 
   const safeUsers = Array.isArray(users) ? users : [];
 

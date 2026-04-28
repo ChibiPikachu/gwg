@@ -1,8 +1,9 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, UserX, Trash2, Gamepad2, Disc as Discord } from 'lucide-react';
+import { Search, Settings, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { user: currentUser } = useAuth();
@@ -12,11 +13,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
   const [updating, setUpdating] = React.useState<string | null>(null);
   const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
 
-  React.useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = React.useCallback(async () => {
     try {
       const res = await fetch('/api/admin/users');
       if (res.ok) {
@@ -28,7 +25,27 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  React.useEffect(() => {
+    fetchUsers();
+
+    // Subscribe to real-time updates for profiles
+    const channel = supabase
+      .channel('admin-profiles')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'profiles' 
+      }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchUsers]);
 
   const assignTeam = async (targetSteamId: string, team: Team) => {
     setUpdating(targetSteamId);

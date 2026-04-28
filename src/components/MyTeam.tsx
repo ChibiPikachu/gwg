@@ -1,15 +1,16 @@
 import React from 'react';
-import { Users, Mail, Shield, Trophy } from 'lucide-react';
+import { Users, Mail, Shield } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { user } = useAuth();
   const [members, setMembers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  React.useEffect(() => {
+  const fetchTeammates = React.useCallback(() => {
     fetch('/api/leaderboard/users')
       .then(res => res.json())
       .then(data => {
@@ -26,6 +27,26 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
         setLoading(false);
       });
   }, [user?.team]);
+
+  React.useEffect(() => {
+    fetchTeammates();
+
+    // Subscribe to real-time updates for profiles
+    const channel = supabase
+      .channel('teammates-profiles')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'profiles' 
+      }, () => {
+        fetchTeammates();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchTeammates]);
 
   if (!user || user.team === 'none') {
     return (

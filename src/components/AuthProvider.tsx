@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, Team } from '@/types';
+import { UserProfile } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -42,16 +43,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Load initial user state from server session
-  useEffect(() => {
+  const fetchMe = React.useCallback(() => {
     const searchParams = window.location.search;
-    console.log('Fetching auth status with params:', searchParams);
     fetch(`/api/me${searchParams}`)
       .then(res => res.json())
       .then(data => {
-        console.log('Auth data received:', data);
         if (data) {
           const profile = data;
-          // Support both raw passport profile and Supabase profile structures
           setUser({
             uid: profile.steamid || profile.steam_id || profile.id || profile.steamId,
             steamId: profile.steamid || profile.steam_id || profile.id || profile.steamId,
@@ -74,6 +72,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    fetchMe();
+  }, [fetchMe]);
+
+  // Real-time listener for current user's profile
+  useEffect(() => {
+    if (!user?.steamId) return;
+
+    const channel = supabase
+      .channel(`user-profile-${user.steamId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'profiles',
+        filter: `steamid=eq.${user.steamId}`
+      }, (payload) => {
+        console.log('Real-time profile update:', payload);
+        const newData = payload.new as any;
+        if (newData) {
+          setUser(prev => prev ? {
+            ...prev,
+            steamName: newData.steam_name || prev.steamName,
+            steamAvatar: newData.steam_avatar || prev.steamAvatar,
+            team: newData.team || 'none',
+            role: newData.role || prev.role,
+            isAdmin: newData.role === 'admin' || newData.role === 'admins',
+            status: newData.status || prev.status,
+            points: newData.points || prev.points,
+            discordId: newData.discord_id || prev.discordId,
+            discordName: newData.discord_name || prev.discordName,
+            discordAvatar: newData.discord_avatar || prev.discordAvatar,
+          } : null);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.steamId]);
 
   // Handle postMessage events from auth popups
   useEffect(() => {
