@@ -82,7 +82,7 @@ function AppContent() {
         return <Dashboard userTeam={user.team} />;
       case 'admin-users':
       case 'admin-teams':
-        return <AdminPanel />;
+        return <AdminPanel onViewProfile={handleViewProfile} />;
       default:
         return <MySubmissions />;
     }

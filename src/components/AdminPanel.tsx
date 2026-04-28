@@ -4,7 +4,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { Search, Settings, Shield, UserX, Trash2, Gamepad2, Disc as Discord } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export default function AdminPanel() {
+export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { user: currentUser } = useAuth();
   const [filterTeam, setFilterTeam] = React.useState<Team | 'all'>('all');
   const [users, setUsers] = React.useState<any[]>([]);
@@ -118,25 +118,36 @@ export default function AdminPanel() {
           {filteredUsers.map((u, i) => (
             <div key={u.steamid} className="flex flex-col gap-5 p-6 bg-[#111111] rounded-2xl border border-white/5 relative group">
                <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "w-14 h-14 rounded-full border-2 p-1",
-                    u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "border-white/10"
-                  )}>
+                  <button 
+                    onClick={() => onViewProfile?.(u.steamid)}
+                    title="View App Profile"
+                    className={cn(
+                      "w-14 h-14 rounded-full border-2 p-1 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50 shrink-0",
+                      u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "border-white/10"
+                    )}
+                  >
                      <img 
                        src={u.steam_avatar || 'https://via.placeholder.com/150'} 
                        alt="" 
                        className="w-full h-full rounded-full object-cover" 
                        referrerPolicy="no-referrer"
                      />
-                  </div>
-                  <div className="flex flex-col">
+                  </button>
+                  <div className="flex flex-col overflow-hidden">
                      <div className="flex items-center gap-2">
                         <span className="text-sm opacity-50">Steam:</span>
-                        <span className="text-sm font-bold text-blue-400">{u.steam_name}</span>
+                        <a 
+                          href={`https://steamcommunity.com/profiles/${u.steamid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-bold text-blue-400 hover:text-blue-300 hover:underline transition-colors truncate"
+                        >
+                          {u.steam_name}
+                        </a>
                      </div>
                      <div className="flex items-center gap-2">
                         <span className="text-sm opacity-50">Discord:</span>
-                        <span className="text-sm font-bold text-purple-400">{u.discord_name || 'Not linked'}</span>
+                        <span className="text-sm font-bold text-purple-400 truncate">{u.discord_name || 'Not linked'}</span>
                      </div>
                   </div>
                   {(u.role === 'admin' || u.role === 'admins') && (
