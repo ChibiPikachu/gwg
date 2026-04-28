@@ -649,7 +649,7 @@ async function createServer() {
     const currentUser = (req as any).user;
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     const { 
-      gameId, gameTitle, gameImage, achievements, hours, 
+      gameId, gameName, gameImage, achievements, hours, 
       achievementsBefore, hoursBefore, multiplier, calculatedScore, notes 
     } = req.body;
 
@@ -666,7 +666,7 @@ async function createServer() {
         user_name: currentUser.displayName || currentUser.steam_name,
         user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
         game_id: String(gameId),
-        game_title: gameTitle,
+        game_name: gameName,
         game_image: gameImage,
         achievements_during: achievements || 0,
         hours_during: hours || 0,
