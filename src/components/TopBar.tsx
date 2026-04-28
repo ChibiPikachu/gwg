@@ -15,8 +15,15 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
   const { theme } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
   const [notifications, setNotifications] = React.useState<any[]>([]);
-  const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
+  const [readIds, setReadIds] = React.useState<Set<string>>(() => {
+    const saved = localStorage.getItem('read_notification_ids');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
   const [showNotifications, setShowNotifications] = React.useState(false);
+
+  React.useEffect(() => {
+    localStorage.setItem('read_notification_ids', JSON.stringify(Array.from(readIds)));
+  }, [readIds]);
 
   const unreadCount = notifications.filter(n => !readIds.has(n.id)).length;
 

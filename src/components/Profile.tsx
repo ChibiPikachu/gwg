@@ -204,13 +204,14 @@ export default function Profile({ steamId }: { steamId?: string }) {
             </div>
          </div>
 
-         <div className={cn("p-8 rounded-2xl border flex flex-col items-center gap-2 text-center shadow-xl bg-[#111111]", colors.border)}>
-            <span className="text-[10px] uppercase font-black opacity-30 tracking-widest">Team</span>
-            <div className="flex flex-col items-center">
-               <span className={cn("text-5xl font-black block uppercase tracking-tighter leading-none", colors.primary)}>
+         <div className={cn("p-10 rounded-2xl border flex flex-col items-center gap-2 text-center shadow-xl bg-[#111111] overflow-hidden relative", colors.border)}>
+            <div className={cn("absolute inset-0 opacity-5", colors.secondary)} />
+            <span className="text-[11px] uppercase font-black opacity-30 tracking-[0.2em] relative z-10">Team</span>
+            <div className="flex flex-col items-center relative z-10">
+               <span className={cn("text-6xl font-black block uppercase tracking-tighter leading-none mb-1", colors.primary)}>
                  {targetUser.team || 'None'}
                </span>
-               <span className="text-[11px] font-bold mt-2 opacity-60 uppercase tracking-tighter text-white/50">
+               <span className="text-[12px] font-bold opacity-40 uppercase tracking-[0.1em] text-white/50">
                   {(targetUser.team || 'None')} team best team!
                </span>
             </div>
