@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { TEAM_COLORS } from '@/types';
 
 export default function Profile({ steamId }: { steamId?: string }) {
-  const { user: currentUser, syncWithDiscord, updateProfile } = useAuth();
+  const { user: currentUser, theme, syncWithDiscord, updateProfile } = useAuth();
   const [targetUser, setTargetUser] = useState<any>(null);
   const [loading, setLoading] = useState(!!steamId);
   const [isEditing, setIsEditing] = useState(false);
@@ -45,7 +45,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   if (loading) {
     return (
       <div className="p-20 flex justify-center">
-        <div className="w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className={cn("w-12 h-12 border-4 border-t-transparent rounded-full animate-spin", theme.border)}></div>
       </div>
     );
   }

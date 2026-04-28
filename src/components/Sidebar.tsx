@@ -15,7 +15,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
   const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
                     userTeam === 'green' ? 'bg-green-accent' : 
                     userTeam === 'purple' ? 'bg-purple-accent' : 
-                    'bg-red-accent';
+                    userTeam === 'red' ? 'bg-red-accent' :
+                    'bg-pink-500';
 
   const menuItems = [
     { id: 'submissions', label: 'My submissions', icon: ClipboardList, section: 'member' },

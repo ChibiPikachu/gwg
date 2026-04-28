@@ -2,9 +2,11 @@ import React from 'react';
 import { Trophy, Medal, Users, Shield } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
+  const { theme } = useAuth();
   const [users, setUsers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -113,7 +115,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     }}
                     title="View App Profile"
                     className={cn(
-                      "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50 shrink-0", 
+                      "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 shrink-0", 
+                      `focus:${theme.ring}/50`,
                       u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10'
                     )}
                   >
@@ -126,11 +129,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         target="_blank" 
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="font-bold truncate hover:text-pink-500 transition-colors relative z-10 hover:underline inline-block max-w-full"
+                        className={cn("font-bold truncate transition-colors relative z-10 hover:underline inline-block max-w-full", `hover:${theme.text}`)}
                        >
                         {u.steam_name}
                        </a>
-                       {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className="text-pink-500" />}
+                       {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className={theme.text} />}
                        {u.discord_name && (
                         <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
                       )}
@@ -155,8 +158,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           <div className="space-y-4">
              {[1, 2, 3, 4, 5].map(i => (
                <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5 opacity-60">
-                  <div className="w-8 h-8 rounded-full bg-pink-500/10 flex items-center justify-center">
-                    <Trophy size={14} className="text-pink-500" />
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", theme.secondary)}>
+                    <Trophy size={14} className={theme.text} />
                   </div>
                   <div className="flex-1">
                      <p className="text-xs">

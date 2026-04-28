@@ -734,7 +734,69 @@ async function createServer() {
     }
   });
 
-  // Proxy for Steam search/info
+  let igdbToken: { access_token: string, expires_at: number } | null = null;
+
+  async function getIGDBToken() {
+    const clientID = process.env.IGDB_CLIENT_ID;
+    const clientSecret = process.env.IGDB_CLIENT_SECRET;
+
+    if (!clientID || !clientSecret) {
+      throw new Error('IGDB credentials missing');
+    }
+
+    if (igdbToken && Date.now() < igdbToken.expires_at) {
+      return igdbToken.access_token;
+    }
+
+    const response = await fetch(`https://id.twitch.tv/oauth2/token?client_id=${clientID}&client_secret=${clientSecret}&grant_type=client_credentials`, {
+      method: 'POST'
+    });
+
+    const data: any = await response.json();
+    if (!data.access_token) throw new Error('Failed to get IGDB token');
+
+    igdbToken = {
+      access_token: data.access_token,
+      expires_at: Date.now() + (data.expires_in * 1000) - 60000 // 1 min buffer
+    };
+
+    return igdbToken.access_token;
+  }
+
+  app.get('/api/games/search', async (req, res) => {
+    const { query } = req.query;
+    if (!query) return res.json([]);
+
+    try {
+      const token = await getIGDBToken();
+      const response = await fetch('https://api.igdb.com/v4/games', {
+        method: 'POST',
+        headers: {
+          'Client-ID': process.env.IGDB_CLIENT_ID!,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain'
+        },
+        body: `search "${query}"; fields name, cover.url, summary; limit 10;`
+      });
+
+      const data: any = await response.json();
+      
+      // Transform IGDB format to something easier for the frontend
+      const results = data.map((game: any) => ({
+        id: game.id,
+        title: game.name,
+        image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+        summary: game.summary
+      }));
+
+      res.json(results);
+    } catch (err) {
+      console.error('IGDB Error:', err);
+      res.status(500).json({ error: 'Search failed' });
+    }
+  });
+
+  // Keep existing steam proxy but maybe rename or update if needed
   app.get('/api/steam/game/:appId', async (req, res) => {
     const { appId } = req.params;
     try {

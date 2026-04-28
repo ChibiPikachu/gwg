@@ -2,13 +2,16 @@ import React from 'react';
 import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2 } from 'lucide-react';
 import { Submission, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/AuthProvider';
 
 export default function MySubmissions() {
+  const { theme } = useAuth();
   const [submissions, setSubmissions] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [showForm, setShowForm] = React.useState(false);
-  const [gameUrl, setGameUrl] = React.useState('');
+  const [gameSearch, setGameSearch] = React.useState('');
   const [searching, setSearching] = React.useState(false);
+  const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [selectedGame, setSelectedGame] = React.useState<any | null>(null);
   const [formData, setFormData] = React.useState({
     achievements: '',
@@ -35,29 +38,33 @@ export default function MySubmissions() {
     fetchSubmissions();
   }, [fetchSubmissions]);
 
-  const handleSearchGame = async () => {
-    if (!gameUrl) return;
-    setSearching(true);
-    setSelectedGame(null);
-    
-    // Extract ID from URL or use as ID
-    let appId = gameUrl.trim();
-    const urlMatch = appId.match(/app\/(\d+)/);
-    if (urlMatch) appId = urlMatch[1];
-
-    try {
-      const res = await fetch(`/api/steam/game/${appId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedGame(data);
-      } else {
-        alert('Game not found. Please check the AppID or URL.');
-      }
-    } catch (err) {
-      alert('Error searching for game.');
-    } finally {
-      setSearching(false);
+  // Debounced real-time search
+  React.useEffect(() => {
+    if (!gameSearch.trim()) {
+      setSearchResults([]);
+      return;
     }
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/games/search?query=${encodeURIComponent(gameSearch)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data);
+        }
+      } catch (err) {
+        console.error('Search error:', err);
+      } finally {
+        setSearching(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [gameSearch]);
+
+  const handleSearchGame = async () => {
+    // This is now handled by the useEffect above
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -83,7 +90,8 @@ export default function MySubmissions() {
         setShowForm(false);
         setSelectedGame(null);
         setFormData({ achievements: '', hours: '', notes: '' });
-        setGameUrl('');
+        setGameSearch('');
+        setSearchResults([]);
         fetchSubmissions();
       } else {
         const data = await res.json();
@@ -96,6 +104,13 @@ export default function MySubmissions() {
     }
   };
 
+  const handleResetForm = () => {
+    setShowForm(false);
+    setSelectedGame(null);
+    setSearchResults([]);
+    setGameSearch('');
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex justify-between items-end mb-12">
@@ -105,7 +120,7 @@ export default function MySubmissions() {
         </div>
         <button 
           onClick={() => setShowForm(true)}
-          className="bg-pink-500 hover:bg-pink-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-pink-500/20 flex items-center gap-2"
+          className={cn("text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2", theme.bg, `hover:${theme.bg.replace('bg-', 'bg-')}`, theme.glow)}
         >
           <Plus size={20} />
           Submit Game
@@ -121,34 +136,62 @@ export default function MySubmissions() {
                   <h2 className="text-2xl font-bold">New Submission</h2>
                   <p className="text-sm opacity-50 mt-1">Submit your progress for the current event</p>
                 </div>
-                <button onClick={() => setShowForm(false)} className="text-white/20 hover:text-white transition-colors">
+                <button onClick={handleResetForm} className="text-white/20 hover:text-white transition-colors">
                   <Plus className="rotate-45" size={24} />
                 </button>
               </div>
 
               {!selectedGame ? (
-                <div className="space-y-4">
-                  <label className="text-xs uppercase font-bold opacity-30 tracking-widest">Steam Game AppID or URL</label>
-                  <div className="flex gap-2">
-                    <div className="flex-1 relative group">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-pink-500" size={18} />
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <label className="text-xs uppercase font-bold opacity-30 tracking-widest">Search Game</label>
+                    <div className="relative group">
+                      <Search className={cn(
+                        "absolute left-4 top-1/2 -translate-y-1/2 transition-colors",
+                        searching ? theme.text : `text-white/20 group-focus-within:${theme.text}`
+                      )} size={18} />
                       <input 
                         type="text"
-                        placeholder="760 or https://store.steampowered.com/app/760/..."
-                        className="w-full bg-white/5 border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-pink-500/50 transition-all font-mono text-sm"
-                        value={gameUrl}
-                        onChange={(e) => setGameUrl(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearchGame()}
+                        placeholder="Start typing a game title..."
+                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm", `focus:${theme.border}/50`)}
+                        value={gameSearch}
+                        onChange={(e) => setGameSearch(e.target.value)}
                       />
+                      {searching && (
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                          <Loader2 className={cn("animate-spin", theme.text)} size={18} />
+                        </div>
+                      )}
                     </div>
-                    <button 
-                      onClick={handleSearchGame}
-                      disabled={searching || !gameUrl}
-                      className="px-6 py-3 bg-white/10 hover:bg-white/15 rounded-xl transition-all font-bold disabled:opacity-50"
-                    >
-                      {searching ? <Loader2 className="animate-spin" size={20} /> : 'Search'}
-                    </button>
                   </div>
+
+                  {searchResults.length > 0 && (
+                    <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
+                      <div className="text-[10px] uppercase font-bold opacity-30 px-1">Suggestions</div>
+                      <div className="max-h-[350px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                        {searchResults.map((game) => (
+                          <button
+                            key={game.id}
+                            onClick={() => setSelectedGame(game)}
+                            type="button"
+                            className="w-full flex gap-4 p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all text-left items-center group"
+                          >
+                            <img src={game.image} className="w-16 h-20 object-cover rounded-lg shadow-lg group-hover:scale-105 transition-transform" alt="" referrerPolicy="no-referrer" />
+                            <div className="flex-1 min-w-0">
+                              <h4 className={cn("font-bold text-sm transition-colors truncate", `group-hover:${theme.text}`)}>{game.title}</h4>
+                              {game.summary && <p className="text-[10px] opacity-40 line-clamp-2 mt-1">{game.summary}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!searching && gameSearch.trim() && searchResults.length === 0 && (
+                    <div className="text-center py-8 opacity-30 text-sm italic">
+                      No games found matching "{gameSearch}"
+                    </div>
+                  )}
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -159,7 +202,7 @@ export default function MySubmissions() {
                       <button 
                         type="button"
                         onClick={() => setSelectedGame(null)}
-                        className="text-[10px] uppercase text-pink-500 font-bold hover:underline"
+                        className={cn("text-[10px] uppercase font-bold hover:underline", theme.text)}
                       >
                         Change Game
                       </button>
@@ -173,7 +216,7 @@ export default function MySubmissions() {
                         required
                         type="number"
                         placeholder="0"
-                        className="w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none focus:border-pink-500/50"
+                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
                         value={formData.achievements}
                         onChange={(e) => setFormData({...formData, achievements: e.target.value})}
                       />
@@ -185,7 +228,7 @@ export default function MySubmissions() {
                         type="number"
                         step="0.1"
                         placeholder="0.0"
-                        className="w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none focus:border-pink-500/50"
+                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
                         value={formData.hours}
                         onChange={(e) => setFormData({...formData, hours: e.target.value})}
                       />
@@ -196,7 +239,7 @@ export default function MySubmissions() {
                     <label className="text-xs font-bold opacity-40">Proof Link / Notes (Optional)</label>
                     <textarea 
                       placeholder="Any links to screenshots or other notes..."
-                      className="w-full bg-white/5 border border-white/5 rounded-xl p-4 focus:outline-none focus:border-pink-500/50 min-h-[100px] resize-none"
+                      className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-4 focus:outline-none min-h-[100px] resize-none", `focus:${theme.border}/50`)}
                       value={formData.notes}
                       onChange={(e) => setFormData({...formData, notes: e.target.value})}
                     />
@@ -204,7 +247,7 @@ export default function MySubmissions() {
 
                   <button 
                     disabled={submitting}
-                    className="w-full py-4 bg-pink-500 hover:bg-pink-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-pink-500/20 disabled:opacity-50"
+                    className={cn("w-full py-4 text-white rounded-xl font-bold transition-all disabled:opacity-50", theme.bg, theme.glow)}
                   >
                     {submitting ? <Loader2 className="animate-spin mx-auto" size={24} /> : 'Submit Progress'}
                   </button>

@@ -47,6 +47,18 @@ export interface Event {
   isActive: boolean;
 }
 
+export interface ThemeHelper {
+  accent: string;
+  text: string;
+  bg: string;
+  border: string;
+  ring: string;
+  shadow: string;
+  glow: string;
+  secondary: string;
+  muted: string;
+}
+
 export const TEAM_COLORS: Record<Team, { primary: string; secondary: string; border: string }> = {
   blue: { primary: 'text-blue-accent', secondary: 'bg-blue-accent/10', border: 'border-blue-accent/50' },
   green: { primary: 'text-green-accent', secondary: 'bg-green-accent/10', border: 'border-green-accent/50' },

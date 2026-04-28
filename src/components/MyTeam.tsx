@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
-  const { user } = useAuth();
+  const { user, theme } = useAuth();
   const [members, setMembers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -111,7 +111,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                     onViewProfile?.(m.steamid);
                   }}
                   title="View App Profile"
-                  className={cn("w-14 h-14 rounded-full p-1 border-2 relative transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50 shrink-0", colors.border)}
+                  className={cn("w-14 h-14 rounded-full p-1 border-2 relative transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 shrink-0", `focus:${theme.ring}/50`, colors.border)}
                 >
                   <img 
                     src={m.steam_avatar} 
@@ -120,7 +120,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                     referrerPolicy="no-referrer"
                   />
                   {m.role === 'admin' && (
-                    <div className="absolute -top-1 -right-1 bg-pink-500 rounded-full p-1 border-2 border-[#111111]">
+                    <div className={cn("absolute -top-1 -right-1 rounded-full p-1 border-2 border-[#111111]", theme.bg)}>
                        <Shield size={10} className="text-white" />
                     </div>
                   )}
@@ -131,7 +131,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="font-bold truncate text-sm hover:text-pink-500 transition-colors block relative z-10 hover:underline"
+                    className={cn("font-bold truncate text-sm transition-colors block relative z-10 hover:underline", `hover:${theme.text}`)}
                   >
                     {m.steam_name}
                   </a>

@@ -2,6 +2,7 @@ import React from 'react';
 import { LogOut, Moon, Sun } from 'lucide-react';
 import { UserProfile, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/AuthProvider';
 
 interface TopBarProps {
   user: UserProfile | null;
@@ -10,6 +11,7 @@ interface TopBarProps {
 }
 
 export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) {
+  const { theme } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
 
   return (
@@ -45,7 +47,7 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
         <button className="w-8 h-8 flex items-center justify-center text-white/30">
           <Sun size={14} />
         </button>
-        <button className="w-8 h-8 flex items-center justify-center bg-[#1a1a1a] rounded-full text-blue-400">
+        <button className={cn("w-8 h-8 flex items-center justify-center bg-[#1a1a1a] rounded-full", theme.text)}>
           <Moon size={14} />
         </button>
       </div>

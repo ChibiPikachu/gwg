@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile } from '@/types';
+import { UserProfile, ThemeHelper, Team } from '@/types';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
+  theme: ThemeHelper;
   loginWithSteam: () => void;
   syncWithDiscord: () => void;
   logout: () => void;
@@ -184,8 +185,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  const theme: ThemeHelper = React.useMemo(() => {
+    const team = user?.team;
+    const teamName = (team && team !== 'none') ? team : 'pink';
+    const isCustom = teamName !== 'pink';
+    const base = isCustom ? `${teamName}-accent` : 'pink-500';
+    
+    return {
+      accent: base,
+      text: `text-${base}`,
+      bg: `bg-${base}`,
+      border: `border-${base}`,
+      ring: `ring-${base}`,
+      shadow: `shadow-${base}`,
+      glow: `shadow-lg shadow-${base}/50`,
+      secondary: `bg-${base}/10`,
+      muted: `text-${base}/50`,
+    };
+  }, [user?.team]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, theme, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

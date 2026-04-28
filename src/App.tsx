@@ -18,7 +18,7 @@ import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
-  const { user, loading, loginWithSteam, logout } = useAuth();
+  const { user, loading, theme, loginWithSteam, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('submissions');
   const [viewedProfileId, setViewedProfileId] = useState<string | null>(null);
 
@@ -30,7 +30,7 @@ function AppContent() {
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className={`w-12 h-12 border-4 ${theme.border} border-t-transparent rounded-full animate-spin`}></div>
       </div>
     );
   }

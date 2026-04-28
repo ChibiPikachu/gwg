@@ -1,14 +1,14 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type AdminTab = 'users' | 'submissions';
 
 export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, theme } = useAuth();
   const [activeTab, setActiveTab] = React.useState<AdminTab>('users');
   const [filterTeam, setFilterTeam] = React.useState<Team | 'all'>('all');
   const [users, setUsers] = React.useState<any[]>([]);
@@ -163,26 +163,26 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
           onClick={() => setActiveTab('users')}
           className={cn(
             "px-8 py-4 font-bold text-sm transition-all relative",
-            activeTab === 'users' ? "text-pink-500" : "text-white/40 hover:text-white"
+            activeTab === 'users' ? theme.text : "text-white/40 hover:text-white"
           )}
         >
           User Management
-          {activeTab === 'users' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-pink-500 rounded-t-full shadow-[0_0_10px_rgba(236,72,153,0.5)]" />}
+          {activeTab === 'users' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
         </button>
         <button 
           onClick={() => setActiveTab('submissions')}
           className={cn(
             "px-8 py-4 font-bold text-sm transition-all relative flex items-center gap-2",
-            activeTab === 'submissions' ? "text-pink-500" : "text-white/40 hover:text-white"
+            activeTab === 'submissions' ? theme.text : "text-white/40 hover:text-white"
           )}
         >
           Game Submissions
           {submissions.filter(s => s.status === 'pending').length > 0 && (
-            <span className="w-5 h-5 rounded-full bg-pink-500 text-white text-[10px] flex items-center justify-center">
+            <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center", theme.bg)}>
               {submissions.filter(s => s.status === 'pending').length}
             </span>
           )}
-          {activeTab === 'submissions' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-pink-500 rounded-t-full shadow-[0_0_10px_rgba(236,72,153,0.5)]" />}
+          {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
         </button>
       </div>
 
@@ -193,11 +193,11 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
               <div>
                 <h2 className="text-xl font-bold mb-4">Search & Filters</h2>
                 <div className="relative group max-w-md">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-pink-500 transition-colors" size={18} />
+                  <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
                   <input 
                     type="text"
                     placeholder="Search by Steam or Discord name..."
-                    className="w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-pink-500/50 transition-all font-sans"
+                    className={cn("w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans", `focus:${theme.border}/50`)}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -232,7 +232,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
             </div>
             
             <div className="bg-white/5 px-6 py-3 rounded-2xl border border-white/5">
-              <span className="text-2xl font-mono font-bold text-pink-500">{filteredUsers.length}</span>
+              <span className={cn("text-2xl font-mono font-bold", theme.text)}>{filteredUsers.length}</span>
               <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest">Users Found</span>
             </div>
           </section>
@@ -258,7 +258,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] uppercase tracking-widest font-bold opacity-30">Points:</span>
-                            <span className="text-xs font-mono font-bold text-pink-500">{u.points || 0}</span>
+                            <span className={cn("text-xs font-mono font-bold", theme.text)}>{u.points || 0}</span>
                         </div>
                       </div>
                   </div>
@@ -322,7 +322,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                   <div className="flex-1 flex flex-col gap-4 w-full">
                     <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
                       <div>
-                        <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-pink-500 mb-1">
+                        <div className={cn("flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold mb-1", theme.text)}>
                           Submission from
                         </div>
                         <div className="flex items-center gap-2">
@@ -378,7 +378,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                   {reviewingId === sub.id && (
                     <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/60 p-6 flex flex-col gap-6 justify-center animate-in fade-in zoom-in duration-200">
                       <div className="flex justify-between items-center">
-                        <h4 className="font-bold uppercase tracking-widest text-pink-500">Approving {sub.user_name}</h4>
+                        <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Approving {sub.user_name}</h4>
                         <button onClick={() => setReviewingId(null)} className="text-white/40 hover:text-white transition-colors">
                           <Plus className="rotate-45" size={24} />
                         </button>
@@ -389,7 +389,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                           <label className="text-[10px] uppercase font-bold opacity-40">Points to Award</label>
                           <input 
                             type="number"
-                            className="w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500"
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
                             value={pointsAwarded}
                             onChange={(e) => setPointsAwarded(e.target.value)}
                           />
