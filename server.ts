@@ -318,16 +318,17 @@ async function createServer() {
       const supabase = getSupabase();
       if (currentUser && (currentUser.id || currentUser.steam_id) && supabase) {
         try {
+          const discordName = user.global_name || user.username || user.displayName || 'Discord User';
           await supabase.from('profiles').update({
             discord_id: user.id,
-            discord_name: user.username,
-            discord_avatar: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
+            discord_name: discordName,
+            discord_avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : null
           }).eq('steamid', currentUser.id || currentUser.steam_id || currentUser.steamid);
           
           Object.assign((req as any).user, {
             discord_id: user.id,
-            discord_name: user.username,
-            discord_avatar: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
+            discord_name: discordName,
+            discord_avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : null
           });
         } catch (dbErr) {
           console.error('Failed to link Discord to Supabase:', dbErr);
@@ -478,7 +479,7 @@ async function createServer() {
     // Publicly return limited profiles
     const { data: users, error } = await supabase
       .from('profiles')
-      .select('steamid, steam_name, steam_avatar, team, status, points, role')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
       .order('points', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });

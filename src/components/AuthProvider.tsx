@@ -97,11 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (event.data?.type === 'DISCORD_AUTH_SUCCESS') {
         const discordProfile = event.data.user;
+        const discordName = discordProfile.global_name || discordProfile.username || discordProfile.displayName || 'Discord User';
         setUser(prev => prev ? {
           ...prev,
           discordId: discordProfile.id,
-          discordName: discordProfile.username,
-          discordAvatar: `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png`
+          discordName: discordName,
+          discordAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null
         } : null);
       }
     };

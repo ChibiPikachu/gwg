@@ -88,6 +88,9 @@ export default function Leaderboard() {
                     <div className="flex items-center gap-2">
                        <span className="font-bold truncate">{u.steam_name}</span>
                        {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className="text-pink-500" />}
+                       {u.discord_name && (
+                        <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
+                      )}
                     </div>
                     <p className="text-xs opacity-50 italic truncate">"{u.status || 'Chasing achievements...'}"</p>
                   </div>
