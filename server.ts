@@ -633,6 +633,9 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      // Find active event
+      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+
       const { data, error } = await supabase
         .from('submissions')
         .insert({
@@ -650,6 +653,7 @@ async function createServer() {
           calculated_score: calculatedScore || 0,
           notes: notes || '',
           status: 'pending',
+          event_id: activeEvent?.id || null,
           created_at: new Date().toISOString()
         })
         .select()
@@ -769,6 +773,104 @@ async function createServer() {
 
     return igdbToken.access_token;
   }
+
+  // Event APIs
+  app.get('/api/events', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.json([]);
+
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: false });
+
+      if (error) throw error;
+      res.json(data || []);
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+      res.status(500).json({ error: 'Failed to fetch events' });
+    }
+  });
+
+  app.post('/api/admin/events', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentUser = (req as any).user;
+    const { title, description, startDate, endDate, isActive } = req.body;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const { data, error } = await supabase
+        .from('events')
+        .insert({
+          title,
+          description,
+          start_date: startDate,
+          end_date: endDate,
+          is_active: isActive || false,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      console.error('Failed to create event:', err);
+      res.status(500).json({ error: 'Failed to create event' });
+    }
+  });
+
+  app.put('/api/admin/events/:id', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const currentUser = (req as any).user;
+    const { title, description, startDate, endDate, isActive } = req.body;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const { data, error } = await supabase
+        .from('events')
+        .update({
+          title,
+          description,
+          start_date: startDate,
+          end_date: endDate,
+          is_active: isActive
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      console.error('Failed to update event:', err);
+      res.status(500).json({ error: 'Failed to update event' });
+    }
+  });
 
   app.get('/api/games/search', async (req, res) => {
     const { query } = req.query;

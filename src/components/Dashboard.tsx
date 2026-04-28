@@ -1,150 +1,280 @@
 import React from 'react';
-import { Search, Trophy, History, Clock } from 'lucide-react';
-import { Submission, Team, TEAM_COLORS } from '@/types';
+import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Event, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/AuthProvider';
 
-// Multiplier calculation
-// 0-8h: 1x, 8-15h: 2x, 15-25h: 3x, 25+h: 4x
-export const getMultiplier = (hours: number) => {
-  if (hours < 8) return 1;
-  if (hours < 15) return 2;
-  if (hours < 25) return 3;
-  return 4;
-};
+export default function Events() {
+  const { user, theme } = useAuth();
+  const [events, setEvents] = React.useState<Event[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editingEvent, setEditingEvent] = React.useState<Partial<Event> | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
 
-export default function Dashboard({ userTeam }: { userTeam: Team }) {
-  const [search, setSearch] = React.useState('');
-  const colors = TEAM_COLORS[userTeam];
+  const isAdmin = user?.isAdmin || user?.role === 'admin' || user?.role === 'admins';
+
+  const fetchEvents = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/events');
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  const handleSaveEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEvent) return;
+
+    setSubmitting(true);
+    try {
+      const url = editingEvent.id 
+        ? `/api/admin/events/${editingEvent.id}` 
+        : '/api/admin/events';
+      
+      const res = await fetch(url, {
+        method: editingEvent.id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editingEvent.title,
+          description: editingEvent.description,
+          startDate: editingEvent.startDate || editingEvent.start_date,
+          endDate: editingEvent.endDate || editingEvent.end_date,
+          isActive: editingEvent.isActive || editingEvent.is_active
+        })
+      });
+
+      if (res.ok) {
+        setIsEditing(false);
+        setEditingEvent(null);
+        fetchEvents();
+      } else {
+        alert('Failed to save event');
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      alert('Error saving event');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const currentEvent = events.find(e => (e as any).is_active);
+  const pastEvents = events.filter(e => !(e as any).is_active);
+
+  if (loading) {
+    return (
+      <div className="p-20 flex justify-center">
+        <Loader2 className={cn("animate-spin", theme.text)} size={40} />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto flex flex-col gap-12">
-      <section>
-        <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
-        <p className="opacity-60 mb-8">Ready to add your games?</p>
+    <div className="p-8 max-w-6xl mx-auto space-y-12 pb-20">
+      <header className="flex justify-between items-end">
+        <div>
+          <h1 className="text-4xl font-black uppercase tracking-tighter transition-all">Events</h1>
+          <p className="opacity-40 text-sm font-medium">Track your progress and competition timelines</p>
+        </div>
+        {isAdmin && (
+          <button 
+            onClick={() => {
+              setEditingEvent({ title: '', startDate: '', endDate: '', isActive: false });
+              setIsEditing(true);
+            }}
+            className={cn("px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2", theme.bg, theme.glow, "text-white")}
+          >
+            <Plus size={20} />
+            Create Event
+          </button>
+        )}
+      </header>
 
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-white transition-colors" size={20} />
-          <input 
-            type="text"
-            placeholder="Search a game..."
-            className="w-full bg-white/5 border border-white/5 rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-white/20 transition-all"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      {/* Current Event Section */}
+      <section>
+        <div className="flex items-center gap-2 mb-6">
+          <div className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg)} />
+          <h2 className="text-xs uppercase font-bold tracking-[0.2em] opacity-30">Active Event</h2>
+        </div>
+        
+        {currentEvent ? (
+          <div className={cn("bg-[#111111] rounded-3xl border-2 p-8 relative overflow-hidden group shadow-2xl", theme.border)}>
+             <div className={cn("absolute top-0 right-0 w-64 h-64 opacity-5 blur-[100px] pointer-events-none rounded-full translate-x-1/2 -translate-y-1/2", theme.bg)} />
+             
+             <div className="relative z-10">
+               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+                 <div className="space-y-4 max-w-2xl">
+                   <h3 className="text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left decoration-pink-500 underline-offset-8">
+                     {currentEvent.title}
+                   </h3>
+                   <p className="opacity-60 text-lg">
+                     {(currentEvent as any).description || "Join the seasonal competition and earn points for your team!"}
+                   </p>
+                   <div className="flex flex-wrap gap-4 pt-4">
+                     <div className="bg-white/5 px-4 py-2 rounded-xl flex items-center gap-2 border border-white/5">
+                        <Calendar size={16} className={theme.text} />
+                        <span className="text-sm font-bold opacity-80">
+                          {new Date((currentEvent as any).start_date).toLocaleDateString()} - {new Date((currentEvent as any).end_date).toLocaleDateString()}
+                        </span>
+                     </div>
+                   </div>
+                 </div>
+
+                 <div className="flex flex-col gap-4 min-w-[240px] w-full md:w-auto">
+                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex flex-col items-center">
+                       <Clock size={32} className={cn("mb-3", theme.text)} />
+                       <div className="text-center font-mono space-y-1">
+                          <div className="text-3xl font-black">ACTIVE</div>
+                          <div className="text-[10px] uppercase opacity-40 font-bold">Progression is open</div>
+                       </div>
+                    </div>
+                    {isAdmin && (
+                      <button 
+                        onClick={() => {
+                          setEditingEvent(currentEvent);
+                          setIsEditing(true);
+                        }}
+                        className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                      >
+                        <Edit2 size={14} />
+                        Modify Event
+                      </button>
+                    )}
+                 </div>
+               </div>
+             </div>
+          </div>
+        ) : (
+          <div className="bg-white/5 border border-dashed border-white/10 rounded-3xl p-12 text-center opacity-40 italic">
+            No active event currently. Stay tuned!
+          </div>
+        )}
+      </section>
+
+      {/* Past Events Section */}
+      <section>
+        <div className="flex items-center gap-2 mb-6">
+          <History size={16} className="opacity-30" />
+          <h2 className="text-xs uppercase font-bold tracking-[0.2em] opacity-30">Archive</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {pastEvents.map((event) => (
+            <div key={event.id} className="bg-white/5 rounded-2xl border border-white/5 p-6 hover:bg-white/10 transition-all group relative">
+              <div className="flex justify-between items-start mb-4">
+                <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border border-white/10", event.isActive ? theme.text : "opacity-40")}>
+                  {event.isActive ? "Current" : "Closed"}
+                </div>
+                {isAdmin && (
+                  <button 
+                    onClick={() => {
+                      setEditingEvent(event);
+                      setIsEditing(true);
+                    }}
+                    className="p-2 hover:bg-white/10 rounded-lg text-white/30 hover:text-white transition-all"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+              </div>
+              <h4 className="font-bold text-xl mb-2 group-hover:text-pink-500 transition-colors uppercase tracking-tight">{event.title}</h4>
+              <p className="text-xs opacity-50 mb-6 line-clamp-2">{(event as any).description}</p>
+              <div className="pt-4 border-t border-white/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30">
+                <span>Timeline</span>
+                <span>{new Date((event as any).end_date).toLocaleDateString()}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold">Submit game</h2>
-        </div>
-        <p className="text-sm opacity-50 mb-8 max-w-2xl">
-          Enter the achievements and hours you had before the event started, as well as the ones you got during the event for this game.
-        </p>
+      {/* Management Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#111111] w-full max-w-lg rounded-3xl border border-white/10 p-8 shadow-2xl space-y-8 animate-in zoom-in-95 duration-200">
+            <header className="flex justify-between items-center">
+              <h3 className="text-2xl font-black uppercase">{editingEvent?.id ? 'Edit Event' : 'Create Event'}</h3>
+              <button onClick={() => setIsEditing(false)} className="opacity-40 hover:opacity-100 transition-all text-2xl">×</button>
+            </header>
 
-        {/* Example Submission Card - Mirroring the UI */}
-        <div className={cn("bg-[#111111] rounded-2xl border-2 p-8 flex flex-col md:flex-row gap-8 shadow-2xl", colors.border)}>
-          <div className="w-full md:w-64 flex flex-col gap-4">
-             <div className="aspect-[3/4] rounded-xl overflow-hidden relative group">
-                <img 
-                  src="https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/370770/header.jpg?t=1701335198" 
-                  alt="Game Cover" 
-                  className="w-full h-full object-cover"
+            <form onSubmit={handleSaveEvent} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-bold opacity-40">Event Title</label>
+                <input 
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
+                  value={editingEvent?.title}
+                  onChange={e => setEditingEvent({ ...editingEvent!, title: e.target.value })}
                 />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="text-xs font-bold uppercase tracking-widest">Change Image</span>
-                </div>
-             </div>
-             <div className="flex flex-col gap-2">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="opacity-40">HLTB:</span>
-                  <span className="bg-amber-400 text-black px-2 py-0.5 rounded font-bold">Medium</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="opacity-40">Easy tag:</span>
-                  <span className="bg-emerald-500 text-black px-2 py-0.5 rounded font-bold">No</span>
-                </div>
-             </div>
-          </div>
+              </div>
 
-          <div className="flex-1 flex flex-col gap-8">
-            <div className="flex justify-between items-start">
-              <h3 className="text-3xl font-display">Beyond: Two Souls</h3>
-            </div>
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-bold opacity-40">Description</label>
+                <textarea 
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all min-h-[100px] resize-none"
+                  value={(editingEvent as any)?.description || ''}
+                  onChange={e => setEditingEvent({ ...editingEvent!, description: e.target.value } as any)}
+                />
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <div className="text-[10px] uppercase tracking-widest font-bold opacity-30">Stats before the start of the event:</div>
-                <div className="flex gap-4">
-                   <div className="flex-1 bg-black/40 rounded-lg p-3 border border-white/5 flex items-center justify-between">
-                     <Trophy size={16} className="text-white/30" />
-                     <span className="font-mono text-lg">0</span>
-                   </div>
-                   <div className="flex-1 bg-black/40 rounded-lg p-3 border border-white/5 flex items-center justify-between">
-                     <Clock size={16} className="text-white/30" />
-                     <span className="font-mono text-lg">0 h</span>
-                   </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase font-bold opacity-40">Start Date</label>
+                  <input 
+                    type="date"
+                    required
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
+                    value={editingEvent?.startDate || (editingEvent as any)?.start_date?.split('T')[0] || ''}
+                    onChange={e => setEditingEvent({ ...editingEvent!, startDate: e.target.value })}
+                  />
                 </div>
-
-                <div className="text-[10px] uppercase tracking-widest font-bold opacity-30 mt-6">Stats during the event:</div>
-                <div className="flex gap-4">
-                   <div className="flex-1 bg-white/10 rounded-lg p-3 border border-white/20 flex items-center justify-between">
-                     <Trophy size={16} className={colors.primary} />
-                     <span className="font-mono text-lg">10</span>
-                   </div>
-                   <div className="flex-1 bg-white/10 rounded-lg p-3 border border-white/20 flex items-center justify-between">
-                     <Clock size={16} className={colors.primary} />
-                     <span className="font-mono text-lg">4.6 h</span>
-                   </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase font-bold opacity-40">End Date</label>
+                  <input 
+                    type="date"
+                    required
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
+                    value={editingEvent?.endDate || (editingEvent as any)?.end_date?.split('T')[0] || ''}
+                    onChange={e => setEditingEvent({ ...editingEvent!, endDate: e.target.value })}
+                  />
                 </div>
               </div>
 
-              <div className="flex gap-6">
-                <div className="flex-1 flex flex-col gap-2 p-6 border-l border-white/5">
-                  <span className="text-[10px] uppercase tracking-widest font-bold opacity-30">Multiplier</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🔥</span>
-                    <span className="text-4xl font-bold">x1</span>
-                  </div>
+              <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-all">
+                <input 
+                  type="checkbox"
+                  className="w-5 h-5 rounded border-white/10 bg-black/40 text-pink-500"
+                  checked={!!(editingEvent as any)?.is_active || !!editingEvent?.isActive}
+                  onChange={e => setEditingEvent({ ...editingEvent!, isActive: e.target.checked })}
+                />
+                <div className="flex flex-col">
+                  <span className="font-bold text-sm uppercase tracking-tight">Active Event</span>
+                  <span className="text-[10px] opacity-40">Marks this as the primary event for submissions</span>
                 </div>
-                <div className="flex-1 flex flex-col gap-2 p-6 border-l border-white/5">
-                  <span className="text-[10px] uppercase tracking-widest font-bold opacity-30">Score Preview</span>
-                  <div className="flex items-center gap-2">
-                    <History size={24} className="text-white/30" />
-                    <span className="text-4xl font-bold">10</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              </label>
 
-            <div className="flex flex-col gap-2">
-               <span className="text-xs opacity-50">Notes / Proof:</span>
-               <textarea 
-                  className="w-full bg-black/40 border border-white/5 rounded-xl p-4 min-h-[100px] flex-1 text-sm focus:outline-none focus:border-white/20"
-                  placeholder="Link to screenshots or any additional proof..."
-               />
-            </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-white/5">
-              <div className="flex items-center gap-3">
-                <span className="text-sm opacity-50">Status:</span>
-                <select className="bg-[#1a1a1a] border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none">
-                  <option>Unfinished</option>
-                  <option>Completed</option>
-                </select>
-              </div>
-              <div className="flex gap-3">
-                 <button className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors">
-                    <History size={16} /> Submit
-                 </button>
-                 <button className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-6 py-2 rounded-lg font-bold transition-colors">
-                    Cancel
-                 </button>
-              </div>
-            </div>
+              <button 
+                disabled={submitting}
+                className={cn("w-full py-4 text-white rounded-xl font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2", theme.bg, theme.glow)}
+              >
+                {submitting ? <Loader2 className="animate-spin" size={20} /> : 'Save Changes'}
+              </button>
+            </form>
           </div>
         </div>
-      </section>
+      )}
     </div>
   );
 }
+

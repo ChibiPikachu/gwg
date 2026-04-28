@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, ListChecks, Group } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Team, TEAM_COLORS } from '@/types';
+import { Team, TEAM_COLORS, Event } from '@/types';
+import { useAuth } from '@/components/AuthProvider';
 
 interface SidebarProps {
   userTeam: Team;
@@ -11,6 +12,55 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: SidebarProps) {
+  const { theme } = useAuth();
+  const [currentEvent, setCurrentEvent] = useState<Event | null>(null);
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
+
+  useEffect(() => {
+    fetch('/api/events')
+      .then(res => res.json())
+      .then(data => {
+        const active = data.find((e: any) => e.is_active);
+        if (active) setCurrentEvent(active);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!currentEvent) return;
+
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const end = new Date((currentEvent as any).end_date).getTime();
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0 });
+        clearInterval(timer);
+        return;
+      }
+
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      });
+    }, 60000);
+
+    // Initial run
+    const now = new Date().getTime();
+    const end = new Date((currentEvent as any).end_date).getTime();
+    const diff = end - now;
+    if (diff > 0) {
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      });
+    }
+
+    return () => clearInterval(timer);
+  }, [currentEvent]);
+
   const colors = TEAM_COLORS[userTeam];
   const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
                     userTeam === 'green' ? 'bg-green-accent' : 
@@ -47,24 +97,30 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
           Current event
         </div>
         <div className="p-4 flex flex-col items-center">
-          <div className="w-full aspect-[16/6] bg-blue-500/20 rounded-lg flex items-center justify-center mb-4 border border-blue-500/30">
-             <span className="font-bold text-2xl text-blue-400">Event #3</span>
+          <div className={cn("w-full aspect-[16/6] rounded-lg flex items-center justify-center mb-4 border", theme.secondary, theme.border)}>
+             <span className={cn("font-bold text-xl uppercase tracking-tighter", theme.text)}>
+               {currentEvent ? currentEvent.title : 'No Event'}
+             </span>
           </div>
-          <span className="text-sm font-bold mb-1">Event #3</span>
-          <span className="text-[10px] opacity-50 mb-4 text-center">Runs from April 1st to May 29th</span>
+          <span className="text-sm font-bold mb-1">{currentEvent ? currentEvent.title : 'Inactive'}</span>
+          <span className="text-[10px] opacity-50 mb-4 text-center">
+            {currentEvent 
+              ? `Ends on ${new Date((currentEvent as any).end_date).toLocaleDateString()}` 
+              : 'Waiting for next event'}
+          </span>
           
           <div className="w-full flex justify-between gap-2 border-t border-white/5 pt-4">
             <div className="flex-1 flex flex-col items-center p-2 bg-black/30 rounded-lg">
-              <span className="text-xl font-bold">24</span>
+              <span className="text-xl font-bold">{timeLeft.days}</span>
               <span className="text-[10px] opacity-40 uppercase">Days</span>
             </div>
             <div className="flex-1 flex flex-col items-center p-2 bg-black/30 rounded-lg">
-              <span className="text-xl font-bold">12</span>
-              <span className="text-[10px] opacity-40 uppercase">Hours</span>
+              <span className="text-xl font-bold">{timeLeft.hours}</span>
+              <span className="text-[10px] opacity-40 uppercase">Hrs</span>
             </div>
             <div className="flex-1 flex flex-col items-center p-2 bg-black/30 rounded-lg">
-              <span className="text-xl font-bold">57</span>
-              <span className="text-[10px] opacity-40 uppercase">Minutes</span>
+              <span className="text-xl font-bold">{timeLeft.minutes}</span>
+              <span className="text-[10px] opacity-40 uppercase">Min</span>
             </div>
           </div>
         </div>

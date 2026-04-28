@@ -8,7 +8,7 @@ import { useAuth, AuthProvider } from '@/components/AuthProvider';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import LandingPage from '@/components/LandingPage';
-import Dashboard from '@/components/Dashboard';
+import Events from '@/components/Dashboard';
 import MySubmissions from '@/components/MySubmissions';
 import Leaderboard from '@/components/Leaderboard';
 import Profile from '@/components/Profile';
@@ -79,7 +79,7 @@ function AppContent() {
       case 'leaderboard':
         return <Leaderboard onViewProfile={handleViewProfile} />;
       case 'events':
-        return <Dashboard userTeam={user.team} />;
+        return <Events />;
       case 'admin-users':
       case 'admin-teams':
         return <AdminPanel onViewProfile={handleViewProfile} />;
