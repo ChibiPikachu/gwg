@@ -591,6 +591,173 @@ async function createServer() {
     (req as any).logout(() => res.json({ success: true }));
   });
 
+  app.get('/api/submissions', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    
+    const supabase = getSupabase();
+    if (!supabase) return res.json([]);
+
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('user_id', steamId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      res.json(data || []);
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+      res.status(500).json({ error: 'Failed to fetch submissions' });
+    }
+  });
+
+  app.post('/api/submissions', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const { gameId, gameTitle, gameImage, achievements, hours, notes } = req.body;
+
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .insert({
+          user_id: steamId,
+          user_name: currentUser.displayName || currentUser.steam_name,
+          user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
+          game_id: String(gameId),
+          game_title: gameTitle,
+          game_image: gameImage,
+          achievements_during: achievements || 0,
+          hours_during: hours || 0,
+          notes: notes || '',
+          status: 'pending',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      console.error('Failed to create submission:', err);
+      res.status(500).json({ error: 'Failed to create submission' });
+    }
+  });
+
+  app.get('/api/admin/submissions', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch' });
+    }
+  });
+
+  app.post('/api/admin/verify-submission', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { submissionId, status, points, rejectionReason } = req.body;
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      // Start a "transaction" via sequence of calls (Supabase JS doesn't have true transactions easily for this)
+      // 1. Get the submission to find out who submitted it
+      const { data: sub, error: subError } = await supabase.from('submissions').select('*').eq('id', submissionId).single();
+      if (subError || !sub) return res.status(404).json({ error: 'Submission not found' });
+
+      // 2. Update submission status
+      const { error: updateSubError } = await supabase.from('submissions').update({
+        status,
+        points: status === 'verified' ? points : 0,
+        rejection_reason: status === 'rejected' ? rejectionReason : null,
+        verifier_id: steamId
+      }).eq('id', submissionId);
+
+      if (updateSubError) throw updateSubError;
+
+      // 3. If verified, update user points
+      if (status === 'verified') {
+        const { data: userProfile, error: userError } = await supabase.from('profiles').select('points').eq('steamid', sub.user_id).single();
+        if (userProfile) {
+          const newPoints = (userProfile.points || 0) + (points || 0);
+          await supabase.from('profiles').update({ points: newPoints }).eq('steamid', sub.user_id);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Refine failed:', err);
+      res.status(500).json({ error: 'Failed to update submission' });
+    }
+  });
+
+  // Proxy for Steam search/info
+  app.get('/api/steam/game/:appId', async (req, res) => {
+    const { appId } = req.params;
+    try {
+      const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}`);
+      const data: any = await response.json();
+      
+      if (data[appId]?.success) {
+        const details = data[appId].data;
+        res.json({
+          id: appId,
+          title: details.name,
+          image: details.header_image,
+        });
+      } else {
+        res.status(404).json({ error: 'Game not found' });
+      }
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch steam data' });
+    }
+  });
+
+
+
 
   app.get('/api/leaderboard/users', async (req, res) => {
     const supabase = getSupabase();

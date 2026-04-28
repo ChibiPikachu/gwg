@@ -1,89 +1,293 @@
 import React from 'react';
-import { History, CheckCircle2, AlertCircle } from 'lucide-react';
+import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2 } from 'lucide-react';
 import { Submission, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 
 export default function MySubmissions() {
-  // Stub data for visualization
-  const submissions: any[] = [
-    { id: '1', gameTitle: 'Beyond: Two Souls', gameImage: 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/370770/header.jpg', status: 'verified', achievements: 10, hours: 4.6, points: 10 },
-    { id: '2', gameTitle: "Catto's Post Office", gameImage: 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2693710/header.jpg', status: 'pending', achievements: 0, hours: 0, points: 0 },
-    { id: '3', gameTitle: 'Alba', gameImage: 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1337010/header.jpg', status: 'verified', achievements: 10, hours: 4, points: 10 },
-    { id: '4', gameTitle: 'Life is Strange', gameImage: 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/319630/header.jpg', status: 'verified', achievements: 10, hours: 12, points: 10 },
-  ];
+  const [submissions, setSubmissions] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
+  const [gameUrl, setGameUrl] = React.useState('');
+  const [searching, setSearching] = React.useState(false);
+  const [selectedGame, setSelectedGame] = React.useState<any | null>(null);
+  const [formData, setFormData] = React.useState({
+    achievements: '',
+    hours: '',
+    notes: ''
+  });
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const fetchSubmissions = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/submissions');
+      if (res.ok) {
+        const data = await res.json();
+        setSubmissions(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchSubmissions();
+  }, [fetchSubmissions]);
+
+  const handleSearchGame = async () => {
+    if (!gameUrl) return;
+    setSearching(true);
+    setSelectedGame(null);
+    
+    // Extract ID from URL or use as ID
+    let appId = gameUrl.trim();
+    const urlMatch = appId.match(/app\/(\d+)/);
+    if (urlMatch) appId = urlMatch[1];
+
+    try {
+      const res = await fetch(`/api/steam/game/${appId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedGame(data);
+      } else {
+        alert('Game not found. Please check the AppID or URL.');
+      }
+    } catch (err) {
+      alert('Error searching for game.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGame) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: selectedGame.id,
+          gameTitle: selectedGame.title,
+          gameImage: selectedGame.image,
+          achievements: parseInt(formData.achievements) || 0,
+          hours: parseFloat(formData.hours) || 0,
+          notes: formData.notes
+        })
+      });
+
+      if (res.ok) {
+        setShowForm(false);
+        setSelectedGame(null);
+        setFormData({ achievements: '', hours: '', notes: '' });
+        setGameUrl('');
+        fetchSubmissions();
+      } else {
+        const data = await res.json();
+        alert(`Submission failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert('Failed to submit game.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
-      <p className="opacity-60 mb-12">Ready to add your games?</p>
-
-      {/* Search Stub */}
-      <div className="bg-white/5 border border-white/5 rounded-xl py-4 px-6 mb-16 opacity-30 select-none">
-        Search a game...
+      <div className="flex justify-between items-end mb-12">
+        <div>
+          <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
+          <p className="opacity-60">Ready to add your games?</p>
+        </div>
+        <button 
+          onClick={() => setShowForm(true)}
+          className="bg-pink-500 hover:bg-pink-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-pink-500/20 flex items-center gap-2"
+        >
+          <Plus size={20} />
+          Submit Game
+        </button>
       </div>
 
+      {showForm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#151515] border border-white/10 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-8">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold">New Submission</h2>
+                  <p className="text-sm opacity-50 mt-1">Submit your progress for the current event</p>
+                </div>
+                <button onClick={() => setShowForm(false)} className="text-white/20 hover:text-white transition-colors">
+                  <Plus className="rotate-45" size={24} />
+                </button>
+              </div>
+
+              {!selectedGame ? (
+                <div className="space-y-4">
+                  <label className="text-xs uppercase font-bold opacity-30 tracking-widest">Steam Game AppID or URL</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative group">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-pink-500" size={18} />
+                      <input 
+                        type="text"
+                        placeholder="760 or https://store.steampowered.com/app/760/..."
+                        className="w-full bg-white/5 border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-pink-500/50 transition-all font-mono text-sm"
+                        value={gameUrl}
+                        onChange={(e) => setGameUrl(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearchGame()}
+                      />
+                    </div>
+                    <button 
+                      onClick={handleSearchGame}
+                      disabled={searching || !gameUrl}
+                      className="px-6 py-3 bg-white/10 hover:bg-white/15 rounded-xl transition-all font-bold disabled:opacity-50"
+                    >
+                      {searching ? <Loader2 className="animate-spin" size={20} /> : 'Search'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="flex gap-4 p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <img src={selectedGame.image} className="w-24 h-14 object-cover rounded-lg" alt="" />
+                    <div>
+                      <h3 className="font-bold">{selectedGame.title}</h3>
+                      <button 
+                        type="button"
+                        onClick={() => setSelectedGame(null)}
+                        className="text-[10px] uppercase text-pink-500 font-bold hover:underline"
+                      >
+                        Change Game
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold opacity-40">Achievements Earned</label>
+                      <input 
+                        required
+                        type="number"
+                        placeholder="0"
+                        className="w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none focus:border-pink-500/50"
+                        value={formData.achievements}
+                        onChange={(e) => setFormData({...formData, achievements: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold opacity-40">Hours Played</label>
+                      <input 
+                        required
+                        type="number"
+                        step="0.1"
+                        placeholder="0.0"
+                        className="w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none focus:border-pink-500/50"
+                        value={formData.hours}
+                        onChange={(e) => setFormData({...formData, hours: e.target.value})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold opacity-40">Proof Link / Notes (Optional)</label>
+                    <textarea 
+                      placeholder="Any links to screenshots or other notes..."
+                      className="w-full bg-white/5 border border-white/5 rounded-xl p-4 focus:outline-none focus:border-pink-500/50 min-h-[100px] resize-none"
+                      value={formData.notes}
+                      onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                    />
+                  </div>
+
+                  <button 
+                    disabled={submitting}
+                    className="w-full py-4 bg-pink-500 hover:bg-pink-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-pink-500/20 disabled:opacity-50"
+                  >
+                    {submitting ? <Loader2 className="animate-spin mx-auto" size={24} /> : 'Submit Progress'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submissions List */}
       <h2 className="text-xl font-bold mb-8">My submissions</h2>
       
-      <div className="mb-12">
-        <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6">Current event</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {submissions.map((sub) => (
-            <div key={sub.id} className="flex flex-col gap-3 group">
-              <div className="aspect-[3/4] bg-[#111111] rounded-xl overflow-hidden border border-white/5 relative shadow-xl">
-                 <img src={sub.gameImage} alt={sub.gameTitle} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                 
-                 {sub.id === '1' && (
-                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-4 gap-4">
-                       <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center gap-2 text-xs opacity-80 font-bold">
-                             🏆 10
-                          </div>
-                          <div className="flex items-center gap-2 text-xs opacity-80 font-bold">
-                             🕒 4.6h
-                          </div>
-                          <div className="flex items-center gap-2 text-xs opacity-80 font-bold">
-                             📊 10
-                          </div>
-                       </div>
-                       <div className="flex gap-2">
-                          <button className="p-2 bg-blue-500 rounded-lg hover:after:bg-blue-600 transition-colors">
-                             <History size={16} />
-                          </button>
-                          <button className="p-2 bg-red-500 rounded-lg hover:bg-red-600 transition-colors">
-                             <AlertCircle size={16} />
-                          </button>
-                       </div>
-                    </div>
-                 )}
-              </div>
-              <div className="flex items-center gap-2 px-1">
-                {sub.status === 'verified' ? (
-                  <>
-                    <CheckCircle2 size={14} className="text-emerald-400" />
-                    <span className="text-[10px] font-bold opacity-70">Game verified</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle size={14} className="text-amber-400" />
-                    <span className="text-[10px] font-bold opacity-70">Pending, see comments</span>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+      {loading ? (
+        <div className="text-center py-24 opacity-30 animate-pulse">Loading submissions...</div>
+      ) : submissions.length === 0 ? (
+        <div className="text-center py-24 border-2 border-dashed border-white/5 rounded-3xl">
+          <History size={48} className="mx-auto text-white/10 mb-4" />
+          <p className="opacity-40 font-medium">No submissions yet.</p>
+          <p className="text-sm opacity-20 mt-1">Your game progress will appear here once submitted.</p>
         </div>
-      </div>
+      ) : (
+        <div className="mb-12">
+          <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6">Current event</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {submissions.map((sub) => (
+              <div key={sub.id} className="flex flex-col gap-3 group">
+                <div className="aspect-[3/4] bg-[#111111] rounded-xl overflow-hidden border border-white/5 relative shadow-xl">
+                   <img 
+                     src={sub.game_image} 
+                     alt={sub.game_title} 
+                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                     referrerPolicy="no-referrer"
+                   />
+                   
+                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-4">
+                      <div className="flex flex-col items-center gap-1">
+                         <div className="flex items-center gap-2 text-xs font-bold">
+                            🏆 {sub.achievements_during}
+                         </div>
+                         <div className="flex items-center gap-2 text-xs font-bold">
+                            🕒 {sub.hours_during}h
+                         </div>
+                      </div>
+                      <div className="text-[10px] bg-white/10 px-2 py-1 rounded-full text-center">
+                        Submitted on {new Date(sub.created_at).toLocaleDateString()}
+                      </div>
+                   </div>
+                </div>
+                <div className="flex items-center gap-2 px-1">
+                  {sub.status === 'verified' ? (
+                    <>
+                      <CheckCircle2 size={14} className="text-emerald-400" />
+                      <span className="text-[10px] font-bold opacity-70">Game verified</span>
+                    </>
+                  ) : sub.status === 'rejected' ? (
+                    <>
+                      <AlertCircle size={14} className="text-red-400" />
+                      <span className="text-[10px] font-bold opacity-70">Rejected: {sub.rejection_reason || 'See comments'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle size={14} className="text-amber-400" />
+                      <span className="text-[10px] font-bold opacity-70">Pending review</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-      <div>
-        <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6">Past events</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 opacity-40 grayscale pointer-events-none">
-          {/* Past events stubs */}
-          <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
-          <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
-          <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
-          <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
+      {submissions.length > 0 && (
+        <div>
+          <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6">Past events</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 opacity-40 grayscale pointer-events-none">
+            <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
+            <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
+

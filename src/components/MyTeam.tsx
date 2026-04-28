@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Mail, Shield } from 'lucide-react';
+import { Users, Shield } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
@@ -138,14 +138,9 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                   <div className="text-[10px] opacity-40 uppercase font-bold tracking-wider">{m.points || 0} Points</div>
                   {m.status && <p className="text-[10px] italic opacity-30 truncate mt-1">"{m.status}"</p>}
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                   <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/30 hover:bg-white/10 cursor-pointer">
-                      <Mail size={14} />
-                   </div>
-                </div>
-              </div>
-            ))
-          )}
+               </div>
+             ))
+           )}
         </div>
       </section>
     </div>
