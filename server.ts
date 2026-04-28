@@ -475,12 +475,22 @@ async function createServer() {
   // Helper to sync points
   async function syncUserPoints(supabase: any, steamid: string) {
     try {
-      const { data: verifiedSubmissions, error: subError } = await supabase
+      // Find active event first
+      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      
+      let query = supabase
         .from('submissions')
         .select('points')
         .eq('user_id', steamid)
         .eq('status', 'verified');
+      
+      // If there is an active event, we only count points for that event for the current "live" standing
+      // Usually, the profile 'points' represents the current season standing
+      if (activeEvent) {
+        query = query.eq('event_id', activeEvent.id);
+      }
 
+      const { data: verifiedSubmissions, error: subError } = await query;
       if (subError) throw subError;
 
       const totalPoints = (verifiedSubmissions || []).reduce((acc: number, sub: any) => acc + (sub.points || 0), 0);

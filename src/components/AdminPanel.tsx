@@ -7,9 +7,15 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type AdminTab = 'users' | 'submissions';
 
-export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
+export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
   const { user: currentUser, theme } = useAuth();
-  const [activeTab, setActiveTab] = React.useState<AdminTab>('users');
+  const [activeTab, setActiveTab] = React.useState<AdminTab>(activeAdminTab || 'users');
+  
+  React.useEffect(() => {
+    if (activeAdminTab) {
+      setActiveTab(activeAdminTab);
+    }
+  }, [activeAdminTab]);
   const [filterTeam, setFilterTeam] = React.useState<Team | 'all'>('all');
   const [users, setUsers] = React.useState<any[]>([]);
   const [submissions, setSubmissions] = React.useState<any[]>([]);
@@ -17,6 +23,7 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
   const [updating, setUpdating] = React.useState<string | null>(null);
   const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
+  const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [pointsAwarded, setPointsAwarded] = React.useState('10');
   const [rejectionReason, setRejectionReason] = React.useState('');
 
@@ -101,6 +108,10 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
   };
 
   const handleVerify = async (id: string, status: 'verified' | 'rejected') => {
+    if (status === 'rejected' && !rejectionReason.trim()) {
+      alert('Please provide a rejection reason');
+      return;
+    }
     setUpdating(id);
     try {
       const res = await fetch('/api/admin/verify-submission', {
@@ -306,21 +317,37 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
         </>
       ) : (
         <section className="flex flex-col gap-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <h2 className="text-xl font-bold">Review Submissions</h2>
-            <div className="flex items-center gap-4 text-[10px] uppercase tracking-widest font-bold opacity-30">
-              <span className="flex items-center gap-1"><Clock size={12} /> {submissions.filter(s => s.status === 'pending').length} Pending</span>
-              <span className="flex items-center gap-1"><CheckCircle2 size={12} /> {submissions.filter(s => s.status === 'verified').length} Verified</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex bg-[#111111] rounded-xl border border-white/5 p-1">
+                {(['all', 'pending', 'verified', 'rejected'] as const).map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setSubStatusFilter(status)}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
+                      subStatusFilter === status ? theme.bg + " text-white" : "text-white/40 hover:text-white"
+                    )}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-4 text-[10px] uppercase tracking-widest font-bold opacity-30 ml-4">
+                <span className="flex items-center gap-1"><Clock size={12} /> {submissions.filter(s => s.status === 'pending').length} Pending</span>
+                <span className="flex items-center gap-1"><CheckCircle2 size={12} /> {submissions.filter(s => s.status === 'verified').length} Verified</span>
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6">
-            {submissions.length === 0 ? (
+            {submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).length === 0 ? (
               <div className="p-12 border-2 border-dashed border-white/5 rounded-3xl text-center">
-                <p className="opacity-30">No game submissions found in the database.</p>
+                <p className="opacity-30">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
-              submissions.map(sub => (
+              submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).map(sub => (
                 <div key={sub.id} className="p-6 bg-[#111111] rounded-2xl border border-white/5 flex flex-col md:flex-row gap-8 items-center relative overflow-hidden">
                   <div className="w-full md:w-48 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group">
                     <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
@@ -384,19 +411,22 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                         {sub.status}
                       </div>
 
-                      {sub.status === 'pending' && (
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => {
-                              setReviewingId(sub.id);
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setReviewingId(sub.id);
+                            if (sub.status === 'verified') {
+                              setPointsAwarded(String(sub.points || 0));
+                            } else {
                               setPointsAwarded(String(sub.calculated_score || 0));
-                            }}
-                            className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"
-                          >
-                            Review Submission
-                          </button>
-                        </div>
-                      )}
+                            }
+                            setRejectionReason(sub.rejection_reason || '');
+                          }}
+                          className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"
+                        >
+                          {sub.status === 'pending' ? 'Review' : 'Update Status'}
+                        </button>
+                      </div>
                     </div>
                   </div>
 

@@ -81,8 +81,9 @@ function AppContent() {
       case 'events':
         return <EventsPanel />;
       case 'admin-users':
+      case 'admin-submissions':
       case 'admin-teams':
-        return <AdminPanel onViewProfile={handleViewProfile} />;
+        return <AdminPanel onViewProfile={handleViewProfile} activeAdminTab={activeTab === 'admin-submissions' ? 'submissions' : 'users'} />;
       default:
         return <MySubmissions />;
     }

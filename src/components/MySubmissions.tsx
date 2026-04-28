@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2 } from 'lucide-react';
+import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2, XCircle, Clock } from 'lucide-react';
 import { Submission, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -375,22 +375,35 @@ export default function MySubmissions() {
                       </div>
                    </div>
                 </div>
-                <div className="flex items-center gap-2 px-1">
-                  {sub.status === 'verified' ? (
-                    <>
-                      <CheckCircle2 size={14} className="text-emerald-400" />
-                      <span className="text-[10px] font-bold opacity-70">Game verified</span>
-                    </>
-                  ) : sub.status === 'rejected' ? (
-                    <>
-                      <AlertCircle size={14} className="text-red-400" />
-                      <span className="text-[10px] font-bold opacity-70">Rejected: {sub.rejection_reason || 'See comments'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle size={14} className="text-amber-400" />
-                      <span className="text-[10px] font-bold opacity-70">Pending review</span>
-                    </>
+                <div className="flex flex-col gap-2 px-1">
+                  <div className="flex items-center gap-2">
+                    {sub.status === 'verified' ? (
+                      <>
+                        <CheckCircle2 size={14} className="text-emerald-400" />
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">Submission accepted</span>
+                      </>
+                    ) : sub.status === 'rejected' ? (
+                      <>
+                        <XCircle size={14} className="text-red-400" />
+                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-tighter">Submission rejected</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock size={14} className="text-amber-400" />
+                        <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">Pending review</span>
+                      </>
+                    )}
+                  </div>
+                  {sub.status === 'rejected' && sub.rejection_reason && (
+                    <div className="p-2 bg-red-500/5 border border-red-500/10 rounded-lg text-[9px] text-red-300 leading-tight italic">
+                      <span className="font-bold uppercase opacity-50 block mb-1">Reason:</span>
+                      {sub.rejection_reason}
+                    </div>
+                  )}
+                  {sub.status === 'verified' && (
+                    <div className="text-[9px] font-bold opacity-40">
+                      Awarded {sub.points || 0} PTS
+                    </div>
                   )}
                 </div>
               </div>
