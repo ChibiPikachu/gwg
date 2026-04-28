@@ -669,19 +669,19 @@ async function createServer() {
     const currentUser = (req as any).user;
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     const { 
-  gameId, 
-  gameName, 
-  gameTitle, // Added this to match frontend
-  game_title,
-  gameImage, 
-  achievements, 
-  hours, 
-  achievementsBefore,
-    hoursBefore,
-    multiplier,
-    calculatedScore,
-  notes 
-} = req.body;
+      gameId, 
+      gameName, 
+      gameTitle,
+      game_title,
+      gameImage, 
+      achievements, 
+      hours, 
+      achievementsBefore,
+      hoursBefore,
+      multiplier,
+      calculatedScore,
+      notes 
+    } = req.body;
 
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -691,12 +691,27 @@ async function createServer() {
       const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
       if (eventError) console.error('Error fetching active event:', eventError);
 
+      // 1. Check for duplicate submission (same user, game, and event) to prevent point bloat
+      if (activeEvent) {
+        const { data: existingSub } = await supabase
+          .from('submissions')
+          .select('id')
+          .eq('user_id', steamId)
+          .eq('game_id', String(gameId))
+          .eq('event_id', activeEvent.id)
+          .neq('status', 'rejected') // Ignore previously rejected ones if they want to resubmit correctly
+          .maybeSingle();
+
+        if (existingSub) {
+          return res.status(400).json({ error: 'You have already submitted progress for this game in the current event.' });
+        }
+      }
+
       const submissionData = {
         user_id: steamId,
         user_name: currentUser.displayName || currentUser.steam_name,
         user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
         game_id: String(gameId),
-        // FIX: This ensures we check all possible keys from frontend
         game_name: gameName || gameTitle || game_title || "Unknown Game", 
         game_image: gameImage,
         achievements_during: achievements || 0,

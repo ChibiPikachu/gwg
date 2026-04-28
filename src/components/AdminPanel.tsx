@@ -24,7 +24,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
-  const [pointsAwarded, setPointsAwarded] = React.useState('10');
+  const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [rejectionReason, setRejectionReason] = React.useState('');
 
   const fetchUsers = React.useCallback(async () => {

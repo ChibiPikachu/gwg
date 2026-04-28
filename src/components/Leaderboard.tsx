@@ -165,7 +165,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                   </div>
                   <div className="flex-1">
                      <p className="text-xs">
-                       <span className="font-bold text-blue-400">Someone</span> earned <span className="font-bold">10 pts</span>
+                       <span className="font-bold">Player progress logged</span>
                      </p>
                   </div>
                   <span className="text-[10px] opacity-40">2m ago</span>

@@ -31,6 +31,11 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
     setReadIds(new Set(notifications.map(n => n.id)));
   };
 
+  const markAllReadAndClose = () => {
+    markAllRead();
+    setShowNotifications(false);
+  };
+
   React.useEffect(() => {
     if (!user?.steamId || !isSupabaseConfigured) return;
     
@@ -170,7 +175,7 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
               </div>
               {notifications.length > 0 && (
                 <button 
-                  onClick={markAllRead}
+                  onClick={markAllReadAndClose}
                   className="w-full py-3 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-all border-t border-white/5"
                 >
                   Mark all as read
