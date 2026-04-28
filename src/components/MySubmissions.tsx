@@ -3,9 +3,10 @@ import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2, XCircle, Clo
 import { Submission, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function MySubmissions() {
-  const { theme } = useAuth();
+  const { user, theme } = useAuth();
   const [submissions, setSubmissions] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [showForm, setShowForm] = React.useState(false);
@@ -51,7 +52,33 @@ export default function MySubmissions() {
 
   React.useEffect(() => {
     fetchSubmissions();
-  }, [fetchSubmissions]);
+
+    if (!user?.steamId || !isSupabaseConfigured) return;
+
+    // Listen for changes to MY submissions
+    const channel = supabase
+      .channel(`my-submissions-${user.steamId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'submissions',
+        filter: `user_id=eq.${user.steamId}`
+      }, (payload) => {
+        console.log('Real-time submission update:', payload);
+        if (payload.eventType === 'INSERT') {
+          setSubmissions(prev => [payload.new as Submission, ...prev]);
+        } else if (payload.eventType === 'UPDATE') {
+          setSubmissions(prev => prev.map(s => s.id === (payload.new as Submission).id ? (payload.new as Submission) : s));
+        } else if (payload.eventType === 'DELETE') {
+          setSubmissions(prev => prev.filter(s => s.id !== (payload.old as any).id));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchSubmissions, user?.steamId]);
 
   // Debounced real-time search
   React.useEffect(() => {
