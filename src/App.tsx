@@ -20,6 +20,12 @@ import { motion, AnimatePresence } from 'motion/react';
 function AppContent() {
   const { user, loading, loginWithSteam, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('submissions');
+  const [viewedProfileId, setViewedProfileId] = useState<string | null>(null);
+
+  const handleViewProfile = (steamId: string | null) => {
+    setViewedProfileId(steamId);
+    setActiveTab('profile');
+  };
 
   if (loading) {
     return (
@@ -67,11 +73,11 @@ function AppContent() {
       case 'submissions':
         return <MySubmissions />;
       case 'profile':
-        return <Profile />;
+        return <Profile steamId={viewedProfileId || undefined} />;
       case 'team':
-        return <MyTeam />;
+        return <MyTeam onViewProfile={handleViewProfile} />;
       case 'leaderboard':
-        return <Leaderboard />;
+        return <Leaderboard onViewProfile={handleViewProfile} />;
       case 'events':
         return <Dashboard userTeam={user.team} />;
       case 'admin-users':
@@ -88,10 +94,13 @@ function AppContent() {
         userTeam={user.team} 
         isAdmin={user.isAdmin} 
         activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
+        setActiveTab={(tab) => {
+          if (tab !== 'profile') setViewedProfileId(null);
+          setActiveTab(tab);
+        }} 
       />
       <div className="flex-1 flex flex-col">
-        <TopBar user={user} onLogout={logout} onProfileClick={() => setActiveTab('profile')} />
+        <TopBar user={user} onLogout={logout} onProfileClick={() => handleViewProfile(null)} />
         <main className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div

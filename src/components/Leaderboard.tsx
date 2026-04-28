@@ -3,7 +3,7 @@ import { Trophy, Medal, Users, Shield } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 
-export default function Leaderboard() {
+export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const [users, setUsers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -81,12 +81,25 @@ export default function Leaderboard() {
               safeUsers.slice(0, 10).map((u, i) => (
                 <div key={u.steamid} className="flex items-center gap-4 p-4 bg-[#111111] rounded-2xl border border-white/5 group hover:border-white/10 transition-all">
                   <div className="text-sm font-bold opacity-30 w-4">{i + 1}</div>
-                  <div className={cn("w-12 h-12 rounded-full p-1 border-2", u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10')}>
+                  <button 
+                    onClick={() => onViewProfile?.(u.steamid)}
+                    className={cn(
+                      "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-105 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50", 
+                      u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10'
+                    )}
+                  >
                     <img src={u.steam_avatar} className="w-full h-full rounded-full object-cover" alt="" referrerPolicy="no-referrer" />
-                  </div>
+                  </button>
                   <div className="flex-1 overflow-hidden">
                     <div className="flex items-center gap-2">
-                       <span className="font-bold truncate">{u.steam_name}</span>
+                       <a 
+                        href={`https://steamcommunity.com/profiles/${u.steamid}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-bold truncate hover:text-pink-500 transition-colors"
+                       >
+                        {u.steam_name}
+                       </a>
                        {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className="text-pink-500" />}
                        {u.discord_name && (
                         <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>

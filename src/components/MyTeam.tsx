@@ -4,7 +4,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 
-export default function MyTeam() {
+export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { user } = useAuth();
   const [members, setMembers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -82,7 +82,10 @@ export default function MyTeam() {
           ) : (
             members.map((m) => (
               <div key={m.steamid} className="p-6 bg-[#111111] rounded-2xl border border-white/5 flex items-center gap-4 hover:border-white/10 transition-all group">
-                <div className={cn("w-14 h-14 rounded-full p-1 border-2 relative", colors.border)}>
+                <button 
+                  onClick={() => onViewProfile?.(m.steamid)}
+                  className={cn("w-14 h-14 rounded-full p-1 border-2 relative transition-transform hover:scale-105 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50", colors.border)}
+                >
                   <img 
                     src={m.steam_avatar} 
                     className="w-full h-full rounded-full object-cover" 
@@ -94,9 +97,16 @@ export default function MyTeam() {
                        <Shield size={10} className="text-white" />
                     </div>
                   )}
-                </div>
+                </button>
                 <div className="flex-1 overflow-hidden">
-                  <div className="font-bold truncate text-sm">{m.steam_name}</div>
+                  <a 
+                    href={`https://steamcommunity.com/profiles/${m.steamid}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold truncate text-sm hover:text-pink-500 transition-colors block"
+                  >
+                    {m.steam_name}
+                  </a>
                   <div className="text-[10px] opacity-40 uppercase font-bold tracking-wider">{m.points || 0} Points</div>
                   {m.status && <p className="text-[10px] italic opacity-30 truncate mt-1">"{m.status}"</p>}
                 </div>

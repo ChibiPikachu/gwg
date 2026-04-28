@@ -486,6 +486,38 @@ async function createServer() {
     res.json(users);
   });
 
+  app.get('/api/users/:steamid', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { steamid } = req.params;
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, team, status, points, role')
+      .eq('steamid', steamid)
+      .single();
+
+    if (error) return res.status(404).json({ error: 'User not found' });
+    
+    // Transform to frontend format
+    const transformedUser = {
+      uid: profile.steamid,
+      steamId: profile.steamid,
+      steamName: profile.steam_name,
+      steamAvatar: profile.steam_avatar,
+      discordName: profile.discord_name,
+      discordAvatar: profile.discord_avatar,
+      discordId: profile.discord_id,
+      team: profile.team,
+      status: profile.status,
+      points: profile.points,
+      role: profile.role,
+      isAdmin: profile.role === 'admin' || profile.role === 'admins'
+    };
+    
+    res.json(transformedUser);
+  });
+
   app.post('/api/admin/update-user-team', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
