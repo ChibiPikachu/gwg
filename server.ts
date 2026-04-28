@@ -624,7 +624,10 @@ async function createServer() {
 
     const currentUser = (req as any).user;
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
-    const { gameId, gameTitle, gameImage, achievements, hours, notes } = req.body;
+    const { 
+      gameId, gameTitle, gameImage, achievements, hours, 
+      achievementsBefore, hoursBefore, multiplier, calculatedScore, notes 
+    } = req.body;
 
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -641,6 +644,10 @@ async function createServer() {
           game_image: gameImage,
           achievements_during: achievements || 0,
           hours_during: hours || 0,
+          achievements_before: achievementsBefore || 0,
+          hours_before: hoursBefore || 0,
+          multiplier: multiplier || 1.0,
+          calculated_score: calculatedScore || 0,
           notes: notes || '',
           status: 'pending',
           created_at: new Date().toISOString()
@@ -776,12 +783,16 @@ async function createServer() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'text/plain'
         },
-        body: `search "${query}"; fields name, cover.url, summary; limit 10;`
+        body: `search "${query}"; fields name, cover.url, summary; limit 5;`
       });
 
       const data: any = await response.json();
       
-      // Transform IGDB format to something easier for the frontend
+      if (!Array.isArray(data)) {
+        return res.json([]);
+      }
+
+      // Transform IGDB format
       const results = data.map((game: any) => ({
         id: game.id,
         title: game.name,

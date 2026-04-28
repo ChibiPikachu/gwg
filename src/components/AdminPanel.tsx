@@ -332,14 +332,22 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                         </div>
                         <h4 className="text-xl font-black mt-2 uppercase">{sub.game_title}</h4>
                       </div>
-                      <div className="bg-white/5 px-4 py-2 rounded-xl flex items-center gap-8">
+                      <div className="bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6">
                         <div className="flex flex-col">
                           <span className="text-[10px] uppercase font-bold opacity-30">Earned</span>
                           <span className="text-lg font-bold">🏆 {sub.achievements_during}</span>
+                          <span className="text-[8px] opacity-20 uppercase font-bold">Prev: {sub.achievements_before || 0}</span>
                         </div>
                         <div className="flex flex-col">
                           <span className="text-[10px] uppercase font-bold opacity-30">Time</span>
                           <span className="text-lg font-bold">🕒 {sub.hours_during}h</span>
+                          <span className="text-[8px] opacity-20 uppercase font-bold">Prev: {sub.hours_before || 0}h</span>
+                        </div>
+                        <div className="w-[1px] h-8 bg-white/10" />
+                        <div className="flex flex-col">
+                          <span className="text-[10px] uppercase font-bold opacity-30">Preview</span>
+                          <span className={cn("text-lg font-black", theme.text)}>{sub.calculated_score || 0} pts</span>
+                          <span className="text-[8px] opacity-40 uppercase font-bold">{sub.multiplier?.toFixed(1) || '1.0'}x Mult</span>
                         </div>
                       </div>
                     </div>
@@ -364,7 +372,10 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                       {sub.status === 'pending' && (
                         <div className="flex gap-2">
                           <button 
-                            onClick={() => setReviewingId(sub.id)}
+                            onClick={() => {
+                              setReviewingId(sub.id);
+                              setPointsAwarded(String(sub.calculated_score || 0));
+                            }}
                             className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"
                           >
                             Review Submission

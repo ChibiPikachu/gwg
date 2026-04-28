@@ -14,11 +14,21 @@ export default function MySubmissions() {
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [selectedGame, setSelectedGame] = React.useState<any | null>(null);
   const [formData, setFormData] = React.useState({
-    achievements: '',
-    hours: '',
+    achievementsEarned: '',
+    hoursPlayed: '',
+    achievementsBefore: '0',
+    hoursBefore: '0',
     notes: ''
   });
   const [submitting, setSubmitting] = React.useState(false);
+
+  const scorePreview = React.useMemo(() => {
+    const earned = parseInt(formData.achievementsEarned) || 0;
+    const multiplier = 1.0; // Base multiplier
+    return earned * 10 * multiplier;
+  }, [formData.achievementsEarned]);
+
+  const multiplierPreview = 1.0;
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
@@ -80,8 +90,12 @@ export default function MySubmissions() {
           gameId: selectedGame.id,
           gameTitle: selectedGame.title,
           gameImage: selectedGame.image,
-          achievements: parseInt(formData.achievements) || 0,
-          hours: parseFloat(formData.hours) || 0,
+          achievements: parseInt(formData.achievementsEarned) || 0,
+          hours: parseFloat(formData.hoursPlayed) || 0,
+          achievementsBefore: parseInt(formData.achievementsBefore) || 0,
+          hoursBefore: parseFloat(formData.hoursBefore) || 0,
+          multiplier: multiplierPreview,
+          calculatedScore: scorePreview,
           notes: formData.notes
         })
       });
@@ -89,7 +103,13 @@ export default function MySubmissions() {
       if (res.ok) {
         setShowForm(false);
         setSelectedGame(null);
-        setFormData({ achievements: '', hours: '', notes: '' });
+        setFormData({ 
+          achievementsEarned: '', 
+          hoursPlayed: '', 
+          achievementsBefore: '0', 
+          hoursBefore: '0', 
+          notes: '' 
+        });
         setGameSearch('');
         setSearchResults([]);
         fetchSubmissions();
@@ -209,7 +229,7 @@ export default function MySubmissions() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold opacity-40">Achievements Earned</label>
                       <input 
@@ -217,21 +237,56 @@ export default function MySubmissions() {
                         type="number"
                         placeholder="0"
                         className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
-                        value={formData.achievements}
-                        onChange={(e) => setFormData({...formData, achievements: e.target.value})}
+                        value={formData.achievementsEarned}
+                        onChange={(e) => setFormData({...formData, achievementsEarned: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40">Hours Played</label>
+                      <label className="text-xs font-bold opacity-40">Hours Played (Event)</label>
                       <input 
                         required
                         type="number"
                         step="0.1"
                         placeholder="0.0"
                         className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
-                        value={formData.hours}
-                        onChange={(e) => setFormData({...formData, hours: e.target.value})}
+                        value={formData.hoursPlayed}
+                        onChange={(e) => setFormData({...formData, hoursPlayed: e.target.value})}
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter">Achievements (Before)</label>
+                      <input 
+                        required
+                        type="number"
+                        placeholder="0"
+                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
+                        value={formData.achievementsBefore}
+                        onChange={(e) => setFormData({...formData, achievementsBefore: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter">Hours (Before)</label>
+                      <input 
+                        required
+                        type="number"
+                        step="0.1"
+                        placeholder="0.0"
+                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
+                        value={formData.hoursBefore}
+                        onChange={(e) => setFormData({...formData, hoursBefore: e.target.value})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase font-bold opacity-30">Multiplier</span>
+                      <span className="text-xl font-black text-blue-400">{multiplierPreview.toFixed(1)}x</span>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] uppercase font-bold opacity-30">Score Preview</span>
+                      <span className={cn("text-2xl font-black", theme.text)}>{scorePreview} <span className="text-xs opacity-50">PTS</span></span>
                     </div>
                   </div>
 
