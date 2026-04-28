@@ -655,6 +655,10 @@ async function createServer() {
   gameImage, 
   achievements, 
   hours, 
+  achievementsBefore, // <--- ADD THIS
+    hoursBefore,        // <--- ADD THIS
+    multiplier,         // <--- ADD THIS
+    calculatedScore,    // <--- ADD THIS
   notes 
 } = req.body;
 
