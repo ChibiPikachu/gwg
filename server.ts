@@ -476,13 +476,17 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    // Publicly return limited profiles
+    // Publicly return profiles assigned to a team
     const { data: users, error } = await supabase
       .from('profiles')
       .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
+      .not('team', 'is', null)
+      .neq('team', 'none')
       .order('points', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
+    
+    // Map steamid to steamId for consistency if needed, though most components use steamid
     res.json(users);
   });
 

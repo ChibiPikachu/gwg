@@ -96,7 +96,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         href={`https://steamcommunity.com/profiles/${u.steamid}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="font-bold truncate hover:text-pink-500 transition-colors"
+                        className="font-bold truncate hover:text-pink-500 transition-colors relative z-10"
                        >
                         {u.steam_name}
                        </a>

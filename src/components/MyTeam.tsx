@@ -103,7 +103,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                     href={`https://steamcommunity.com/profiles/${m.steamid}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-bold truncate text-sm hover:text-pink-500 transition-colors block"
+                    className="font-bold truncate text-sm hover:text-pink-500 transition-colors block relative z-10"
                   >
                     {m.steam_name}
                   </a>
