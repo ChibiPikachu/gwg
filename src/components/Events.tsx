@@ -115,7 +115,7 @@ export default function EventsPanel() {
              <div className="relative z-10">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
                  <div className="space-y-4 max-w-2xl">
-                   <h3 className="text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left decoration-pink-500 underline-offset-8">
+                   <h3 className={cn("text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left underline underline-offset-8", theme.text)}>
                      {currentEvent.title}
                    </h3>
                    <p className="opacity-60 text-lg">
@@ -188,7 +188,7 @@ export default function EventsPanel() {
                   </button>
                 )}
               </div>
-              <h4 className="font-bold text-xl mb-2 group-hover:text-pink-500 transition-colors uppercase tracking-tight">{event.title}</h4>
+              <h4 className={cn("font-bold text-xl mb-2 transition-colors uppercase tracking-tight", theme.text)}>{event.title}</h4>
               <p className="text-xs opacity-50 mb-6 line-clamp-2">{event.description}</p>
               <div className="pt-4 border-t border-white/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30">
                 <span>Timeline</span>
@@ -213,7 +213,7 @@ export default function EventsPanel() {
                 <label className="text-[10px] uppercase font-bold opacity-40">Event Title</label>
                 <input 
                   required
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all"
                   value={editingEvent?.title}
                   onChange={e => setEditingEvent({ ...editingEvent!, title: e.target.value })}
                 />
@@ -222,7 +222,7 @@ export default function EventsPanel() {
               <div className="space-y-2">
                 <label className="text-[10px] uppercase font-bold opacity-40">Description</label>
                 <textarea 
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all min-h-[100px] resize-none"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all min-h-[100px] resize-none"
                   value={editingEvent?.description || ''}
                   onChange={e => setEditingEvent({ ...editingEvent!, description: e.target.value })}
                 />
@@ -234,7 +234,7 @@ export default function EventsPanel() {
                   <input 
                     type="date"
                     required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all"
                     value={editingEvent?.start_date?.split('T')[0] || ''}
                     onChange={e => setEditingEvent({ ...editingEvent!, start_date: e.target.value })}
                   />
@@ -244,7 +244,7 @@ export default function EventsPanel() {
                   <input 
                     type="date"
                     required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all"
                     value={editingEvent?.end_date?.split('T')[0] || ''}
                     onChange={e => setEditingEvent({ ...editingEvent!, end_date: e.target.value })}
                   />
@@ -254,7 +254,7 @@ export default function EventsPanel() {
               <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-all">
                 <input 
                   type="checkbox"
-                  className="w-5 h-5 rounded border-white/10 bg-black/40 text-pink-500"
+                  className={cn("w-5 h-5 rounded border-white/10 bg-black/40", theme.text)}
                   checked={!!editingEvent?.is_active}
                   onChange={e => setEditingEvent({ ...editingEvent!, is_active: e.target.checked })}
                 />
