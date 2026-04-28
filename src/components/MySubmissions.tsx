@@ -32,7 +32,7 @@ export default function MySubmissions() {
 
   const scorePreview = React.useMemo(() => {
     const earned = parseInt(formData.achievementsEarned) || 0;
-    return earned * 10 * multiplierPreview;
+    return earned * multiplierPreview;
   }, [formData.achievementsEarned, multiplierPreview]);
 
   const fetchSubmissions = React.useCallback(async () => {
