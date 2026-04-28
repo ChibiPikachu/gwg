@@ -466,11 +466,36 @@ async function createServer() {
     const { data: users, error } = await supabase
       .from('profiles')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('last_login', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
     res.json(users);
   });
+
+  // Helper to sync points
+  async function syncUserPoints(supabase: any, steamid: string) {
+    try {
+      const { data: verifiedSubmissions, error: subError } = await supabase
+        .from('submissions')
+        .select('points')
+        .eq('user_id', steamid)
+        .eq('status', 'verified');
+
+      if (subError) throw subError;
+
+      const totalPoints = (verifiedSubmissions || []).reduce((acc: number, sub: any) => acc + (sub.points || 0), 0);
+
+      await supabase
+        .from('profiles')
+        .update({ points: totalPoints })
+        .eq('steamid', steamid);
+        
+      return totalPoints;
+    } catch (err) {
+      console.error('Failed to sync points for user:', steamid, err);
+      return null;
+    }
+  }
 
   app.get('/api/leaderboard/users', async (req, res) => {
     const supabase = getSupabase();
@@ -486,7 +511,6 @@ async function createServer() {
 
     if (error) return res.status(500).json({ error: error.message });
     
-    // Map steamid to steamId for consistency if needed, though most components use steamid
     res.json(users);
   });
 
@@ -660,6 +684,10 @@ async function createServer() {
         .single();
 
       if (error) throw error;
+      
+      // Sync points to ensure profile is up to date
+      await syncUserPoints(supabase, steamId);
+
       res.json(data);
     } catch (err) {
       console.error('Failed to create submission:', err);
@@ -729,14 +757,8 @@ async function createServer() {
 
       if (updateSubError) throw updateSubError;
 
-      // 3. If verified, update user points
-      if (status === 'verified') {
-        const { data: userProfile, error: userError } = await supabase.from('profiles').select('points').eq('steamid', sub.user_id).single();
-        if (userProfile) {
-          const newPoints = (userProfile.points || 0) + (points || 0);
-          await supabase.from('profiles').update({ points: newPoints }).eq('steamid', sub.user_id);
-        }
-      }
+      // 3. Always sync user points after a verification update
+      await syncUserPoints(supabase, sub.user_id);
 
       res.json({ success: true });
     } catch (err) {
@@ -934,29 +956,7 @@ async function createServer() {
 
 
 
-  app.get('/api/leaderboard/users', async (req, res) => {
-    const supabase = getSupabase();
-    if (!supabase) return res.status(500).json({ error: 'Database not connected' });
-
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('steam_id, steam_name, steam_avatar, team, points, role, status')
-        .order('points', { ascending: false });
-
-      if (error) throw error;
-      
-      const formattedData = data.map(u => ({
-        ...u,
-        steamid: u.steam_id 
-      }));
-
-      res.json(formattedData);
-    } catch (err) {
-      console.error('Leaderboard fetch error:', err);
-      res.status(500).json([]);
-    }
-  });
+  // Removed duplicate leaderboard route
 
 
   // Vite middleware
