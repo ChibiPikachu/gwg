@@ -47,7 +47,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     };
   }, [fetchUsers]);
 
-  const safeUsers = Array.isArray(users) ? users : [];
+  const safeUsers = Array.isArray(users) 
+    ? [...users].sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0)) 
+    : [];
 
   const standings = [
     { team: 'blue', points: safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },

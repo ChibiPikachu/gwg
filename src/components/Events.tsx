@@ -38,12 +38,13 @@ export default function EventsPanel() {
 
     setSubmitting(true);
     try {
-      const url = editingEvent.id 
-        ? `/api/admin/events/${editingEvent.id}` 
-        : '/api/admin/events';
+      const isNew = !editingEvent.id;
+      const url = isNew 
+        ? '/api/admin/events'
+        : `/api/admin/events/${editingEvent.id}`;
       
       const res = await fetch(url, {
-        method: editingEvent.id ? 'PUT' : 'POST',
+        method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editingEvent.title,
@@ -59,11 +60,13 @@ export default function EventsPanel() {
         setEditingEvent(null);
         fetchEvents();
       } else {
-        alert('Failed to save event');
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Server error saving event:', errorData);
+        alert(`Failed to save event: ${errorData.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error('Save error:', err);
-      alert('Error saving event');
+      alert('Error saving event. Check console for details.');
     } finally {
       setSubmitting(false);
     }
@@ -90,7 +93,7 @@ export default function EventsPanel() {
         {isAdmin && (
           <button 
             onClick={() => {
-              setEditingEvent({ title: '', startDate: '', endDate: '', isActive: false });
+              setEditingEvent({ title: '', start_date: '', end_date: '', is_active: false });
               setIsEditing(true);
             }}
             className={cn("px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2", theme.bg, theme.glow, "text-white")}
@@ -213,7 +216,7 @@ export default function EventsPanel() {
                 <label className="text-[10px] uppercase font-bold opacity-40">Event Title</label>
                 <input 
                   required
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all"
+                  className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all", theme.border_focus)}
                   value={editingEvent?.title}
                   onChange={e => setEditingEvent({ ...editingEvent!, title: e.target.value })}
                 />
@@ -222,7 +225,7 @@ export default function EventsPanel() {
               <div className="space-y-2">
                 <label className="text-[10px] uppercase font-bold opacity-40">Description</label>
                 <textarea 
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all min-h-[100px] resize-none"
+                  className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all min-h-[100px] resize-none", theme.border_focus)}
                   value={editingEvent?.description || ''}
                   onChange={e => setEditingEvent({ ...editingEvent!, description: e.target.value })}
                 />
@@ -234,7 +237,7 @@ export default function EventsPanel() {
                   <input 
                     type="date"
                     required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all"
+                    className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all", theme.border_focus)}
                     value={editingEvent?.start_date?.split('T')[0] || ''}
                     onChange={e => setEditingEvent({ ...editingEvent!, start_date: e.target.value })}
                   />
@@ -244,7 +247,7 @@ export default function EventsPanel() {
                   <input 
                     type="date"
                     required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-white/30 transition-all"
+                    className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all", theme.border_focus)}
                     value={editingEvent?.end_date?.split('T')[0] || ''}
                     onChange={e => setEditingEvent({ ...editingEvent!, end_date: e.target.value })}
                   />
@@ -254,7 +257,7 @@ export default function EventsPanel() {
               <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-all">
                 <input 
                   type="checkbox"
-                  className={cn("w-5 h-5 rounded border-white/10 bg-black/40", theme.text)}
+                  className={cn("w-5 h-5 rounded border-white/10 bg-black/40", theme.text_accent)}
                   checked={!!editingEvent?.is_active}
                   onChange={e => setEditingEvent({ ...editingEvent!, is_active: e.target.checked })}
                 />
