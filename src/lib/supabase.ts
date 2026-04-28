@@ -10,5 +10,3 @@ export const supabase = (supabaseUrl && supabaseAnonKey)
 if (!supabase) {
   console.warn('Supabase URL or Anon Key is missing. Database features will be restricted.');
 }
-
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
