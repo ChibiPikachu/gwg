@@ -3,7 +3,7 @@ import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Settings, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { user: currentUser } = useAuth();
@@ -29,6 +29,8 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
 
   React.useEffect(() => {
     fetchUsers();
+
+    if (!isSupabaseConfigured) return;
 
     // Subscribe to real-time updates for profiles
     const channel = supabase

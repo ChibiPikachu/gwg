@@ -2,7 +2,7 @@ import React from 'react';
 import { Trophy, Medal, Users, Shield } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const [users, setUsers] = React.useState<any[]>([]);
@@ -23,6 +23,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
   React.useEffect(() => {
     fetchUsers();
+
+    if (!isSupabaseConfigured) return;
 
     // Subscribe to real-time updates for profiles
     const channel = supabase

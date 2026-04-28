@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile } from '@/types';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Real-time listener for current user's profile
   useEffect(() => {
-    if (!user?.steamId) return;
+    if (!user?.steamId || !isSupabaseConfigured) return;
 
     const channel = supabase
       .channel(`user-profile-${user.steamId}`)

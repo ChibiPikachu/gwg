@@ -3,7 +3,7 @@ import { Users, Mail, Shield } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { user } = useAuth();
@@ -30,6 +30,8 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
 
   React.useEffect(() => {
     fetchTeammates();
+
+    if (!isSupabaseConfigured) return;
 
     // Subscribe to real-time updates for profiles
     const channel = supabase
