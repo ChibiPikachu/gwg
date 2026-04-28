@@ -649,9 +649,14 @@ async function createServer() {
     const currentUser = (req as any).user;
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     const { 
-      gameId, gameName, gameImage, achievements, hours, 
-      achievementsBefore, hoursBefore, multiplier, calculatedScore, notes 
-    } = req.body;
+  gameId, 
+  gameName, // Make sure your frontend sends exactly "gameName"
+  game_title, // Adding this as a backup
+  gameImage, 
+  achievements, 
+  hours, 
+  notes 
+} = req.body;
 
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -666,7 +671,8 @@ async function createServer() {
         user_name: currentUser.displayName || currentUser.steam_name,
         user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
         game_id: String(gameId),
-        game_name: gameName,
+        // FIX: This ensures if gameName is missing, it tries game_title or gameName
+        game_name: gameName || game_title || "Unknown Game", 
         game_image: gameImage,
         achievements_during: achievements || 0,
         hours_during: hours || 0,
