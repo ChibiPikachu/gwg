@@ -15,7 +15,14 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
   const { theme } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
   const [notifications, setNotifications] = React.useState<any[]>([]);
+  const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
   const [showNotifications, setShowNotifications] = React.useState(false);
+
+  const unreadCount = notifications.filter(n => !readIds.has(n.id)).length;
+
+  const markAllRead = () => {
+    setReadIds(new Set(notifications.map(n => n.id)));
+  };
 
   React.useEffect(() => {
     if (!user?.steamId || !isSupabaseConfigured) return;
@@ -25,7 +32,8 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setNotifications(data.filter(s => s.status !== 'pending').slice(0, 5));
+          const filtered = data.filter(s => s.status !== 'pending').slice(0, 5);
+          setNotifications(filtered);
         }
       })
       .catch(err => console.error('Failed to fetch notifications:', err));
@@ -49,6 +57,14 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
             }
             return [updatedSub, ...prev].slice(0, 5);
           });
+          
+          // Ensure it's marked as unread if it's a status change
+          setReadIds(prev => {
+            const next = new Set(prev);
+            next.delete(updatedSub.id);
+            return next;
+          });
+          
           setShowNotifications(true); // Auto-show notification when status changes
         }
       })
@@ -68,8 +84,8 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
             className="p-2 text-white/50 hover:text-white transition-colors relative"
           >
             <Bell size={20} />
-            {notifications.length > 0 && (
-              <span className={cn("absolute top-1 right-1 w-2 h-2 rounded-full", theme.bg)} />
+            {unreadCount > 0 && (
+              <span className={cn("absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-[#0a0a0a]", theme.bg)} />
             )}
           </button>
 
@@ -79,12 +95,28 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
                 <span className="text-xs uppercase font-bold opacity-40 tracking-widest">Notifications</span>
                 <button onClick={() => setShowNotifications(false)} className="text-[10px] opacity-40 hover:opacity-100">Close</button>
               </div>
-              <div className="max-h-[500px] overflow-y-auto">
+              <div className="max-h-[400px] overflow-y-auto">
                 {notifications.length === 0 ? (
                   <div className="p-8 text-center opacity-30 text-xs italic">No recent updates</div>
                 ) : (
                   notifications.map((n) => (
-                    <div key={n.id} className="p-5 border-b border-white/5 hover:bg-white/5 transition-colors group">
+                    <div 
+                      key={n.id} 
+                      className={cn(
+                        "p-5 border-b border-white/5 hover:bg-white/5 transition-colors group relative",
+                        !readIds.has(n.id) && "bg-white/[0.02]"
+                      )}
+                      onClick={() => {
+                        setReadIds(prev => {
+                          const next = new Set(prev);
+                          next.add(n.id);
+                          return next;
+                        });
+                      }}
+                    >
+                      {!readIds.has(n.id) && (
+                        <div className={cn("absolute top-6 left-2 w-1.5 h-1.5 rounded-full", theme.bg)} />
+                      )}
                       <div className="flex gap-4">
                         <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-white/10">
                           <img src={n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
@@ -129,6 +161,14 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
                   ))
                 )}
               </div>
+              {notifications.length > 0 && (
+                <button 
+                  onClick={markAllRead}
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-all border-t border-white/5"
+                >
+                  Mark all as read
+                </button>
+              )}
             </div>
           )}
         </div>
