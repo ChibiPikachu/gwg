@@ -135,11 +135,13 @@ export default function MySubmissions() {
         setSearchResults([]);
         fetchSubmissions();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        console.error('Server submission error:', data);
         alert(`Submission failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
-      alert('Failed to submit game.');
+      console.error('Client submission exception:', err);
+      alert('Failed to submit game. Check console for details.');
     } finally {
       setSubmitting(false);
     }

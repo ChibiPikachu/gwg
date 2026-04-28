@@ -658,40 +658,48 @@ async function createServer() {
 
     try {
       // Find active event
-      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      if (eventError) console.error('Error fetching active event:', eventError);
+
+      const submissionData = {
+        user_id: steamId,
+        user_name: currentUser.displayName || currentUser.steam_name,
+        user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
+        game_id: String(gameId),
+        game_title: gameTitle,
+        game_image: gameImage,
+        achievements_during: achievements || 0,
+        hours_during: hours || 0,
+        achievements_before: achievementsBefore || 0,
+        hours_before: hoursBefore || 0,
+        multiplier: multiplier || 1.0,
+        calculated_score: calculatedScore || 0,
+        notes: notes || '',
+        status: 'pending',
+        event_id: activeEvent?.id || null,
+        created_at: new Date().toISOString()
+      };
+
+      console.log('Attempting submission insert:', submissionData);
 
       const { data, error } = await supabase
         .from('submissions')
-        .insert({
-          user_id: steamId,
-          user_name: currentUser.displayName || currentUser.steam_name,
-          user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
-          game_id: String(gameId),
-          game_title: gameTitle,
-          game_image: gameImage,
-          achievements_during: achievements || 0,
-          hours_during: hours || 0,
-          achievements_before: achievementsBefore || 0,
-          hours_before: hoursBefore || 0,
-          multiplier: multiplier || 1.0,
-          calculated_score: calculatedScore || 0,
-          notes: notes || '',
-          status: 'pending',
-          event_id: activeEvent?.id || null,
-          created_at: new Date().toISOString()
-        })
+        .insert(submissionData)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase submission insert error:', error);
+        return res.status(500).json({ error: error.message, details: error.details, hint: error.hint });
+      }
       
-      // Sync points to ensure profile is up to date
+      // Sync points to ensure profile is up to date (this might just set them to current verified total)
       await syncUserPoints(supabase, steamId);
 
       res.json(data);
     } catch (err) {
-      console.error('Failed to create submission:', err);
-      res.status(500).json({ error: 'Failed to create submission' });
+      console.error('Failed to create submission exception:', err);
+      res.status(500).json({ error: 'Failed to create submission', details: String(err) });
     }
   });
 
