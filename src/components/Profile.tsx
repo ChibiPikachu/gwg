@@ -204,11 +204,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
             </div>
          </div>
 
-         <div className={cn("p-8 rounded-2xl border flex flex-col items-center gap-4 text-center shadow-xl bg-[#111111]", colors.border)}>
-            <div className={cn("w-8 h-8 rounded-full", colors.secondary.replace('bg-', ''))} />
-            <div>
-               <span className={cn("text-2xl font-bold block capitalize", colors.primary)}>Team {targetUser.team || 'None'}</span>
-               <span className="text-[10px] uppercase font-bold opacity-30">Faction</span>
+         <div className={cn("p-8 rounded-2xl border flex flex-col items-center gap-2 text-center shadow-xl bg-[#111111]", colors.border)}>
+            <span className="text-[10px] uppercase font-black opacity-30 tracking-widest">Team</span>
+            <div className="flex flex-col items-center">
+               <span className={cn("text-5xl font-black block uppercase tracking-tighter leading-none", colors.primary)}>
+                 {targetUser.team || 'None'}
+               </span>
+               <span className="text-[11px] font-bold mt-2 opacity-60 uppercase tracking-tighter text-white/50">
+                  {(targetUser.team || 'None')} team best team!
+               </span>
             </div>
          </div>
 
