@@ -78,8 +78,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
 
   const adminItems = [
     { id: 'admin-users', label: 'All users', icon: Users, section: 'admin' },
-    { id: 'admin-submissions', label: 'All submissions', icon: ListChecks, section: 'admin' },
-    { id: 'admin-teams', label: 'Teams', icon: Group, section: 'admin' },
+    { id: 'admin-submissions', label: 'All submissions', icon: ListChecks, section: 'admin' },,
   ];
 
   return (
