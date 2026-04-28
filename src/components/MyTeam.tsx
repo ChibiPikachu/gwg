@@ -74,13 +74,13 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
         <div className={cn("absolute inset-0 opacity-5", colors.secondary)}></div>
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
            <div className={cn("w-24 h-24 rounded-2xl flex items-center justify-center text-4xl shadow-2xl", colors.secondary)}>
-              {user.team === 'blue' ? '💧' : user.team === 'red' ? '🔥' : user.team === 'green' ? '🍃' : '✨'}
+              {user.team === 'blue' ? '💙' : user.team === 'red' ? '❤️' : user.team === 'green' ? '💚' : '💜'}
            </div>
            <div className="text-center md:text-left">
               <h1 className={cn("text-5xl font-black uppercase tracking-tighter", colors.primary)}>
                 Team {user.team}
               </h1>
-              <p className="opacity-60 text-lg mt-2">United for achievement power.</p>
+              <p className="opacity-60 text-lg mt-2">Game like there's no tomorrow!</p>
            </div>
            <div className="md:ml-auto flex flex-col items-center md:items-end">
               <span className="text-5xl font-mono font-bold">{members.reduce((acc, m) => acc + (m.points || 0), 0)}</span>
