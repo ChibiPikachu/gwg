@@ -22,13 +22,18 @@ export default function MySubmissions() {
   });
   const [submitting, setSubmitting] = React.useState(false);
 
+  const multiplierPreview = React.useMemo(() => {
+    const hours = parseFloat(formData.hoursPlayed) || 0;
+    if (hours <= 8) return 1;
+    if (hours <= 15) return 2;
+    if (hours <= 25) return 3;
+    return 4;
+  }, [formData.hoursPlayed]);
+
   const scorePreview = React.useMemo(() => {
     const earned = parseInt(formData.achievementsEarned) || 0;
-    const multiplier = 1.0; // Base multiplier
-    return earned * 10 * multiplier;
-  }, [formData.achievementsEarned]);
-
-  const multiplierPreview = 1.0;
+    return earned * 10 * multiplierPreview;
+  }, [formData.achievementsEarned, multiplierPreview]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
