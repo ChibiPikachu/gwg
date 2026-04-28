@@ -72,19 +72,23 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         <section>
           <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
             <Trophy className="text-amber-400" size={24} />
-            Top Members
+            All Members
           </h2>
           <div className="space-y-4">
             {loading ? (
               <div className="p-8 text-center opacity-30">Loading...</div>
             ) : (
-              safeUsers.slice(0, 10).map((u, i) => (
+              safeUsers.map((u, i) => (
                 <div key={u.steamid} className="flex items-center gap-4 p-4 bg-[#111111] rounded-2xl border border-white/5 group hover:border-white/10 transition-all">
                   <div className="text-sm font-bold opacity-30 w-4">{i + 1}</div>
                   <button 
-                    onClick={() => onViewProfile?.(u.steamid)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewProfile?.(u.steamid);
+                    }}
+                    title="View App Profile"
                     className={cn(
-                      "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-105 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50", 
+                      "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50 shrink-0", 
                       u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10'
                     )}
                   >
@@ -96,7 +100,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         href={`https://steamcommunity.com/profiles/${u.steamid}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="font-bold truncate hover:text-pink-500 transition-colors relative z-10"
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-bold truncate hover:text-pink-500 transition-colors relative z-10 hover:underline inline-block max-w-full"
                        >
                         {u.steam_name}
                        </a>

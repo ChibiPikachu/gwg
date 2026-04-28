@@ -83,8 +83,12 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
             members.map((m) => (
               <div key={m.steamid} className="p-6 bg-[#111111] rounded-2xl border border-white/5 flex items-center gap-4 hover:border-white/10 transition-all group">
                 <button 
-                  onClick={() => onViewProfile?.(m.steamid)}
-                  className={cn("w-14 h-14 rounded-full p-1 border-2 relative transition-transform hover:scale-105 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50", colors.border)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewProfile?.(m.steamid);
+                  }}
+                  title="View App Profile"
+                  className={cn("w-14 h-14 rounded-full p-1 border-2 relative transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 focus:ring-pink-500/50 shrink-0", colors.border)}
                 >
                   <img 
                     src={m.steam_avatar} 
@@ -103,7 +107,8 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                     href={`https://steamcommunity.com/profiles/${m.steamid}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-bold truncate text-sm hover:text-pink-500 transition-colors block relative z-10"
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-bold truncate text-sm hover:text-pink-500 transition-colors block relative z-10 hover:underline"
                   >
                     {m.steam_name}
                   </a>
