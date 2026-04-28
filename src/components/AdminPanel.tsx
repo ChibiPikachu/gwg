@@ -132,6 +132,23 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
   const safeUsers = Array.isArray(users) ? users : [];
   const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
   const [searchQuery, setSearchQuery] = React.useState('');
+  const isAdmin = currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'admins';
+
+  // Handle Escape key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (reviewingId) {
+          setReviewingId(null);
+        } else if (searchQuery) {
+          setSearchQuery('');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [reviewingId, searchQuery]);
 
   const filteredUsers = safeUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
@@ -139,8 +156,6 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
                          (u.discord_name || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTeam && matchesSearch;
   });
-
-  const isAdmin = currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'admins';
 
   if (!isAdmin) {
     return (

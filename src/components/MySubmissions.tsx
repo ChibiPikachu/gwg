@@ -78,6 +78,22 @@ export default function MySubmissions() {
     return () => clearTimeout(timer);
   }, [gameSearch]);
 
+  // Handle Escape key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedGame) {
+          setSelectedGame(null);
+        } else if (showForm) {
+          handleResetForm();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedGame, showForm]);
+
   const handleSearchGame = async () => {
     // This is now handled by the useEffect above
   };
