@@ -591,6 +591,32 @@ async function createServer() {
     (req as any).logout(() => res.json({ success: true }));
   });
 
+
+  app.get('/api/leaderboard/users', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database not connected' });
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('steam_id, steam_name, steam_avatar, team, points, role, status')
+        .order('points', { ascending: false });
+
+      if (error) throw error;
+      
+      const formattedData = data.map(u => ({
+        ...u,
+        steamid: u.steam_id 
+      }));
+
+      res.json(formattedData);
+    } catch (err) {
+      console.error('Leaderboard fetch error:', err);
+      res.status(500).json([]);
+    }
+  });
+
+
   // Vite middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const { createServer: createViteServer } = await import('vite');
