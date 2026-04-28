@@ -62,8 +62,15 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
 
   const safeUsers = Array.isArray(users) ? users : [];
   const teamsAssign: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
-  const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red'];
-  const filteredUsers = filterTeam === 'all' ? safeUsers : safeUsers.filter(u => (u.team || 'none') === filterTeam);
+  const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
+  const [searchQuery, setSearchQuery] = React.useState('');
+
+  const filteredUsers = safeUsers.filter(u => {
+    const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
+    const matchesSearch = u.steam_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         (u.discord_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesTeam && matchesSearch;
+  });
 
   const isAdmin = currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'admins';
 
@@ -83,37 +90,57 @@ export default function AdminPanel({ onViewProfile }: { onViewProfile?: (id: str
 
   return (
     <div className="p-8 max-w-6xl mx-auto flex flex-col gap-12">
-      <section>
-        <h2 className="text-xl font-bold mb-6">Filters</h2>
-        <div className="flex gap-3">
-          {teamsFilter.map(team => (
-            <button
-               key={team}
-               onClick={() => setFilterTeam(team)}
+      <section className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-end">
+        <div className="flex-1 w-full flex flex-col gap-6">
+          <div>
+            <h2 className="text-xl font-bold mb-4">Search & Filters</h2>
+            <div className="relative group max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-pink-500 transition-colors" size={18} />
+              <input 
+                type="text"
+                placeholder="Search by Steam or Discord name..."
+                className="w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-pink-500/50 transition-all"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            <button 
+               onClick={() => setFilterTeam('all')}
                className={cn(
-                  "px-6 py-2 rounded-lg text-sm font-bold transition-all",
-                  filterTeam === team 
-                    ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} border border-${team}-accent ring-1 ring-${team}-accent`
-                    : "bg-white/5 opacity-50 border border-transparent hover:opacity-100"
+                  "px-6 py-2 rounded-lg text-sm font-bold transition-all bg-white/5 border border-transparent hover:bg-white/10",
+                  filterTeam === 'all' && "bg-white/10 ring-1 ring-white/20 border-white/10"
                )}
             >
-              {team.charAt(0).toUpperCase() + team.slice(1)}
+              All
             </button>
-          ))}
-          <button 
-             onClick={() => setFilterTeam('all')}
-             className={cn(
-                "px-6 py-2 rounded-lg text-sm font-bold transition-all bg-white/5 opacity-50",
-                filterTeam === 'all' && "opacity-100 bg-white/10 ring-1 ring-white/20"
-             )}
-          >
-            All users
-          </button>
+            {teamsFilter.map(team => (
+              <button
+                 key={team}
+                 onClick={() => setFilterTeam(team)}
+                 className={cn(
+                    "px-6 py-2 rounded-lg text-sm font-bold transition-all",
+                    filterTeam === team 
+                      ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
+                      : "bg-white/5 opacity-50 border border-transparent hover:opacity-100"
+                 )}
+              >
+                {team.charAt(0).toUpperCase() + team.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="bg-white/5 px-6 py-3 rounded-2xl border border-white/5">
+           <span className="text-2xl font-mono font-bold text-pink-500">{filteredUsers.length}</span>
+           <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest">Users Found</span>
         </div>
       </section>
 
       <section>
-        <h2 className="text-xl font-bold mb-8">All users ({filteredUsers.length})</h2>
+        <h2 className="text-xl font-bold mb-8">User Directory</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
           {filteredUsers.map((u, i) => (
             <div key={u.steamid} className="flex flex-col gap-5 p-6 bg-[#111111] rounded-2xl border border-white/5 relative group">
