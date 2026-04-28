@@ -39,12 +39,13 @@ export interface Submission {
   rejectionReason?: string;
 }
 
-export interface Event {
+export interface CompetitionEvent {
   id: string;
   title: string;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
+  description?: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
 }
 
 export interface ThemeHelper {

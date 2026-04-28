@@ -1,15 +1,15 @@
 import React from 'react';
-import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { Event, TEAM_COLORS } from '@/types';
+import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2, History } from 'lucide-react';
+import { CompetitionEvent, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
 
-export default function Events() {
+export default function EventsPanel() {
   const { user, theme } = useAuth();
-  const [events, setEvents] = React.useState<Event[]>([]);
+  const [events, setEvents] = React.useState<CompetitionEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isEditing, setIsEditing] = React.useState(false);
-  const [editingEvent, setEditingEvent] = React.useState<Partial<Event> | null>(null);
+  const [editingEvent, setEditingEvent] = React.useState<Partial<CompetitionEvent> | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
   const isAdmin = user?.isAdmin || user?.role === 'admin' || user?.role === 'admins';
@@ -48,9 +48,9 @@ export default function Events() {
         body: JSON.stringify({
           title: editingEvent.title,
           description: editingEvent.description,
-          startDate: editingEvent.startDate || editingEvent.start_date,
-          endDate: editingEvent.endDate || editingEvent.end_date,
-          isActive: editingEvent.isActive || editingEvent.is_active
+          startDate: editingEvent.start_date,
+          endDate: editingEvent.end_date,
+          isActive: editingEvent.is_active
         })
       });
 
@@ -69,8 +69,8 @@ export default function Events() {
     }
   };
 
-  const currentEvent = events.find(e => (e as any).is_active);
-  const pastEvents = events.filter(e => !(e as any).is_active);
+  const currentEvent = events.find(e => e.is_active);
+  const pastEvents = events.filter(e => !e.is_active);
 
   if (loading) {
     return (
@@ -173,8 +173,8 @@ export default function Events() {
           {pastEvents.map((event) => (
             <div key={event.id} className="bg-white/5 rounded-2xl border border-white/5 p-6 hover:bg-white/10 transition-all group relative">
               <div className="flex justify-between items-start mb-4">
-                <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border border-white/10", event.isActive ? theme.text : "opacity-40")}>
-                  {event.isActive ? "Current" : "Closed"}
+                <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border border-white/10", event.is_active ? theme.text : "opacity-40")}>
+                  {event.is_active ? "Current" : "Closed"}
                 </div>
                 {isAdmin && (
                   <button 
@@ -189,10 +189,10 @@ export default function Events() {
                 )}
               </div>
               <h4 className="font-bold text-xl mb-2 group-hover:text-pink-500 transition-colors uppercase tracking-tight">{event.title}</h4>
-              <p className="text-xs opacity-50 mb-6 line-clamp-2">{(event as any).description}</p>
+              <p className="text-xs opacity-50 mb-6 line-clamp-2">{event.description}</p>
               <div className="pt-4 border-t border-white/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30">
                 <span>Timeline</span>
-                <span>{new Date((event as any).end_date).toLocaleDateString()}</span>
+                <span>{new Date(event.end_date).toLocaleDateString()}</span>
               </div>
             </div>
           ))}
@@ -223,8 +223,8 @@ export default function Events() {
                 <label className="text-[10px] uppercase font-bold opacity-40">Description</label>
                 <textarea 
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all min-h-[100px] resize-none"
-                  value={(editingEvent as any)?.description || ''}
-                  onChange={e => setEditingEvent({ ...editingEvent!, description: e.target.value } as any)}
+                  value={editingEvent?.description || ''}
+                  onChange={e => setEditingEvent({ ...editingEvent!, description: e.target.value })}
                 />
               </div>
 
@@ -235,8 +235,8 @@ export default function Events() {
                     type="date"
                     required
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
-                    value={editingEvent?.startDate || (editingEvent as any)?.start_date?.split('T')[0] || ''}
-                    onChange={e => setEditingEvent({ ...editingEvent!, startDate: e.target.value })}
+                    value={editingEvent?.start_date?.split('T')[0] || ''}
+                    onChange={e => setEditingEvent({ ...editingEvent!, start_date: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -245,8 +245,8 @@ export default function Events() {
                     type="date"
                     required
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-pink-500/50 transition-all"
-                    value={editingEvent?.endDate || (editingEvent as any)?.end_date?.split('T')[0] || ''}
-                    onChange={e => setEditingEvent({ ...editingEvent!, endDate: e.target.value })}
+                    value={editingEvent?.end_date?.split('T')[0] || ''}
+                    onChange={e => setEditingEvent({ ...editingEvent!, end_date: e.target.value })}
                   />
                 </div>
               </div>
@@ -255,8 +255,8 @@ export default function Events() {
                 <input 
                   type="checkbox"
                   className="w-5 h-5 rounded border-white/10 bg-black/40 text-pink-500"
-                  checked={!!(editingEvent as any)?.is_active || !!editingEvent?.isActive}
-                  onChange={e => setEditingEvent({ ...editingEvent!, isActive: e.target.checked })}
+                  checked={!!editingEvent?.is_active}
+                  onChange={e => setEditingEvent({ ...editingEvent!, is_active: e.target.checked })}
                 />
                 <div className="flex flex-col">
                   <span className="font-bold text-sm uppercase tracking-tight">Active Event</span>

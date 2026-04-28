@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, ListChecks, Group } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Team, TEAM_COLORS, Event } from '@/types';
+import { Team, TEAM_COLORS, CompetitionEvent } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
 
 interface SidebarProps {
@@ -13,7 +13,7 @@ interface SidebarProps {
 
 export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: SidebarProps) {
   const { theme } = useAuth();
-  const [currentEvent, setCurrentEvent] = useState<Event | null>(null);
+  const [currentEvent, setCurrentEvent] = useState<CompetitionEvent | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
 
   useEffect(() => {
