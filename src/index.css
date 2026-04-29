@@ -12,6 +12,8 @@
   --color-red-accent: #f87171;
 }
 
+@variant dark (&:where(.dark, .dark *));
+
 @layer base {
   html {
     @apply transition-colors duration-300;
