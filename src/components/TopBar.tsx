@@ -47,8 +47,8 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
         />
       </div>
       <div className="flex flex-col">
-        <span className="font-display text-sm text-white leading-tight tracking-tighter">Girls Who Game</span>
-        <span className={cn("font-display text-sm font-black leading-tight uppercase tracking-tighter", theme.text)}>Game</span>
+        <span className="font-display text-sm text-white leading-tight tracking-tighter">Girls Who</span>
+        <span className={cn("font-display text-sm leading-tight tracking-tighter", theme.text)}>Game</span>
       </div>
     </div>
   );
