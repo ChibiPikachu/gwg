@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { Disc as Discord, Shield, Trophy, Edit2, Check } from 'lucide-react';
+import { Shield, Trophy, Edit2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TEAM_COLORS } from '@/types';
 
@@ -134,7 +134,11 @@ export default function Profile({ steamId }: { steamId?: string }) {
                  </a>
                  {targetUser.discordName && (
                    <div className="flex items-center gap-2 opacity-60 text-sm bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
-                      <Discord size={14} className="text-purple-400" />
+                      <img 
+                        src="https://assets-global.website-files.com/6257adef93867e3c84519eb1/6257adef93867e61ba51a226_847541504914fd33bfe3b2b0d99dc030.svg" 
+                        className="w-3.5 h-3.5" 
+                        alt="" 
+                      />
                       <span>{targetUser.discordName}</span>
                    </div>
                  )}
@@ -218,8 +222,12 @@ export default function Profile({ steamId }: { steamId?: string }) {
          </div>
 
          <div className="p-8 bg-[#111111] rounded-2xl border border-white/5 flex flex-col items-center gap-4 text-center shadow-xl">
-            <div className="bg-purple-500/20 p-2 rounded-xl">
-               <Discord size={32} className="text-purple-400" />
+            <div className="bg-[#5865F2]/10 p-3 rounded-2xl border border-[#5865F2]/20 shadow-inner group-hover:bg-[#5865F2]/20 transition-all">
+               <img 
+                 src="https://assets-global.website-files.com/6257adef93867e3c84519eb1/6257adef93867e61ba51a226_847541504914fd33bfe3b2b0d99dc030.svg" 
+                 className="w-8 h-8 drop-shadow-lg" 
+                 alt="Discord" 
+               />
             </div>
             {targetUser.discordId ? (
               <div className="flex flex-col items-center gap-2">
@@ -236,9 +244,14 @@ export default function Profile({ steamId }: { steamId?: string }) {
                 {isOwnProfile && (
                   <button 
                     onClick={syncWithDiscord}
-                    className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-6 py-2 rounded-lg font-bold text-sm transition-all shadow-lg mt-2"
+                    className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#5865F2]/20 flex items-center justify-center gap-3 group active:scale-95"
                   >
-                    Sync Discord
+                    <img 
+                      src="https://assets-global.website-files.com/6257adef93867e3c84519eb1/6257adef93867e61ba51a226_847541504914fd33bfe3b2b0d99dc030.svg" 
+                      className="w-5 h-5 invert brightness-0 group-hover:scale-110 transition-transform" 
+                      alt="" 
+                    />
+                    <span className="tracking-tight">Sync Discord</span>
                   </button>
                 )}
               </div>

@@ -860,6 +860,60 @@ async function createServer() {
     }
   });
 
+  app.post('/api/admin/recalculate-all', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      // 1. Fetch all verified submissions
+      const { data: subs, error: fetchError } = await supabase.from('submissions').select('*').eq('status', 'verified');
+      if (fetchError) throw fetchError;
+
+      console.log(`[Admin] Recalculating points for ${subs.length} submissions...`);
+
+      for (const sub of subs) {
+        // Redetermine multiplier based on corrected logic
+        let multiplier = 1.0;
+        const hours = Number(sub.hours_during || 0);
+        if (hours > 100) multiplier = 1.5;
+        else if (hours > 50) multiplier = 1.25;
+        else if (hours > 20) multiplier = 1.1;
+
+        const correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier);
+        
+        if (Number(sub.points) !== correctPoints) {
+           console.log(`[Admin] Fixing sub ${sub.id}: ${sub.points} -> ${correctPoints}`);
+           await supabase.from('submissions').update({ points: correctPoints }).eq('id', sub.id);
+        }
+      }
+
+      // 2. Fetch all users who have verified submissions to sync their profile points
+      const { data: usersToSync } = await supabase.from('submissions').select('user_id').eq('status', 'verified');
+      const uniqueUserIds = [...new Set(usersToSync?.map((s: any) => s.user_id) || [])];
+
+      for (const uid of uniqueUserIds) {
+        await syncUserPoints(supabase, uid as string);
+      }
+
+      res.json({ success: true, count: subs.length, usersSynced: uniqueUserIds.length });
+    } catch (err) {
+      console.error('Recalculate failed:', err);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
   let igdbToken: { access_token: string, expires_at: number } | null = null;
 
   async function getIGDBToken() {

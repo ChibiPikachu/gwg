@@ -240,18 +240,41 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         <>
           <section className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-end">
             <div className="flex-1 w-full flex flex-col gap-6">
-              <div>
-                <h2 className="text-xl font-bold mb-4">Search & Filters</h2>
-                <div className="relative group max-w-md">
-                  <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
-                  <input 
-                    type="text"
-                    placeholder="Search by Steam or Discord name..."
-                    className={cn("w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans", `focus:${theme.border}/50`)}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-bold mb-4">Search & Filters</h2>
+                  <div className="relative group max-w-md">
+                    <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
+                    <input 
+                      type="text"
+                      placeholder="Search by Steam or Discord name..."
+                      className={cn("w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans", `focus:${theme.border}/50`)}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
                 </div>
+                <button 
+                  onClick={async () => {
+                    if (!window.confirm('This will recalculate EVERY verified submission and sync user points. Continue?')) return;
+                    setLoading(true);
+                    try {
+                      const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
+                      if (res.ok) {
+                        alert('Points recalculated successfully!');
+                        fetchData();
+                      }
+                    } catch (err) {
+                      alert('Failed to recalculate');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-6 py-3 rounded-xl font-bold text-xs transition-all border border-purple-500/20 flex items-center gap-2"
+                >
+                  <Clock size={14} />
+                  Recalculate All Points
+                </button>
               </div>
               
               <div className="flex flex-wrap gap-3">
