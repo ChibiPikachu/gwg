@@ -39,7 +39,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
 
   const Logo = () => (
     <div className="flex items-center gap-3 group cursor-pointer" onClick={() => window.location.href = '/'}>
-      <div className="w-10 h-10 rounded-full flex items-center justify-center p-1 bg-white/5 border border-white/10 group-hover:border-white/20 transition-all overflow-hidden shrink-0 shadow-lg">
+      <div className="w-10 h-10 rounded-full flex items-center justify-center p-1 dark:bg-white/5 bg-slate-100 border border-black/10 dark:border-white/10 group-hover:border-black/20 dark:group-hover:border-white/20 transition-all overflow-hidden shrink-0 shadow-lg">
         <img 
           src="https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png" 
           alt="Logo" 
@@ -48,7 +48,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
         />
       </div>
       <div className="flex flex-col">
-        <span className="font-display text-sm text-white leading-tight tracking-tighter">Girls Who</span>
+        <span className="font-display text-sm dark:text-white text-slate-800 leading-tight tracking-tighter">Girls Who</span>
         <span className={cn("font-display text-sm leading-tight tracking-tighter", theme.text)}>Game</span>
       </div>
     </div>
@@ -111,7 +111,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
         {user && (
           <button 
             onClick={onMenuClick}
-            className="lg:hidden p-2 text-white/50 hover:text-white transition-colors"
+            className="lg:hidden p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors"
             id="mobile-menu-trigger"
           >
             <Menu size={24} />
@@ -127,30 +127,30 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           <div className="relative">
             <button 
               onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2 text-white/50 hover:text-white transition-colors relative"
+              className="p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors relative"
             >
               <Bell size={20} />
               {unreadCount > 0 && (
-                <span className={cn("absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-[#0a0a0a]", theme.bg)} />
+                <span className={cn("absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-white dark:ring-[#0a0a0a]", theme.bg)} />
               )}
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-4 w-96 bg-[#111111] border border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="p-4 border-b border-white/5 bg-white/5 flex justify-between items-center">
-                  <span className="text-xs uppercase font-bold opacity-40 tracking-widest">Notifications</span>
-                  <button onClick={() => setShowNotifications(false)} className="text-[10px] opacity-40 hover:opacity-100">Close</button>
+              <div className="absolute right-0 mt-4 w-96 dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="p-4 border-b border-black/5 dark:border-white/5 dark:bg-white/5 bg-slate-50 flex justify-between items-center">
+                  <span className="text-xs uppercase font-bold opacity-40 tracking-widest dark:text-white text-slate-500">Notifications</span>
+                  <button onClick={() => setShowNotifications(false)} className="text-[10px] opacity-40 hover:opacity-100 dark:text-white text-slate-500">Close</button>
                 </div>
                 <div className="max-h-[400px] overflow-y-auto">
                   {notifications.length === 0 ? (
-                    <div className="p-8 text-center opacity-30 text-xs italic">No recent updates</div>
+                    <div className="p-8 text-center opacity-30 text-xs italic dark:text-white text-slate-500">No recent updates</div>
                   ) : (
                     notifications.map((n) => (
                       <div 
                         key={n.id} 
                         className={cn(
-                          "p-5 border-b border-white/5 hover:bg-white/5 transition-colors group relative",
-                          !readIds.has(n.id) && "bg-white/[0.02]"
+                          "p-5 border-b border-black/5 dark:border-white/5 dark:hover:bg-white/5 hover:bg-slate-50 transition-colors group relative",
+                          !readIds.has(n.id) && "dark:bg-white/[0.02] bg-blue-50/30"
                         )}
                         onClick={() => {
                           setReadIds(prev => {
@@ -164,33 +164,33 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                           <div className={cn("absolute top-6 left-2 w-1.5 h-1.5 rounded-full", theme.bg)} />
                         )}
                         <div className="flex gap-4">
-                          <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-white/10">
+                          <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-black/5 dark:border-white/10">
                             <img src={n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-2">
                               {n.status === 'verified' ? (
-                                <CheckCircle2 size={14} className="text-emerald-400" />
+                                <CheckCircle2 size={14} className="text-emerald-500" />
                               ) : (
-                                <XCircle size={14} className="text-red-400" />
+                                <XCircle size={14} className="text-red-500" />
                               )}
-                              <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-400" : "text-red-400")}>
+                              <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
                                 {n.status === 'verified' ? "Approved" : "Rejected"}
                               </span>
                             </div>
                             
-                            <p className="text-xs font-bold leading-relaxed mb-1">
+                            <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
                               {n.status === 'verified' ? (
-                                <>Your submission of <span className="text-white underline decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
+                                <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
                               ) : (
-                                <>Your submission of <span className="text-white underline decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
+                                <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
                               )}
                             </p>
 
                             {n.status === 'rejected' && (
-                              <p className="text-[10px] text-red-300 opacity-60 mt-2 p-2 bg-red-500/5 rounded italic border border-red-500/10">
+                              <p className="text-[10px] text-red-500 opacity-60 mt-2 p-2 bg-red-500/5 rounded italic border border-red-500/10 dark:text-red-300">
                                 "Read the notes to know why"
-                                {n.rejection_reason && <span className="block mt-1 font-bold text-red-400 opacity-100">— {n.rejection_reason}</span>}
+                                {n.rejection_reason && <span className="block mt-1 font-bold text-red-600 dark:text-red-400 opacity-100">— {n.rejection_reason}</span>}
                               </p>
                             )}
 
@@ -210,7 +210,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                 {notifications.length > 0 && (
                   <button 
                     onClick={markAllReadAndClose}
-                    className="w-full py-3 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-all border-t border-white/5"
+                    className="w-full py-3 dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-all border-t border-black/5 dark:border-white/5 dark:text-white text-slate-600"
                   >
                     Mark all as read
                   </button>
@@ -222,10 +222,10 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
 
         {user && (
           <div className="flex items-center gap-3 cursor-pointer group" onClick={onProfileClick}>
-            <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">Welcome {user.steamName}!</span>
+            <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block dark:text-white text-slate-600">Welcome {user.steamName}!</span>
             <div className={cn(
               "w-10 h-10 rounded-full border-2 p-0.5 transition-colors",
-              colors ? `${colors.border.replace('/50', '')}/50 group-hover:${colors.border.replace('/50', '')}` : "border-white/20"
+              colors ? `${colors.border.replace('/50', '')}/50 group-hover:${colors.border.replace('/50', '')}` : "dark:border-white/20 border-black/10"
             )}>
               <img 
                 src={user.steamAvatar || user.discordAvatar} 
@@ -240,7 +240,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
         {user && (
           <button 
             onClick={onLogout}
-            className="p-2 text-white/50 hover:text-white transition-colors"
+            className="p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors"
             title="Logout"
           >
             <LogOut size={20} />
