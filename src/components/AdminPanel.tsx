@@ -140,6 +140,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
+  const handleDeleteSubmission = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this submission?')) {
+      return;
+    }
+
+    setUpdating(id);
+    try {
+      const res = await fetch(`/api/admin/submissions/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        setSubmissions(prev => prev.filter(s => s.id !== id));
+      } else {
+        const data = await res.json();
+        alert(`Failed to delete: ${data.error}`);
+      }
+    } catch (err) {
+      alert('Failed to delete submission');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const safeUsers = Array.isArray(users) ? users : [];
   const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -425,6 +449,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"
                         >
                           {sub.status === 'pending' ? 'Review' : 'Update Status'}
+                        </button>
+                        <button 
+                          disabled={updating === sub.id}
+                          onClick={() => handleDeleteSubmission(sub.id)}
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-6 py-2 rounded-lg font-bold text-xs transition-all border border-red-500/20"
+                        >
+                          Delete
                         </button>
                       </div>
                     </div>

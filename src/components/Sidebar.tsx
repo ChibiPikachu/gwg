@@ -83,11 +83,19 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
 
   return (
     <div className="w-72 bg-[#0c0c0c] border-r border-white/5 h-screen sticky top-0 flex flex-col p-6 overflow-y-auto">
-      <div className="flex items-center gap-2 mb-10">
-        <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white font-display text-xl", logoColor)}>
-          GWG
+      <div className="flex items-center gap-3 mb-10 group">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center p-1 bg-white/5 border border-white/10 group-hover:border-white/20 transition-all overflow-hidden shrink-0">
+          <img 
+            src="https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png" 
+            alt="Logo" 
+            className="w-full h-full rounded-full object-cover"
+            referrerPolicy="no-referrer"
+          />
         </div>
-        <span className="font-display text-xl text-white">Girls Who Game</span>
+        <div className="flex flex-col">
+          <span className="font-display text-lg font-black text-white leading-tight uppercase tracking-tighter">Girls Who</span>
+          <span className={cn("font-display text-lg font-black leading-tight uppercase tracking-tighter", theme.text)}>Game</span>
+        </div>
       </div>
 
       {/* Event Widget */}

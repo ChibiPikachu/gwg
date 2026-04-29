@@ -821,6 +821,45 @@ async function createServer() {
     }
   });
 
+  app.delete('/api/admin/submissions/:id', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      // 1. Get the submission to find out who submitted it (for point sync)
+      const { data: sub, error: fetchError } = await supabase.from('submissions').select('user_id').eq('id', id).single();
+      
+      if (fetchError || !sub) {
+        return res.status(404).json({ error: 'Submission not found' });
+      }
+
+      // 2. Delete the submission
+      const { error: deleteError } = await supabase.from('submissions').delete().eq('id', id);
+      if (deleteError) throw deleteError;
+
+      // 3. Sync user points after deletion
+      const newTotal = await syncUserPoints(supabase, sub.user_id);
+
+      res.json({ success: true, newTotal });
+    } catch (err) {
+      console.error('Delete failed:', err);
+      res.status(500).json({ error: 'Failed to delete submission' });
+    }
+  });
+
   let igdbToken: { access_token: string, expires_at: number } | null = null;
 
   async function getIGDBToken() {
