@@ -59,45 +59,45 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   ].sort((a, b) => b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
-    <div className="p-8 max-w-4xl mx-auto flex flex-col gap-12">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-8 md:gap-12">
       <section>
         <h1 className="text-2xl font-bold mb-2">Team Standings</h1>
         <p className="opacity-60 mb-8">Real-time competition progress.</p>
 
-        <div className="grid gap-6">
+        <div className="grid gap-4 md:gap-6">
           {standings.map((s) => (
             <div 
               key={s.team}
               className={cn(
-                "p-6 rounded-2xl border bg-[#111111] flex items-center justify-between shadow-lg transition-all hover:scale-[1.01]",
+                "p-5 md:p-6 rounded-2xl border bg-[#111111] flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg transition-all hover:scale-[1.01]",
                 TEAM_COLORS[s.team as Team].border
               )}
             >
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 flex items-center justify-center bg-black/40 rounded-xl font-bold text-xl border border-white/5">
+              <div className="flex items-center gap-4 md:gap-6 w-full sm:w-auto">
+                <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/40 rounded-xl font-bold text-lg md:text-xl border border-white/5 shrink-0">
                    {s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : s.rank}
                 </div>
-                <div>
-                  <h3 className={cn("text-xl font-bold capitalize", TEAM_COLORS[s.team as Team].primary)}>
+                <div className="min-w-0">
+                  <h3 className={cn("text-lg md:text-xl font-bold capitalize truncate", TEAM_COLORS[s.team as Team].primary)}>
                     Team {s.team}
                   </h3>
-                  <div className="flex items-center gap-2 opacity-50 text-sm mt-1">
+                  <div className="flex items-center gap-2 opacity-50 text-xs mt-1">
                     <Users size={14} />
                     <span>{s.members} members</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-col items-end">
-                <span className="text-3xl font-mono font-bold">{s.points.toLocaleString()}</span>
-                <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1">Total Points</span>
+              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto border-t sm:border-0 border-white/5 pt-4 sm:pt-0">
+                <span className="text-2xl md:text-3xl font-mono font-bold">{s.points.toLocaleString()}</span>
+                <span className="text-[9px] md:text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1">Total Points</span>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12">
         <section>
           <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
             <Trophy className="text-amber-400" size={24} />

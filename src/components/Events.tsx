@@ -84,10 +84,10 @@ export default function EventsPanel() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-12 pb-20">
-      <header className="flex justify-between items-end">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8 md:space-y-12 pb-20">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter transition-all">Events</h1>
+          <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter transition-all">Events</h1>
           <p className="opacity-40 text-sm font-medium">Track your progress and competition timelines</p>
         </div>
         {isAdmin && (
@@ -96,7 +96,7 @@ export default function EventsPanel() {
               setEditingEvent({ title: '', start_date: '', end_date: '', is_active: false });
               setIsEditing(true);
             }}
-            className={cn("px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2", theme.bg, theme.glow, "text-white")}
+            className={cn("w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, theme.glow, "text-white")}
           >
             <Plus size={20} />
             Create Event
@@ -118,7 +118,7 @@ export default function EventsPanel() {
              <div className="relative z-10">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
                  <div className="space-y-4 max-w-2xl">
-                   <h3 className={cn("text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left underline underline-offset-8", theme.text)}>
+                   <h3 className={cn("text-3xl md:text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left underline underline-offset-8", theme.text)}>
                      {currentEvent.title}
                    </h3>
                    <p className="opacity-60 text-lg">

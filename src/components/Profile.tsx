@@ -81,7 +81,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     targetUser.team === 'red' ? 'bg-red-accent' : 'bg-white/10';
 
   return (
-    <div className="p-8 max-w-4xl mx-auto flex flex-col gap-12">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
       <section className="flex flex-col md:flex-row gap-8 items-center md:items-start text-center md:text-left">
         <div className={cn("w-32 h-32 rounded-full border-4 p-1 relative shadow-2xl shrink-0", colors.border)}>
            <img 
@@ -212,7 +212,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
             <div className={cn("absolute inset-0 opacity-5", colors.secondary)} />
             <span className="text-[11px] uppercase font-black opacity-30 tracking-[0.2em] relative z-10">Team</span>
             <div className="flex flex-col items-center relative z-10">
-               <span className={cn("text-6xl font-black block uppercase tracking-tighter leading-none mb-1", colors.primary)}>
+               <span className={cn("text-4xl md:text-6xl font-black block uppercase tracking-tighter leading-none mb-1", colors.primary)}>
                  {targetUser.team || 'None'}
                </span>
                <span className="text-[12px] font-bold opacity-40 uppercase tracking-[0.1em] text-white/50">

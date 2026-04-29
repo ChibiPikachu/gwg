@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu } from 'lucide-react';
 import { UserProfile, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -9,9 +9,10 @@ interface TopBarProps {
   user: UserProfile | null;
   onLogout: () => void;
   onProfileClick: () => void;
+  onMenuClick?: () => void;
 }
 
-export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) {
+export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: TopBarProps) {
   const { theme } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
   const [notifications, setNotifications] = React.useState<any[]>([]);
@@ -105,12 +106,23 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
   }, [user?.steamId]);
 
   return (
-    <div className="h-16 flex items-center justify-between px-8 gap-6 relative">
-      <div className="flex-1">
-        <Logo />
+    <div className="h-16 flex items-center justify-between px-4 md:px-8 gap-4 relative">
+      <div className="flex items-center gap-4">
+        {user && (
+          <button 
+            onClick={onMenuClick}
+            className="lg:hidden p-2 text-white/50 hover:text-white transition-colors"
+            id="mobile-menu-trigger"
+          >
+            <Menu size={24} />
+          </button>
+        )}
+        <div className="flex-1">
+          <Logo />
+        </div>
       </div>
       
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-3 md:gap-6">
         {user && (
           <div className="relative">
             <button 
@@ -210,7 +222,7 @@ export default function TopBar({ user, onLogout, onProfileClick }: TopBarProps) 
 
         {user && (
           <div className="flex items-center gap-3 cursor-pointer group" onClick={onProfileClick}>
-            <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap">Welcome {user.steamName}!</span>
+            <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">Welcome {user.steamName}!</span>
             <div className={cn(
               "w-10 h-10 rounded-full border-2 p-0.5 transition-colors",
               colors ? `${colors.border.replace('/50', '')}/50 group-hover:${colors.border.replace('/50', '')}` : "border-white/20"

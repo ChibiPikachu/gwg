@@ -207,12 +207,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto flex flex-col gap-12">
-      <div className="flex border-b border-white/5">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-8 md:gap-12">
+      <div className="flex flex-col sm:flex-row border-b border-white/5">
         <button 
           onClick={() => setActiveTab('users')}
           className={cn(
-            "px-8 py-4 font-bold text-sm transition-all relative",
+            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative",
             activeTab === 'users' ? theme.text : "text-white/40 hover:text-white"
           )}
         >
@@ -222,13 +222,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         <button 
           onClick={() => setActiveTab('submissions')}
           className={cn(
-            "px-8 py-4 font-bold text-sm transition-all relative flex items-center gap-2",
+            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
             activeTab === 'submissions' ? theme.text : "text-white/40 hover:text-white"
           )}
         >
           Game Submissions
           {submissions.filter(s => s.status === 'pending').length > 0 && (
-            <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center", theme.bg)}>
+            <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0", theme.bg)}>
               {submissions.filter(s => s.status === 'pending').length}
             </span>
           )}
@@ -238,17 +238,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
       {activeTab === 'users' ? (
         <>
-          <section className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-end">
+          <section className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-end">
             <div className="flex-1 w-full flex flex-col gap-6">
-              <div className="flex justify-between items-start">
-                <div>
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div className="w-full sm:max-w-md">
                   <h2 className="text-xl font-bold mb-4">Search & Filters</h2>
-                  <div className="relative group max-w-md">
+                  <div className="relative group">
                     <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
                     <input 
                       type="text"
-                      placeholder="Search by Steam or Discord name..."
-                      className={cn("w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans", `focus:${theme.border}/50`)}
+                      placeholder="Search users..."
+                      className={cn("w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm", `focus:${theme.border}/50`)}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -270,14 +270,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       setLoading(false);
                     }
                   }}
-                  className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-6 py-3 rounded-xl font-bold text-xs transition-all border border-purple-500/20 flex items-center gap-2"
+                  className="w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border border-purple-500/20 flex items-center justify-center gap-2"
                 >
                   <Clock size={14} />
                   Recalculate All Points
                 </button>
               </div>
               
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2 md:gap-3">
                 <button 
                   onClick={() => setFilterTeam('all')}
                   className={cn(

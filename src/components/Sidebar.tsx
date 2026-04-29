@@ -9,9 +9,11 @@ interface SidebarProps {
   isAdmin: boolean;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: SidebarProps) {
+export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, isOpen, onClose }: SidebarProps) {
   const { theme } = useAuth();
   const [currentEvent, setCurrentEvent] = useState<CompetitionEvent | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
@@ -82,21 +84,41 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
   ];
 
   return (
-    <div className="w-72 bg-[#0c0c0c] border-r border-white/5 h-screen sticky top-0 flex flex-col p-6 overflow-y-auto">
-      <div className="flex items-center gap-3 mb-10 group">
-        <div className="w-12 h-12 rounded-full flex items-center justify-center p-1 bg-white/5 border border-white/10 group-hover:border-white/20 transition-all overflow-hidden shrink-0">
-          <img 
-            src="https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png" 
-            alt="Logo" 
-            className="w-full h-full rounded-full object-cover"
-            referrerPolicy="no-referrer"
-          />
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      <div className={cn(
+        "fixed inset-y-0 left-0 z-[110] w-72 bg-[#0c0c0c] border-r border-white/5 h-full flex flex-col p-6 overflow-y-auto transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0 lg:z-auto",
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-3 group">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center p-1 bg-white/5 border border-white/10 group-hover:border-white/20 transition-all overflow-hidden shrink-0">
+              <img 
+                src="https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png" 
+                alt="Logo" 
+                className="w-full h-full rounded-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-display text-lg text-white leading-tight tracking-tighter">Girls Who</span>
+              <span className={cn("font-display text-lg leading-tight tracking-tighter", theme.text)}>Game</span>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="lg:hidden p-2 text-white/50 hover:text-white"
+          >
+            <Settings size={20} className="rotate-45" /> {/* Using Settings as a generic cross for now if X is missing, but Lucide has X */}
+          </button>
         </div>
-        <div className="flex flex-col">
-          <span className="font-display text-lg text-white leading-tight tracking-tighter">Girls Who</span>
-          <span className={cn("font-display text-lg leading-tight tracking-tighter", theme.text)}>Game</span>
-        </div>
-      </div>
 
       {/* Event Widget */}
       <div className="bg-[#151515] rounded-xl border border-white/5 overflow-hidden mb-8">
@@ -179,5 +201,6 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
         )}
       </nav>
     </div>
+    </>
   );
 }

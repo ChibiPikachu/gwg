@@ -183,15 +183,15 @@ export default function MySubmissions() {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex justify-between items-end mb-12">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-12">
         <div>
           <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
           <p className="opacity-60">Ready to add your games?</p>
         </div>
         <button 
           onClick={() => setShowForm(true)}
-          className={cn("text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2", theme.bg, `hover:${theme.bg.replace('bg-', 'bg-')}`, theme.glow)}
+          className={cn("w-full sm:w-auto text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, `hover:${theme.bg.replace('bg-', 'bg-')}`, theme.glow)}
         >
           <Plus size={20} />
           Submit Game
