@@ -52,10 +52,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     : [];
 
   const standings = [
-    { team: 'blue', points: safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },
-    { team: 'purple', points: safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'purple').length, rank: 2 },
-    { team: 'green', points: safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
-    { team: 'red', points: safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + (u.points || 0), 0), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
+    { team: 'blue', points: safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },
+    { team: 'purple', points: safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'purple').length, rank: 2 },
+    { team: 'green', points: safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
+    { team: 'red', points: safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
   ].sort((a, b) => b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
