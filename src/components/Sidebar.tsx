@@ -94,7 +94,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       )}
 
       <div className={cn(
-        "fixed inset-y-0 left-0 z-[110] w-72 dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-full flex flex-col p-6 overflow-y-auto transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0 lg:z-auto shadow-xl dark:shadow-none",
+        "fixed inset-y-0 left-0 z-[110] w-72 dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-screen flex flex-col p-6 overflow-y-auto transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0 lg:z-auto shadow-xl dark:shadow-none",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex items-center justify-between mb-10">

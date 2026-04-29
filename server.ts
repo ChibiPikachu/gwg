@@ -812,12 +812,17 @@ async function createServer() {
       const { data: sub, error: subError } = await supabase.from('submissions').select('*').eq('id', submissionId).single();
       if (subError || !sub) return res.status(404).json({ error: 'Submission not found' });
 
-      // 2. Update submission status
+      // 2. Update submission status and optionally details
       const { error: updateSubError } = await supabase.from('submissions').update({
         status,
         points: status === 'verified' ? points : 0,
         rejection_reason: status === 'rejected' ? rejectionReason : null,
-        verifier_id: steamId
+        verifier_id: steamId,
+        // Optional modifiers
+        hours_during: req.body.hours !== undefined ? req.body.hours : sub.hours_during,
+        achievements_during: req.body.achievements !== undefined ? req.body.achievements : sub.achievements_during,
+        multiplier: req.body.multiplier !== undefined ? req.body.multiplier : sub.multiplier,
+        calculated_score: status === 'verified' ? points : 0
       }).eq('id', submissionId);
 
       if (updateSubError) throw updateSubError;

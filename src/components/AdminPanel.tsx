@@ -26,6 +26,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [rejectionReason, setRejectionReason] = React.useState('');
+  const [editHours, setEditHours] = React.useState('0');
+  const [editAchievements, setEditAchievements] = React.useState('0');
+  const [editMultiplier, setEditMultiplier] = React.useState(1);
 
   const fetchUsers = React.useCallback(async () => {
     try {
@@ -121,7 +124,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           submissionId: id,
           status,
           points: Math.round(parseFloat(pointsAwarded) || 0),
-          rejectionReason: status === 'rejected' ? rejectionReason : ''
+          rejectionReason: status === 'rejected' ? rejectionReason : '',
+          hours: parseFloat(editHours),
+          achievements: parseInt(editAchievements),
+          multiplier: editMultiplier
         })
       });
 
@@ -463,20 +469,27 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           onClick={() => {
                             setReviewingId(sub.id);
                             
-                            // Always recalculate based on current logic to suggest correct points
+                            // Load existing values for editing
                             const hours = Number(sub.hours_during || 0);
-                            let m = 1.0;
+                            const achievements = Number(sub.achievements_during || 0);
+                            setEditHours(String(hours));
+                            setEditAchievements(String(achievements));
+                            
+                            let m = sub.multiplier || 1.0;
                             if (hours >= 25) m = 4.0;
                             else if (hours >= 15) m = 3.0;
                             else if (hours >= 8) m = 2.0;
+                            else if (hours > 0) m = 1.0;
+
+                            setEditMultiplier(m);
                             
-                            const calculated = Math.round(Number(sub.achievements_during || 0) * m);
+                            const calculated = Math.round(achievements * m);
                             setPointsAwarded(String(calculated));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
                           className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"
                         >
-                          {sub.status === 'pending' ? 'Review' : 'Update Status'}
+                          {sub.status === 'pending' ? 'Review & Modify' : 'Modify Submission'}
                         </button>
                         <button 
                           disabled={updating === sub.id}
@@ -493,15 +506,49 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   {reviewingId === sub.id && (
                     <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/60 p-6 flex flex-col gap-6 justify-center animate-in fade-in zoom-in duration-200">
                       <div className="flex justify-between items-center">
-                        <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Approving {sub.user_name}</h4>
+                        <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Modifying {sub.user_name}</h4>
                         <button onClick={() => setReviewingId(null)} className="text-white/40 hover:text-white transition-colors">
                           <Plus className="rotate-45" size={24} />
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40">Points to Award</label>
+                          <label className="text-[10px] uppercase font-bold opacity-40">Earned 🏆</label>
+                          <input 
+                            type="number"
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
+                            value={editAchievements}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setEditAchievements(val);
+                              setPointsAwarded(String(Math.round((parseInt(val) || 0) * editMultiplier)));
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase font-bold opacity-40">Play Time (h)</label>
+                          <input 
+                            type="number"
+                            step="0.1"
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
+                            value={editHours}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setEditHours(e.target.value);
+                              
+                              let m = 1.0;
+                              if (val >= 25) m = 4.0;
+                              else if (val >= 15) m = 3.0;
+                              else if (val >= 8) m = 2.0;
+                              
+                              setEditMultiplier(m);
+                              setPointsAwarded(String(Math.round((parseInt(editAchievements) || 0) * m)));
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase font-bold opacity-40">Final Points</label>
                           <input 
                             type="number"
                             className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
@@ -512,7 +559,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <div className="space-y-2">
                           <label className="text-[10px] uppercase font-bold opacity-40 text-red-400">Rejection Reason</label>
                           <input 
-                            placeholder="Only if rejecting..."
+                            placeholder="Reason for rejection"
                             className="w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-red-500"
                             value={rejectionReason}
                             onChange={(e) => setRejectionReason(e.target.value)}
