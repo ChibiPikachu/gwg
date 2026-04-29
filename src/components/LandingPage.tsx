@@ -5,11 +5,11 @@ export default function LandingPage() {
   const { loginWithSteam } = useAuth();
 
   return (
-    <div className="p-8 max-w-4xl mx-auto flex flex-col gap-16 py-12">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12 md:gap-16 py-8 md:py-12 dark:text-white text-slate-900">
       <section className="flex flex-col gap-8">
-        <div className="flex flex-col gap-4">
-          <h1 className="text-xl opacity-60">Welcome! We are</h1>
-          <h2 className="text-6xl font-display text-white">Girls Who Game</h2>
+        <div className="flex flex-col gap-4 text-center sm:text-left">
+          <h1 className="text-lg md:text-xl opacity-60">Welcome! We are</h1>
+          <h2 className="text-4xl md:text-6xl font-display dark:text-white text-slate-900 leading-tight">Girls Who Game</h2>
         </div>
         
         <div className="flex flex-col gap-6 text-base opacity-80 leading-relaxed max-w-3xl">
@@ -30,32 +30,32 @@ export default function LandingPage() {
 
         <div className="flex flex-col gap-8 mt-4">
           <div className="flex flex-col gap-2">
-            <h3 className="text-xl font-bold">SteamGifts Thread:</h3>
+            <h3 className="text-xl font-bold dark:text-white text-slate-800">SteamGifts Thread:</h3>
             <a href="#" className="text-blue-400 hover:underline">Read here.</a>
           </div>
 
           <div className="flex flex-col gap-2">
-            <h3 className="text-xl font-bold">Steam Group:</h3>
+            <h3 className="text-xl font-bold dark:text-white text-slate-800">Steam Group:</h3>
             <p className="text-sm">
               <a href="#" className="text-blue-400 hover:underline">Apply here</a>. If you're rejected, please add Chibi on Steam and explain your situation.
             </p>
           </div>
 
           <div className="flex flex-col gap-2">
-            <h3 className="text-xl font-bold">Discord Server:</h3>
+            <h3 className="text-xl font-bold dark:text-white text-slate-800">Discord Server:</h3>
             <p className="text-sm opacity-80">Once you've been approved on Steam, you can find it in the discussions!</p>
           </div>
         </div>
       </section>
 
-      <div className="h-px bg-white/5 w-full" />
+      <div className="h-px dark:bg-white/5 bg-slate-200 w-full" />
 
       <section className="flex flex-col gap-8">
-        <h2 className="text-3xl font-bold uppercase tracking-tight">FAQ</h2>
+        <h2 className="text-3xl font-bold uppercase tracking-tight dark:text-white text-slate-900">FAQ</h2>
         
         <div className="flex flex-col gap-8">
           <div className="flex flex-col gap-4">
-             <h3 className="text-xl font-bold">What are events about?</h3>
+             <h3 className="text-xl font-bold dark:text-white text-slate-800">What are events about?</h3>
              <div className="flex flex-col gap-4 opacity-80 text-sm leading-relaxed">
                 <p>The basic gist is that you send in screenshots and achievements of the games you've played for points. Screenshots you can share in the Discord server, and achievements you send in through here.</p>
                 <p>We have four categories for game length, which will multiply your points based on how many hours you've played. They are:</p>

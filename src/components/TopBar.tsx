@@ -13,7 +13,7 @@ interface TopBarProps {
 }
 
 export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: TopBarProps) {
-  const { theme } = useAuth();
+  const { theme, isDarkMode, toggleDarkMode } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [readIds, setReadIds] = React.useState<Set<string>>(() => {
@@ -247,11 +247,23 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           </button>
         )}
 
-        <div className="flex items-center bg-black/30 rounded-full p-1 border border-white/5">
-          <button className="w-8 h-8 flex items-center justify-center text-white/30">
+        <div className="flex items-center bg-black/30 dark:bg-black/30 bg-slate-100 rounded-full p-1 border border-white/5 dark:border-white/5 border-slate-200">
+          <button 
+            onClick={() => isDarkMode && toggleDarkMode()}
+            className={cn(
+              "w-8 h-8 flex items-center justify-center rounded-full transition-all",
+              !isDarkMode ? "bg-white text-amber-500 shadow-sm" : "text-slate-400 hover:text-slate-200"
+            )}
+          >
             <Sun size={14} />
           </button>
-          <button className={cn("w-8 h-8 flex items-center justify-center bg-[#1a1a1a] rounded-full", theme.text)}>
+          <button 
+            onClick={() => !isDarkMode && toggleDarkMode()}
+            className={cn(
+              "w-8 h-8 flex items-center justify-center rounded-full transition-all",
+              isDarkMode ? "bg-[#1a1a1a] text-blue-400 shadow-sm" : "text-slate-400 hover:text-slate-600"
+            )}
+          >
             <Moon size={14} />
           </button>
         </div>

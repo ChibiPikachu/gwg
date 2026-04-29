@@ -69,28 +69,28 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             <div 
               key={s.team}
               className={cn(
-                "p-5 md:p-6 rounded-2xl border bg-[#111111] flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg transition-all hover:scale-[1.01]",
+                "p-5 md:p-6 rounded-2xl border dark:bg-[#111111] bg-white flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg transition-all hover:scale-[1.01]",
                 TEAM_COLORS[s.team as Team].border
               )}
             >
               <div className="flex items-center gap-4 md:gap-6 w-full sm:w-auto">
-                <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/40 rounded-xl font-bold text-lg md:text-xl border border-white/5 shrink-0">
+                <div className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center dark:bg-black/40 bg-slate-50 rounded-xl font-bold text-lg md:text-xl border border-black/5 dark:border-white/5 shrink-0">
                    {s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : s.rank}
                 </div>
                 <div className="min-w-0">
                   <h3 className={cn("text-lg md:text-xl font-bold capitalize truncate", TEAM_COLORS[s.team as Team].primary)}>
                     Team {s.team}
                   </h3>
-                  <div className="flex items-center gap-2 opacity-50 text-xs mt-1">
+                  <div className="flex items-center gap-2 opacity-50 dark:text-white text-slate-500 text-xs mt-1">
                     <Users size={14} />
                     <span>{s.members} members</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto border-t sm:border-0 border-white/5 pt-4 sm:pt-0">
-                <span className="text-2xl md:text-3xl font-mono font-bold">{s.points.toLocaleString()}</span>
-                <span className="text-[9px] md:text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1">Total Points</span>
+              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto border-t sm:border-0 dark:border-white/5 border-black/5 pt-4 sm:pt-0">
+                <span className="text-2xl md:text-3xl font-mono font-bold dark:text-white text-slate-800">{s.points.toLocaleString()}</span>
+                <span className="text-[9px] md:text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1 dark:text-white text-slate-500">Total Points</span>
               </div>
             </div>
           ))}
@@ -108,8 +108,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               <div className="p-8 text-center opacity-30">Loading...</div>
             ) : (
               safeUsers.map((u, i) => (
-                <div key={u.steamid} className="flex items-center gap-4 p-4 bg-[#111111] rounded-2xl border border-white/5 group hover:border-white/10 transition-all">
-                  <div className="text-sm font-bold opacity-30 w-4">{i + 1}</div>
+                <div key={u.steamid} className="flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 group hover:border-black/10 dark:hover:border-white/10 transition-all shadow-sm dark:shadow-none">
+                  <div className="text-sm font-bold opacity-30 w-4 dark:text-white text-slate-500">{i + 1}</div>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -159,7 +159,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           </h2>
           <div className="space-y-4">
              {[1, 2, 3, 4, 5].map(i => (
-               <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/5 opacity-60">
+               <div key={i} className="flex items-center gap-4 p-4 dark:bg-white/5 bg-slate-50 rounded-xl border border-black/5 dark:border-white/5 opacity-60">
                   <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", theme.secondary)}>
                     <Trophy size={14} className={theme.text} />
                   </div>

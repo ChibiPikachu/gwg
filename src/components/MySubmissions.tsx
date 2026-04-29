@@ -200,14 +200,14 @@ export default function MySubmissions() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#151515] border border-white/10 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div className="dark:bg-[#151515] bg-white border dark:border-white/10 border-slate-200 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-8">
               <div className="flex justify-between items-start mb-8">
                 <div>
-                  <h2 className="text-2xl font-bold">New Submission</h2>
-                  <p className="text-sm opacity-50 mt-1">Submit your progress for the current event</p>
+                  <h2 className="text-2xl font-bold dark:text-white text-slate-900">New Submission</h2>
+                  <p className="text-sm opacity-50 mt-1 dark:text-white text-slate-500">Submit your progress for the current event</p>
                 </div>
-                <button onClick={handleResetForm} className="text-white/20 hover:text-white transition-colors">
+                <button onClick={handleResetForm} className="text-slate-400 dark:text-white/20 hover:text-slate-900 dark:hover:text-white transition-colors">
                   <Plus className="rotate-45" size={24} />
                 </button>
               </div>
@@ -215,16 +215,16 @@ export default function MySubmissions() {
               {!selectedGame ? (
                 <div className="space-y-6">
                   <div className="space-y-4">
-                    <label className="text-xs uppercase font-bold opacity-30 tracking-widest">Search Game</label>
+                    <label className="text-xs uppercase font-bold opacity-30 tracking-widest dark:text-white text-slate-500">Search Game</label>
                     <div className="relative group">
                       <Search className={cn(
                         "absolute left-4 top-1/2 -translate-y-1/2 transition-colors",
-                        searching ? theme.text : `text-white/20 group-focus-within:${theme.text}`
+                        searching ? theme.text : `text-slate-300 dark:text-white/20 group-focus-within:${theme.text}`
                       )} size={18} />
                       <input 
                         type="text"
                         placeholder="Start typing a game title..."
-                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm", `focus:${theme.border}/50`)}
+                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                         value={gameSearch}
                         onChange={(e) => setGameSearch(e.target.value)}
                       />
@@ -368,20 +368,20 @@ export default function MySubmissions() {
       <h2 className="text-xl font-bold mb-8">My submissions</h2>
       
       {loading ? (
-        <div className="text-center py-24 opacity-30 animate-pulse">Loading submissions...</div>
+        <div className="text-center py-24 opacity-30 animate-pulse dark:text-white text-slate-400">Loading submissions...</div>
       ) : submissions.length === 0 ? (
-        <div className="text-center py-24 border-2 border-dashed border-white/5 rounded-3xl">
-          <History size={48} className="mx-auto text-white/10 mb-4" />
-          <p className="opacity-40 font-medium">No submissions yet.</p>
-          <p className="text-sm opacity-20 mt-1">Your game progress will appear here once submitted.</p>
+        <div className="text-center py-24 border-2 border-dashed dark:border-white/5 border-slate-200 rounded-3xl">
+          <History size={48} className="mx-auto text-slate-300 dark:text-white/10 mb-4" />
+          <p className="opacity-40 font-medium dark:text-white text-slate-800">No submissions yet.</p>
+          <p className="text-sm opacity-20 mt-1 dark:text-white text-slate-600">Your game progress will appear here once submitted.</p>
         </div>
       ) : (
         <div className="mb-12">
-          <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6">Current event</h3>
+          <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Current event</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {submissions.map((sub) => (
               <div key={sub.id} className="flex flex-col gap-3 group">
-                <div className="aspect-[3/4] bg-[#111111] rounded-xl overflow-hidden border border-white/5 relative shadow-xl">
+                <div className="aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border dark:border-white/5 border-slate-200 relative shadow-xl">
                    <img 
                      src={sub.game_image} 
                      alt={sub.game_title} 

@@ -242,13 +242,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             <div className="flex-1 w-full flex flex-col gap-6">
               <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                 <div className="w-full sm:max-w-md">
-                  <h2 className="text-xl font-bold mb-4">Search & Filters</h2>
+                  <h2 className="text-xl font-bold mb-4 dark:text-white text-slate-900">Search & Filters</h2>
                   <div className="relative group">
-                    <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
+                    <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 dark:text-white/20 text-slate-300 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
                     <input 
                       type="text"
                       placeholder="Search users..."
-                      className={cn("w-full bg-[#111111] border border-white/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm", `focus:${theme.border}/50`)}
+                      className={cn("w-full dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -304,9 +304,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               </div>
             </div>
             
-            <div className="bg-white/5 px-6 py-3 rounded-2xl border border-white/5">
+            <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
               <span className={cn("text-2xl font-mono font-bold", theme.text)}>{filteredUsers.length}</span>
-              <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest">Users Found</span>
+              <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">Users Found</span>
             </div>
           </section>
 
@@ -314,13 +314,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             <h2 className="text-xl font-bold mb-8">User Directory</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
               {filteredUsers.map((u) => (
-                <div key={u.steamid} className="flex flex-col gap-5 p-6 bg-[#111111] rounded-2xl border border-white/5 relative group">
+                <div key={u.steamid} className="flex flex-col gap-5 p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm dark:shadow-none">
                   <div className="flex items-center gap-4">
                       <button 
                         onClick={() => onViewProfile?.(u.steamid)}
                         className={cn(
                           "w-14 h-14 rounded-full border-2 p-1 transition-transform hover:scale-110 active:scale-95",
-                          u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "border-white/10"
+                          u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "dark:border-white/10 border-black/10"
                         )}
                       >
                         <img src={u.steam_avatar} alt="" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
@@ -330,14 +330,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             <span className="text-sm font-bold text-blue-400 truncate">{u.steam_name}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] uppercase tracking-widest font-bold opacity-30">Points:</span>
+                            <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 dark:text-white text-slate-500">Points:</span>
                             <span className={cn("text-xs font-mono font-bold", theme.text)}>{u.points || 0}</span>
                         </div>
                       </div>
                   </div>
 
                   <div className="flex flex-col gap-3">
-                      <span className="text-[10px] uppercase font-bold opacity-30">Assign to team:</span>
+                      <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Assign to team:</span>
                       <div className="flex gap-2">
                         {teamsFilter.map(team => (
                             <button 
@@ -348,7 +348,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                   "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
                                   (u.team === team || (!u.team && team === 'none')) 
                                     ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
-                                    : "bg-white/5 text-white/40 hover:bg-white/10",
+                                    : "dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:bg-white/10 hover:bg-slate-100",
                                   updating === u.steamid && "opacity-50 cursor-not-allowed"
                               )}
                             >
@@ -390,12 +390,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
           <div className="grid grid-cols-1 gap-6">
             {submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).length === 0 ? (
-              <div className="p-12 border-2 border-dashed border-white/5 rounded-3xl text-center">
-                <p className="opacity-30">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
+              <div className="p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
+                <p className="opacity-30 dark:text-white text-slate-500">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
               submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).map(sub => (
-                <div key={sub.id} className="p-6 bg-[#111111] rounded-2xl border border-white/5 flex flex-col md:flex-row gap-8 items-center relative overflow-hidden">
+                <div key={sub.id} className="p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md dark:shadow-none">
                   <div className="w-full md:w-48 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group">
                     <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                     <a 
@@ -421,28 +421,28 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         </div>
                         <h4 className="text-xl font-black mt-2 uppercase">{sub.game_title}</h4>
                       </div>
-                      <div className="bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6">
+                      <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
                         <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold opacity-30">Earned</span>
-                          <span className="text-lg font-bold">🏆 {sub.achievements_during}</span>
-                          <span className="text-[8px] opacity-20 uppercase font-bold">Prev: {sub.achievements_before || 0}</span>
+                          <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Earned</span>
+                          <span className="text-lg font-bold dark:text-white text-slate-800">🏆 {sub.achievements_during}</span>
+                          <span className="text-[8px] opacity-20 uppercase font-bold dark:text-white text-slate-400">Prev: {sub.achievements_before || 0}</span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold opacity-30">Time</span>
-                          <span className="text-lg font-bold">🕒 {sub.hours_during}h</span>
-                          <span className="text-[8px] opacity-20 uppercase font-bold">Prev: {sub.hours_before || 0}h</span>
+                          <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Time</span>
+                          <span className="text-lg font-bold dark:text-white text-slate-800">🕒 {sub.hours_during}h</span>
+                          <span className="text-[8px] opacity-20 uppercase font-bold dark:text-white text-slate-400">Prev: {sub.hours_before || 0}h</span>
                         </div>
-                        <div className="w-[1px] h-8 bg-white/10" />
+                        <div className="w-[1px] h-8 bg-black/5 dark:bg-white/10" />
                         <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold opacity-30">Preview</span>
+                          <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Preview</span>
                           <span className={cn("text-lg font-black", theme.text)}>{sub.calculated_score || 0} pts</span>
-                          <span className="text-[8px] opacity-40 uppercase font-bold">{sub.achievements_during || 0} 🏆 × {sub.multiplier?.toFixed(1) || '1.0'}x</span>
+                          <span className="text-[8px] opacity-40 uppercase font-bold dark:text-white text-slate-400">{sub.achievements_during || 0} 🏆 × {sub.multiplier?.toFixed(1) || '1.0'}x</span>
                         </div>
                       </div>
                     </div>
 
                     {sub.notes && (
-                      <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-sm italic opacity-70">
+                      <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">
                         "{sub.notes}"
                       </div>
                     )}

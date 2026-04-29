@@ -6,6 +6,8 @@ interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   theme: ThemeHelper;
+  isDarkMode: boolean;
+  toggleDarkMode: () => void;
   loginWithSteam: () => void;
   syncWithDiscord: () => void;
   logout: () => void;
@@ -17,6 +19,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('theme');
+      if (saved) return saved === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
   const updateProfile = async (data: { displayName: string; status: string }) => {
     try {
@@ -205,7 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.team]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, theme, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, theme, isDarkMode, toggleDarkMode, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -112,7 +112,7 @@ export default function EventsPanel() {
         </div>
         
         {currentEvent ? (
-          <div className={cn("bg-[#111111] rounded-3xl border-2 p-8 relative overflow-hidden group shadow-2xl", theme.border)}>
+          <div className={cn("dark:bg-[#111111] bg-white rounded-3xl border-2 p-8 relative overflow-hidden group shadow-2xl", theme.border)}>
              <div className={cn("absolute top-0 right-0 w-64 h-64 opacity-5 blur-[100px] pointer-events-none rounded-full translate-x-1/2 -translate-y-1/2", theme.bg)} />
              
              <div className="relative z-10">
@@ -121,13 +121,13 @@ export default function EventsPanel() {
                    <h3 className={cn("text-3xl md:text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left underline underline-offset-8", theme.text)}>
                      {currentEvent.title}
                    </h3>
-                   <p className="opacity-60 text-lg">
+                   <p className="opacity-60 text-lg dark:text-white text-slate-600">
                      {(currentEvent as any).description || "Join the seasonal competition and earn points for your team!"}
                    </p>
                    <div className="flex flex-wrap gap-4 pt-4">
-                     <div className="bg-white/5 px-4 py-2 rounded-xl flex items-center gap-2 border border-white/5">
+                     <div className="dark:bg-white/5 bg-slate-50 px-4 py-2 rounded-xl flex items-center gap-2 border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
                         <Calendar size={16} className={theme.text} />
-                        <span className="text-sm font-bold opacity-80">
+                        <span className="text-sm font-bold opacity-80 dark:text-white text-slate-700">
                           {new Date((currentEvent as any).start_date).toLocaleDateString()} - {new Date((currentEvent as any).end_date).toLocaleDateString()}
                         </span>
                      </div>
@@ -135,11 +135,11 @@ export default function EventsPanel() {
                  </div>
 
                  <div className="flex flex-col gap-4 min-w-[240px] w-full md:w-auto">
-                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex flex-col items-center">
+                    <div className="dark:bg-black/40 bg-slate-50 backdrop-blur-xl border dark:border-white/10 border-black/5 rounded-2xl p-6 flex flex-col items-center shadow-sm dark:shadow-none">
                        <Clock size={32} className={cn("mb-3", theme.text)} />
                        <div className="text-center font-mono space-y-1">
-                          <div className="text-3xl font-black">ACTIVE</div>
-                          <div className="text-[10px] uppercase opacity-40 font-bold">Progression is open</div>
+                          <div className="text-3xl font-black dark:text-white text-slate-800">ACTIVE</div>
+                          <div className="text-[10px] uppercase opacity-40 font-bold dark:text-white text-slate-500 text-center">Progression is open</div>
                        </div>
                     </div>
                     {isAdmin && (
@@ -174,9 +174,9 @@ export default function EventsPanel() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {pastEvents.map((event) => (
-            <div key={event.id} className="bg-white/5 rounded-2xl border border-white/5 p-6 hover:bg-white/10 transition-all group relative">
+            <div key={event.id} className="dark:bg-white/5 bg-white rounded-2xl border dark:border-white/5 border-black/5 p-6 hover:dark:bg-white/10 hover:bg-slate-50 transition-all group relative shadow-md dark:shadow-none">
               <div className="flex justify-between items-start mb-4">
-                <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border border-white/10", event.is_active ? theme.text : "opacity-40")}>
+                <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border dark:border-white/10 border-black/10", event.is_active ? theme.text : "opacity-40 dark:text-white text-slate-500")}>
                   {event.is_active ? "Current" : "Closed"}
                 </div>
                 {isAdmin && (
@@ -185,15 +185,15 @@ export default function EventsPanel() {
                       setEditingEvent(event);
                       setIsEditing(true);
                     }}
-                    className="p-2 hover:bg-white/10 rounded-lg text-white/30 hover:text-white transition-all"
+                    className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg dark:text-white/30 text-slate-400 hover:dark:text-white hover:text-slate-900 transition-all"
                   >
                     <Edit2 size={14} />
                   </button>
                 )}
               </div>
               <h4 className={cn("font-bold text-xl mb-2 transition-colors uppercase tracking-tight", theme.text)}>{event.title}</h4>
-              <p className="text-xs opacity-50 mb-6 line-clamp-2">{event.description}</p>
-              <div className="pt-4 border-t border-white/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30">
+              <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{event.description}</p>
+              <div className="pt-4 border-t dark:border-white/5 border-black/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30 dark:text-white text-slate-500">
                 <span>Timeline</span>
                 <span>{new Date(event.end_date).toLocaleDateString()}</span>
               </div>

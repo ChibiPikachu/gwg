@@ -135,7 +135,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                  {targetUser.discordName && (
                    <div className="flex items-center gap-2 opacity-60 text-sm bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
                       <img 
-                        src="https://assets-global.website-files.com/6257adef93867e3c84519eb1/6257adef93867e61ba51a226_847541504914fd33bfe3b2b0d99dc030.svg" 
+                        src="https://cdn.simpleicons.org/discord/5865F2" 
                         className="w-3.5 h-3.5" 
                         alt="" 
                       />
@@ -221,10 +221,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
             </div>
          </div>
 
-         <div className="p-8 bg-[#111111] rounded-2xl border border-white/5 flex flex-col items-center gap-4 text-center shadow-xl">
+          <div className="p-8 bg-[#111111] dark:bg-[#111111] bg-white rounded-2xl border border-white/5 dark:border-white/5 border-slate-200 flex flex-col items-center gap-4 text-center shadow-xl">
             <div className="bg-[#5865F2]/10 p-3 rounded-2xl border border-[#5865F2]/20 shadow-inner group-hover:bg-[#5865F2]/20 transition-all">
                <img 
-                 src="https://assets-global.website-files.com/6257adef93867e3c84519eb1/6257adef93867e61ba51a226_847541504914fd33bfe3b2b0d99dc030.svg" 
+                 src="https://cdn.simpleicons.org/discord/5865F2" 
                  className="w-8 h-8 drop-shadow-lg" 
                  alt="Discord" 
                />
@@ -247,8 +247,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#5865F2]/20 flex items-center justify-center gap-3 group active:scale-95"
                   >
                     <img 
-                      src="https://assets-global.website-files.com/6257adef93867e3c84519eb1/6257adef93867e61ba51a226_847541504914fd33bfe3b2b0d99dc030.svg" 
-                      className="w-5 h-5 invert brightness-0 group-hover:scale-110 transition-transform" 
+                      src="https://cdn.simpleicons.org/discord/white" 
+                      className="w-5 h-5 group-hover:scale-110 transition-transform" 
                       alt="" 
                     />
                     <span className="tracking-tight">Sync Discord</span>
