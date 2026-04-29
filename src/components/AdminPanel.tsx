@@ -219,7 +219,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           onClick={() => setActiveTab('users')}
           className={cn(
             "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative",
-            activeTab === 'users' ? theme.text : "text-white/40 hover:text-white"
+            activeTab === 'users' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
           )}
         >
           User Management
@@ -229,7 +229,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           onClick={() => setActiveTab('submissions')}
           className={cn(
             "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
-            activeTab === 'submissions' ? theme.text : "text-white/40 hover:text-white"
+            activeTab === 'submissions' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
           )}
         >
           Game Submissions
@@ -276,7 +276,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       setLoading(false);
                     }
                   }}
-                  className="w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border border-purple-500/20 flex items-center justify-center gap-2"
+                  className={cn(
+                    "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2",
+                    "dark:bg-purple-500/10 bg-purple-50 hover:dark:bg-purple-500/20 hover:bg-purple-100",
+                    "dark:text-purple-400 text-purple-700 dark:border-purple-500/20 border-purple-200",
+                    loading && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   <Clock size={14} />
                   Recalculate All Points
@@ -287,8 +292,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <button 
                   onClick={() => setFilterTeam('all')}
                   className={cn(
-                      "px-6 py-2 rounded-lg text-sm font-bold transition-all bg-white/5 border border-transparent hover:bg-white/10",
-                      filterTeam === 'all' && "bg-white/10 ring-1 ring-white/20 border-white/10"
+                      "px-6 py-2 rounded-lg text-sm font-bold transition-all dark:bg-white/5 bg-black/5 dark:border-transparent border-black/5 hover:dark:bg-white/10 hover:bg-black/10 dark:text-white text-slate-700",
+                      filterTeam === 'all' && "dark:bg-white/10 bg-black/10 ring-1 dark:ring-white/20 ring-black/10 border-white/10"
                   )}
                 >
                   All
@@ -301,7 +306,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         "px-6 py-2 rounded-lg text-sm font-bold transition-all",
                         filterTeam === team 
                           ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
-                          : "bg-white/5 opacity-50 border border-transparent hover:opacity-100"
+                          : "dark:bg-white/5 bg-black/5 dark:text-white text-slate-700 opacity-50 border border-transparent hover:opacity-100"
                     )}
                   >
                     {team.charAt(0).toUpperCase() + team.slice(1)}
@@ -373,14 +378,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <h2 className="text-xl font-bold">Review Submissions</h2>
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex bg-[#111111] rounded-xl border border-white/5 p-1">
+              <div className="flex dark:bg-[#111111] bg-slate-100 rounded-xl border dark:border-white/5 border-black/5 p-1">
                 {(['all', 'pending', 'verified', 'rejected'] as const).map((status) => (
                   <button
                     key={status}
                     onClick={() => setSubStatusFilter(status)}
                     className={cn(
                       "px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
-                      subStatusFilter === status ? theme.bg + " text-white" : "text-white/40 hover:text-white"
+                      subStatusFilter === status ? theme.bg + " text-white" : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
                     )}
                   >
                     {status}
@@ -480,14 +485,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             else if (hours >= 15) m = 3.0;
                             else if (hours >= 8) m = 2.0;
                             else if (hours > 0) m = 1.0;
-
+ 
                             setEditMultiplier(m);
                             
                             const calculated = Math.round(achievements * m);
                             setPointsAwarded(String(calculated));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
-                          className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"
+                          className="dark:bg-white/5 bg-black/5 dark:hover:bg-white/10 hover:bg-black/10 dark:text-white text-slate-800 px-6 py-2 rounded-lg font-bold text-xs transition-all border dark:border-white/5 border-black/10"
                         >
                           {sub.status === 'pending' ? 'Review & Modify' : 'Modify Submission'}
                         </button>
@@ -507,17 +512,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/60 p-6 flex flex-col gap-6 justify-center animate-in fade-in zoom-in duration-200">
                       <div className="flex justify-between items-center">
                         <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Modifying {sub.user_name}</h4>
-                        <button onClick={() => setReviewingId(null)} className="text-white/40 hover:text-white transition-colors">
+                        <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors">
                           <Plus className="rotate-45" size={24} />
                         </button>
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40">Earned 🏆</label>
+                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆</label>
                           <input 
                             type="number"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}
                             value={editAchievements}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -527,11 +532,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40">Play Time (h)</label>
+                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Play Time (h)</label>
                           <input 
                             type="number"
                             step="0.1"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}
                             value={editHours}
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
@@ -548,19 +553,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40">Final Points</label>
+                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Final Points</label>
                           <input 
                             type="number"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none", `focus:${theme.border}`)}
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}
                             value={pointsAwarded}
                             onChange={(e) => setPointsAwarded(e.target.value)}
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40 text-red-400">Rejection Reason</label>
+                          <label className="text-[10px] uppercase font-bold opacity-40 text-red-100">Rejection Reason</label>
                           <input 
                             placeholder="Reason for rejection"
-                            className="w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-red-500"
+                            className="w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-red-500 dark:text-white text-white"
                             value={rejectionReason}
                             onChange={(e) => setRejectionReason(e.target.value)}
                           />

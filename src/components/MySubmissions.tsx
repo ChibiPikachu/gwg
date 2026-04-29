@@ -186,12 +186,12 @@ export default function MySubmissions() {
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-12">
         <div>
-          <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
-          <p className="opacity-60">Ready to add your games?</p>
+          <h1 className="text-2xl font-bold mb-2 dark:text-white text-slate-900">Welcome!</h1>
+          <p className="opacity-60 dark:text-white text-slate-600">Ready to add your games?</p>
         </div>
         <button 
           onClick={() => setShowForm(true)}
-          className={cn("w-full sm:w-auto text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, `hover:${theme.bg.replace('bg-', 'bg-')}`, theme.glow)}
+          className={cn("w-full sm:w-auto text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, theme.glow)}
         >
           <Plus size={20} />
           Submit Game
@@ -238,19 +238,19 @@ export default function MySubmissions() {
 
                   {searchResults.length > 0 && (
                     <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-                      <div className="text-[10px] uppercase font-bold opacity-30 px-1">Suggestions</div>
+                      <div className="text-[10px] uppercase font-bold opacity-30 px-1 dark:text-white text-slate-500">Suggestions</div>
                       <div className="max-h-[350px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                         {searchResults.map((game) => (
                           <button
                             key={game.id}
                             onClick={() => setSelectedGame(game)}
                             type="button"
-                            className="w-full flex gap-4 p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all text-left items-center group"
+                            className="w-full flex gap-4 p-3 dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 border dark:border-white/5 border-slate-200 rounded-xl transition-all text-left items-center group"
                           >
                             <img src={game.image} className="w-16 h-20 object-cover rounded-lg shadow-lg group-hover:scale-105 transition-transform" alt="" referrerPolicy="no-referrer" />
                             <div className="flex-1 min-w-0">
-                              <h4 className={cn("font-bold text-sm transition-colors truncate", `group-hover:${theme.text}`)}>{game.title}</h4>
-                              {game.summary && <p className="text-[10px] opacity-40 line-clamp-2 mt-1">{game.summary}</p>}
+                              <h4 className={cn("font-bold text-sm transition-colors truncate dark:text-white text-slate-800", `group-hover:${theme.text}`)}>{game.title}</h4>
+                              {game.summary && <p className="text-[10px] opacity-40 line-clamp-2 mt-1 dark:text-white text-slate-500">{game.summary}</p>}
                             </div>
                           </button>
                         ))}
@@ -266,10 +266,10 @@ export default function MySubmissions() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="flex gap-4 p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <div className="flex gap-4 p-4 dark:bg-white/5 bg-slate-50 rounded-2xl border dark:border-white/5 border-slate-200">
                     <img src={selectedGame.image} className="w-24 h-14 object-cover rounded-lg" alt="" />
                     <div>
-                      <h3 className="font-bold">{selectedGame.title}</h3>
+                      <h3 className="font-bold dark:text-white text-slate-900">{selectedGame.title}</h3>
                       <button 
                         type="button"
                         onClick={() => setSelectedGame(null)}
@@ -282,70 +282,70 @@ export default function MySubmissions() {
 
                   <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40">Achievements Earned</label>
+                      <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Achievements Earned</label>
                       <input 
                         required
                         type="number"
                         placeholder="0"
-                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
+                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                         value={formData.achievementsEarned}
                         onChange={(e) => setFormData({...formData, achievementsEarned: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40">Hours Played (Event)</label>
+                      <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Hours Played (Event)</label>
                       <input 
                         required
                         type="number"
                         step="0.1"
                         placeholder="0.0"
-                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
+                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                         value={formData.hoursPlayed}
                         onChange={(e) => setFormData({...formData, hoursPlayed: e.target.value})}
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter">Achievements (Before)</label>
+                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter dark:text-white text-slate-500">Achievements (Before)</label>
                       <input 
                         required
                         type="number"
                         placeholder="0"
-                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
+                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                         value={formData.achievementsBefore}
                         onChange={(e) => setFormData({...formData, achievementsBefore: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter">Hours (Before)</label>
+                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter dark:text-white text-slate-500">Hours (Before)</label>
                       <input 
                         required
                         type="number"
                         step="0.1"
                         placeholder="0.0"
-                        className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-3 focus:outline-none", `focus:${theme.border}/50`)}
+                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                         value={formData.hoursBefore}
                         onChange={(e) => setFormData({...formData, hoursBefore: e.target.value})}
                       />
                     </div>
                   </div>
 
-                  <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between">
+                  <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-2xl border dark:border-white/5 border-slate-200 flex items-center justify-between">
                     <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-bold opacity-30">Multiplier</span>
+                      <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Multiplier</span>
                       <span className="text-xl font-black text-blue-400">{multiplierPreview.toFixed(1)}x</span>
                     </div>
                     <div className="flex flex-col items-end">
-                      <span className="text-[10px] uppercase font-bold opacity-30">Score Preview</span>
-                      <span className={cn("text-2xl font-black", theme.text)}>{scorePreview} <span className="text-xs opacity-50">PTS</span></span>
+                      <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Score Preview</span>
+                      <span className={cn("text-2xl font-black", theme.text)}>{scorePreview} <span className="text-xs opacity-50 font-sans">PTS</span></span>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-40">Proof Link / Notes (Optional)</label>
+                    <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Proof Link / Notes (Optional)</label>
                     <textarea 
                       placeholder="Any links to screenshots or other notes..."
-                      className={cn("w-full bg-white/5 border border-white/5 rounded-xl p-4 focus:outline-none min-h-[100px] resize-none", `focus:${theme.border}/50`)}
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-4 focus:outline-none min-h-[100px] resize-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                       value={formData.notes}
                       onChange={(e) => setFormData({...formData, notes: e.target.value})}
                     />

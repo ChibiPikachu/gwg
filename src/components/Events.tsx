@@ -148,7 +148,7 @@ export default function EventsPanel() {
                           setEditingEvent(currentEvent);
                           setIsEditing(true);
                         }}
-                        className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                        className="w-full py-3 dark:bg-white/5 bg-black/5 hover:dark:bg-white/10 hover:bg-black/10 border dark:border-white/10 border-black/10 rounded-xl font-bold dark:text-white text-slate-800 text-xs transition-all flex items-center justify-center gap-2"
                       >
                         <Edit2 size={14} />
                         Modify Event
@@ -205,27 +205,27 @@ export default function EventsPanel() {
       {/* Management Modal */}
       {isEditing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-[#111111] w-full max-w-lg rounded-3xl border border-white/10 p-8 shadow-2xl space-y-8 animate-in zoom-in-95 duration-200">
+          <div className="dark:bg-[#111111] bg-white w-full max-w-lg rounded-3xl border dark:border-white/10 border-slate-200 p-8 shadow-2xl space-y-8 animate-in zoom-in-95 duration-200">
             <header className="flex justify-between items-center">
-              <h3 className="text-2xl font-black uppercase">{editingEvent?.id ? 'Edit Event' : 'Create Event'}</h3>
-              <button onClick={() => setIsEditing(false)} className="opacity-40 hover:opacity-100 transition-all text-2xl">×</button>
+              <h3 className="text-2xl font-black uppercase dark:text-white text-slate-900">{editingEvent?.id ? 'Edit Event' : 'Create Event'}</h3>
+              <button onClick={() => setIsEditing(false)} className="opacity-40 hover:opacity-100 transition-all text-2xl dark:text-white text-slate-900">×</button>
             </header>
 
             <form onSubmit={handleSaveEvent} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] uppercase font-bold opacity-40">Event Title</label>
+                <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Event Title</label>
                 <input 
                   required
-                  className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all", theme.border_focus)}
+                  className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
                   value={editingEvent?.title}
                   onChange={e => setEditingEvent({ ...editingEvent!, title: e.target.value })}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] uppercase font-bold opacity-40">Description</label>
+                <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Description</label>
                 <textarea 
-                  className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all min-h-[100px] resize-none", theme.border_focus)}
+                  className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all min-h-[100px] resize-none dark:text-white text-slate-900", theme.border_focus)}
                   value={editingEvent?.description || ''}
                   onChange={e => setEditingEvent({ ...editingEvent!, description: e.target.value })}
                 />
@@ -233,37 +233,37 @@ export default function EventsPanel() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] uppercase font-bold opacity-40">Start Date</label>
+                  <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Start Date</label>
                   <input 
                     type="date"
                     required
-                    className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all", theme.border_focus)}
+                    className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
                     value={editingEvent?.start_date?.split('T')[0] || ''}
                     onChange={e => setEditingEvent({ ...editingEvent!, start_date: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] uppercase font-bold opacity-40">End Date</label>
+                  <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">End Date</label>
                   <input 
                     type="date"
                     required
-                    className={cn("w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:outline-none transition-all", theme.border_focus)}
+                    className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
                     value={editingEvent?.end_date?.split('T')[0] || ''}
                     onChange={e => setEditingEvent({ ...editingEvent!, end_date: e.target.value })}
                   />
                 </div>
               </div>
 
-              <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-all">
+              <label className="flex items-center gap-3 dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-4 cursor-pointer hover:dark:bg-white/10 hover:bg-slate-100 transition-all">
                 <input 
                   type="checkbox"
-                  className={cn("w-5 h-5 rounded border-white/10 bg-black/40", theme.text_accent)}
+                  className={cn("w-5 h-5 rounded dark:border-white/10 border-slate-300 dark:bg-black/40 bg-white", theme.text_accent)}
                   checked={!!editingEvent?.is_active}
                   onChange={e => setEditingEvent({ ...editingEvent!, is_active: e.target.checked })}
                 />
                 <div className="flex flex-col">
-                  <span className="font-bold text-sm uppercase tracking-tight">Active Event</span>
-                  <span className="text-[10px] opacity-40">Marks this as the primary event for submissions</span>
+                  <span className="font-bold text-sm uppercase tracking-tight dark:text-white text-slate-900">Active Event</span>
+                  <span className="text-[10px] opacity-40 dark:text-white text-slate-500">Marks this as the primary event for submissions</span>
                 </div>
               </label>
 
