@@ -93,8 +93,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab }: 
           />
         </div>
         <div className="flex flex-col">
-          <span className="font-display text-lg font-black text-white leading-tight uppercase tracking-tighter">Girls Who</span>
-          <span className={cn("font-display text-lg font-black leading-tight uppercase tracking-tighter", theme.text)}>Game</span>
+          <span className="font-display text-lg text-white leading-tight tracking-tighter">Girls Who</span>
+          <span className={cn("font-display text-lg leading-tight tracking-tighter", theme.text)}>Game</span>
         </div>
       </div>
 
