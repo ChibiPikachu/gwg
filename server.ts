@@ -490,11 +490,10 @@ async function createServer() {
 
       console.log(`[Sync] Found ${verifiedSubmissions?.length || 0} verified submissions for ${steamid}`);
       
-      const totalPoints = (verifiedSubmissions || []).reduce((acc: number, sub: any) => {
-        const p = Number(sub.points || 0);
-        console.log(`[Sync] Sub ${sub.id} points: ${sub.points} (casted: ${p})`);
-        return acc + p;
-      }, 0);
+      let totalPoints = 0;
+      for (const sub of (verifiedSubmissions || [])) {
+        totalPoints += Math.round(Number(sub.points || 0));
+      }
       
       console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
 
@@ -687,6 +686,15 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      // Server-side point calculation
+      let serverMultiplier = 1.0;
+      const numHours = parseFloat(hours) || 0;
+      if (numHours >= 25) serverMultiplier = 4.0;
+      else if (numHours >= 15) serverMultiplier = 3.0;
+      else if (numHours >= 8) serverMultiplier = 2.0;
+
+      const serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+
       // Find active event
       const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
       if (eventError) console.error('Error fetching active event:', eventError);
@@ -718,8 +726,11 @@ async function createServer() {
         hours_during: hours || 0,
         achievements_before: achievementsBefore || 0,
         hours_before: hoursBefore || 0,
-        multiplier: multiplier || 1.0,
-        calculated_score: calculatedScore || 0,
+        multiplier: serverMultiplier,
+        calculated_score: serverPoints,
+        points: serverPoints, // Set points directly now for pending too, or wait until verified? 
+        // Actually points in profile sync only counts verified. 
+        // But the submission record should have the calculated points pre-saved.
         notes: notes || '',
         status: 'pending',
         event_id: activeEvent?.id || null,
@@ -884,19 +895,24 @@ async function createServer() {
       console.log(`[Admin] Recalculating points for ${subs.length} submissions...`);
 
       for (const sub of subs) {
-        // Redetermine multiplier based on corrected logic
+        // Redetermine multiplier based on CORRECTED math (1x, 2x, 3x, 4x)
         let multiplier = 1.0;
         const hours = Number(sub.hours_during || 0);
-        if (hours > 100) multiplier = 1.5;
-        else if (hours > 50) multiplier = 1.25;
-        else if (hours > 20) multiplier = 1.1;
+        if (hours >= 25) multiplier = 4.0;
+        else if (hours >= 15) multiplier = 3.0;
+        else if (hours >= 8) multiplier = 2.0;
+        else multiplier = 1.0;
 
         const correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier);
         
-        if (Number(sub.points) !== correctPoints) {
-           console.log(`[Admin] Fixing sub ${sub.id}: ${sub.points} -> ${correctPoints}`);
-           await supabase.from('submissions').update({ points: correctPoints }).eq('id', sub.id);
-        }
+        console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, achievements=${sub.achievements_during}, hours=${sub.hours_during} -> multiplier=${multiplier}, points=${correctPoints}`);
+
+        // Update the submission with corrected fields
+        await supabase.from('submissions').update({ 
+          points: correctPoints,
+          multiplier: multiplier,
+          calculated_score: correctPoints 
+        }).eq('id', sub.id);
       }
 
       // 2. Fetch all users who have verified submissions to sync their profile points

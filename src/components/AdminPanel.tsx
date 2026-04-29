@@ -120,7 +120,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         body: JSON.stringify({
           submissionId: id,
           status,
-          points: parseInt(pointsAwarded) || 0,
+          points: Math.round(parseFloat(pointsAwarded) || 0),
           rejectionReason: status === 'rejected' ? rejectionReason : ''
         })
       });
@@ -436,7 +436,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <div className="flex flex-col">
                           <span className="text-[10px] uppercase font-bold opacity-30">Preview</span>
                           <span className={cn("text-lg font-black", theme.text)}>{sub.calculated_score || 0} pts</span>
-                          <span className="text-[8px] opacity-40 uppercase font-bold">{sub.multiplier?.toFixed(1) || '1.0'}x Mult</span>
+                          <span className="text-[8px] opacity-40 uppercase font-bold">{sub.achievements_during || 0} 🏆 × {sub.multiplier?.toFixed(1) || '1.0'}x</span>
                         </div>
                       </div>
                     </div>
@@ -462,11 +462,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <button 
                           onClick={() => {
                             setReviewingId(sub.id);
-                            if (sub.status === 'verified') {
-                              setPointsAwarded(String(sub.points || 0));
-                            } else {
-                              setPointsAwarded(String(sub.calculated_score || 0));
-                            }
+                            
+                            // Always recalculate based on current logic to suggest correct points
+                            const hours = Number(sub.hours_during || 0);
+                            let m = 1.0;
+                            if (hours >= 25) m = 4.0;
+                            else if (hours >= 15) m = 3.0;
+                            else if (hours >= 8) m = 2.0;
+                            
+                            const calculated = Math.round(Number(sub.achievements_during || 0) * m);
+                            setPointsAwarded(String(calculated));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
                           className="bg-white/5 hover:bg-white/10 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all border border-white/5"

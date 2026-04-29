@@ -25,13 +25,11 @@ export default function MySubmissions() {
 
   const multiplierPreview = React.useMemo(() => {
     const hours = parseFloat(formData.hoursPlayed) || 0;
-    // Fix: Users reported 10x points. Ensuring base is 1.0.
-    // We can still have small bonuses for high play time (e.g. 1.1x, 1.2x)
-    // but for now, 1.0 is the target for 1:1 achievement points.
-    if (hours <= 20) return 1.0;
-    if (hours <= 50) return 1.1;
-    if (hours <= 100) return 1.25;
-    return 1.5;
+    // New Math: Short (1x), Medium (2x), Long (3x), Very Long (4x)
+    if (hours < 8) return 1.0;
+    if (hours < 15) return 2.0;
+    if (hours < 25) return 3.0;
+    return 4.0;
   }, [formData.hoursPlayed]);
 
   const scorePreview = React.useMemo(() => {
