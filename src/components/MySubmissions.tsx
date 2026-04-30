@@ -449,7 +449,7 @@ export default function MySubmissions() {
                       </div>
                       
                       <div className="flex flex-col gap-2 w-full max-w-[120px]">
-                        {sub.status === 'pending' && (
+                        {(sub.status === 'pending' || sub.status === 'rejected') && (
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();

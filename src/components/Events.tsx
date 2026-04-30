@@ -172,34 +172,40 @@ export default function EventsPanel() {
           <h2 className="text-xs uppercase font-bold tracking-[0.2em] opacity-30">Archive</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {pastEvents.map((event) => (
-            <div key={event.id} className="dark:bg-white/5 bg-white rounded-2xl border dark:border-white/5 border-black/5 p-6 hover:dark:bg-white/10 hover:bg-slate-50 transition-all group relative shadow-md dark:shadow-none">
-              <div className="flex justify-between items-start mb-4">
-                <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border dark:border-white/10 border-black/10", event.is_active ? theme.text : "opacity-40 dark:text-white text-slate-500")}>
-                  {event.is_active ? "Current" : "Closed"}
+        {pastEvents.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pastEvents.map((event) => (
+              <div key={event.id} className="dark:bg-white/5 bg-white rounded-2xl border dark:border-white/5 border-black/5 p-6 hover:dark:bg-white/10 hover:bg-slate-50 transition-all group relative shadow-md dark:shadow-none">
+                <div className="flex justify-between items-start mb-4">
+                  <div className={cn("px-2 py-1 rounded text-[8px] uppercase font-bold tracking-widest border dark:border-white/10 border-black/10", event.is_active ? theme.text : "opacity-40 dark:text-white text-slate-500")}>
+                    {event.is_active ? "Current" : "Closed"}
+                  </div>
+                  {isAdmin && (
+                    <button 
+                      onClick={() => {
+                        setEditingEvent(event);
+                        setIsEditing(true);
+                      }}
+                      className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg dark:text-white/30 text-slate-400 hover:dark:text-white hover:text-slate-900 transition-all"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  )}
                 </div>
-                {isAdmin && (
-                  <button 
-                    onClick={() => {
-                      setEditingEvent(event);
-                      setIsEditing(true);
-                    }}
-                    className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg dark:text-white/30 text-slate-400 hover:dark:text-white hover:text-slate-900 transition-all"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                )}
+                <h4 className={cn("font-bold text-xl mb-2 transition-colors uppercase tracking-tight", theme.text)}>{event.title}</h4>
+                <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{event.description}</p>
+                <div className="pt-4 border-t dark:border-white/5 border-black/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30 dark:text-white text-slate-500">
+                  <span>Timeline</span>
+                  <span>{new Date(event.end_date).toLocaleDateString()}</span>
+                </div>
               </div>
-              <h4 className={cn("font-bold text-xl mb-2 transition-colors uppercase tracking-tight", theme.text)}>{event.title}</h4>
-              <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{event.description}</p>
-              <div className="pt-4 border-t dark:border-white/5 border-black/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30 dark:text-white text-slate-500">
-                <span>Timeline</span>
-                <span>{new Date(event.end_date).toLocaleDateString()}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 dark:bg-white/5 bg-slate-50 rounded-2xl border border-dashed dark:border-white/5 border-black/5">
+            <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here...</p>
+          </div>
+        )}
       </section>
 
       {/* Management Modal */}
