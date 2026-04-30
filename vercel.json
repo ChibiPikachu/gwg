@@ -1,17 +1,9 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
-    },
-    {
-      "src": "server.ts",
-      "use": "@vercel/node"
-    }
-  ],
   "functions": {
+    "api/**/*.ts": {
+      "includeFiles": "hltb_bridge.py"
+    },
     "server.ts": {
       "includeFiles": "hltb_bridge.py"
     }
@@ -22,9 +14,7 @@
       "dest": "server.ts"
     },
     {
-      "src": "/(.*)",
-      "dest": "/$1",
-      "check": true
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
