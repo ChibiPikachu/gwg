@@ -14,6 +14,7 @@ export default function MySubmissions() {
   const [searching, setSearching] = React.useState(false);
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [selectedGame, setSelectedGame] = React.useState<any | null>(null);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
   const [formData, setFormData] = React.useState({
     achievementsEarned: '',
     hoursPlayed: '',
@@ -132,8 +133,11 @@ export default function MySubmissions() {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/submissions', {
-        method: 'POST',
+      const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';
+      const method = editingId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: selectedGame.id,
@@ -152,6 +156,7 @@ export default function MySubmissions() {
       if (res.ok) {
         setShowForm(false);
         setSelectedGame(null);
+        setEditingId(null);
         setFormData({ 
           achievementsEarned: '', 
           hoursPlayed: '', 
@@ -175,9 +180,53 @@ export default function MySubmissions() {
     }
   };
 
+  const handleEdit = (sub: any) => {
+    setEditingId(sub.id);
+    setSelectedGame({
+      id: sub.game_id,
+      title: sub.game_name,
+      image: sub.game_image
+    });
+    setFormData({
+      achievementsEarned: String(sub.achievements_during),
+      hoursPlayed: String(sub.hours_during),
+      achievementsBefore: String(sub.achievements_before),
+      hoursBefore: String(sub.hours_before),
+      notes: sub.notes || ''
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this submission?')) return;
+
+    try {
+      const res = await fetch(`/api/submissions/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setSubmissions(prev => prev.filter(s => s.id !== id));
+      } else {
+        const data = await res.json();
+        alert(`Delete failed: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete submission');
+    }
+  };
+
   const handleResetForm = () => {
     setShowForm(false);
     setSelectedGame(null);
+    setEditingId(null);
+    setFormData({ 
+      achievementsEarned: '', 
+      hoursPlayed: '', 
+      achievementsBefore: '0', 
+      hoursBefore: '0', 
+      notes: '' 
+    });
     setSearchResults([]);
     setGameSearch('');
   };
@@ -391,15 +440,39 @@ export default function MySubmissions() {
                    
                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-4">
                       <div className="flex flex-col items-center gap-1">
-                         <div className="flex items-center gap-2 text-s font-bold">
+                         <div className="flex items-center gap-2 text-xs font-bold text-white">
                             🏆 {sub.achievements_during}
                          </div>
-                         <div className="flex items-center gap-2 text-s font-bold">
+                         <div className="flex items-center gap-2 text-xs font-bold text-white">
                             🕒 {sub.hours_during}h
                          </div>
                       </div>
-                      <div className="text-[10px] bg-white/10 px-2 py-1 rounded-full text-center">
-                        Submitted on {new Date(sub.created_at).toLocaleDateString()}
+                      
+                      <div className="flex flex-col gap-2 w-full max-w-[120px]">
+                        {sub.status === 'pending' && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit(sub);
+                            }}
+                            className="w-full bg-white/20 hover:bg-white/30 text-white rounded-lg py-2 font-bold text-[10px] uppercase transition-all"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(sub.id);
+                          }}
+                          className="w-full bg-red-500/20 hover:bg-red-500/40 text-red-500 hover:text-white rounded-lg py-2 font-bold text-[10px] uppercase transition-all border border-red-500/20"
+                        >
+                          Delete
+                        </button>
+                      </div>
+
+                      <div className="text-[10px] opacity-60 font-bold text-white">
+                        {new Date(sub.created_at).toLocaleDateString()}
                       </div>
                    </div>
                 </div>

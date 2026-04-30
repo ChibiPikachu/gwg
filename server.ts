@@ -760,6 +760,118 @@ async function createServer() {
     }
   });
 
+  app.put('/api/submissions/:id', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const { 
+      achievements, 
+      hours, 
+      achievementsBefore,
+      hoursBefore,
+      notes 
+    } = req.body;
+
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      // 1. Verify ownership and status
+      const { data: sub, error: fetchError } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', steamId)
+        .single();
+
+      if (fetchError || !sub) {
+        return res.status(404).json({ error: 'Submission not found or unauthorized' });
+      }
+
+      if (sub.status !== 'pending') {
+        return res.status(400).json({ error: 'Cannot edit a submission that has already been reviewed' });
+      }
+
+      // 2. Recalculate preview points
+      let serverMultiplier = 1.0;
+      const numHours = parseFloat(hours) || 0;
+      if (numHours >= 25) serverMultiplier = 4.0;
+      else if (numHours >= 15) serverMultiplier = 3.0;
+      else if (numHours >= 8) serverMultiplier = 2.0;
+
+      const serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+
+      const { data, error } = await supabase
+        .from('submissions')
+        .update({
+          achievements_during: achievements || 0,
+          hours_during: hours || 0,
+          achievements_before: achievementsBefore || 0,
+          hours_before: hoursBefore || 0,
+          multiplier: serverMultiplier,
+          calculated_score: serverPoints,
+          points: serverPoints,
+          notes: notes || '',
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      console.error('Failed to update submission:', err);
+      res.status(500).json({ error: 'Failed to update submission' });
+    }
+  });
+
+  app.delete('/api/submissions/:id', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      // Verify ownership
+      const { data: sub, error: fetchError } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', steamId)
+        .single();
+
+      if (fetchError || !sub) {
+        return res.status(404).json({ error: 'Submission not found or unauthorized' });
+      }
+
+      const { error } = await supabase
+        .from('submissions')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', steamId);
+
+      if (error) throw error;
+      
+      // Sync points in case it was a verified submission (unlikely for user delete but safe)
+      await syncUserPoints(supabase, steamId);
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Failed to delete submission:', err);
+      res.status(500).json({ error: 'Failed to delete submission' });
+    }
+  });
+
   app.get('/api/admin/submissions', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });

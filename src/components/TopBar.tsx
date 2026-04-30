@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu } from 'lucide-react';
+import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu, X } from 'lucide-react';
 import { UserProfile, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -21,6 +21,22 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
   const [showNotifications, setShowNotifications] = React.useState(false);
+  const notificationRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+
+    if (showNotifications) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showNotifications]);
 
   React.useEffect(() => {
     localStorage.setItem('read_notification_ids', JSON.stringify(Array.from(readIds)));
@@ -136,10 +152,12 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-4 w-96 dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              <div ref={notificationRef} className="absolute right-0 mt-4 w-96 dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="p-4 border-b border-black/5 dark:border-white/5 dark:bg-white/5 bg-slate-50 flex justify-between items-center">
                   <span className="text-xs uppercase font-bold opacity-40 tracking-widest dark:text-white text-slate-500">Notifications</span>
-                  <button onClick={() => setShowNotifications(false)} className="text-[10px] opacity-40 hover:opacity-100 dark:text-white text-slate-500">Close</button>
+                  <button onClick={() => setShowNotifications(false)} className="opacity-40 hover:opacity-100 dark:text-white text-slate-800 transition-colors">
+                    <X size={16} />
+                  </button>
                 </div>
                 <div className="max-h-[400px] overflow-y-auto">
                   {notifications.length === 0 ? (
