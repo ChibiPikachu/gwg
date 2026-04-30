@@ -110,6 +110,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
+  const handleKickUser = async (steamId: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to KICK ${name}? This will PERMANENTLY delete their profile and all submissions. This action cannot be undone.`)) {
+      return;
+    }
+
+    setUpdating(steamId);
+    try {
+      const res = await fetch(`/api/admin/users/${steamId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        setUsers(prev => prev.filter(u => u.steamid !== steamId));
+      } else {
+        const data = await res.json();
+        alert(`Failed to kick: ${data.error}`);
+      }
+    } catch (err) {
+      alert('Failed to kick user');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const handleVerify = async (id: string, status: 'verified' | 'rejected') => {
     if (status === 'rejected' && !rejectionReason.trim()) {
       alert('Please provide a rejection reason');
@@ -348,7 +372,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   </div>
 
                   <div className="flex flex-col gap-3">
-                      <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Assign to team:</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Assign to team:</span>
+                        <button 
+                          disabled={updating === u.steamid}
+                          onClick={() => handleKickUser(u.steamid, u.steam_name)}
+                          className="text-[10px] uppercase font-bold text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
+                        >
+                          Kick Member
+                        </button>
+                      </div>
                       <div className="flex gap-2">
                         {teamsFilter.map(team => (
                             <button 

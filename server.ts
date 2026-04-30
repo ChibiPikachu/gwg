@@ -935,6 +935,54 @@ async function createServer() {
     }
   });
 
+  app.delete('/api/admin/users/:steamId', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { steamId } = req.params;
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const adminSteamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', adminSteamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      // Prevent self-deletion via this admin endpoint for safety
+      if (adminSteamId === steamId) {
+        return res.status(400).json({ error: 'Cannot delete your own admin account' });
+      }
+
+      console.log(`[Admin] Deleting user data for: ${steamId}`);
+
+      // 1. Delete user submissions
+      const { error: deleteSubsError } = await supabase
+        .from('submissions')
+        .delete()
+        .eq('user_id', steamId);
+      
+      if (deleteSubsError) console.warn('Warning: Failed to delete some submissions during kick:', deleteSubsError);
+
+      // 2. Delete the user profile
+      const { error: deleteProfileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('steamid', steamId);
+
+      if (deleteProfileError) throw deleteProfileError;
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Kick member failed:', err);
+      res.status(500).json({ error: 'Failed to kick member' });
+    }
+  });
+
   let igdbToken: { access_token: string, expires_at: number } | null = null;
 
   async function getIGDBToken() {
