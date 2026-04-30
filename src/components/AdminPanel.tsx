@@ -583,18 +583,18 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                       <div className="flex items-center gap-3">
                          <a 
-                           href={sub.hltb_id ? `https://howlongtobeat.com/game/${sub.hltb_id}` : undefined}
+                           href={(hltbData[sub.game_name]?.id || sub.hltb_id) ? `https://howlongtobeat.com/game/${hltbData[sub.game_name]?.id || sub.hltb_id}` : undefined}
                            target="_blank"
                            rel="noopener noreferrer"
                            className={cn(
                              "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
-                             sub.hltb_id 
+                             (hltbData[sub.game_name]?.id || sub.hltb_id) 
                                ? "bg-[#252525] border-[#353535] hover:bg-[#303030]" 
                                : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
                            )}
-                           title={sub.hltb_id ? "View on HowLongToBeat" : "HLTB ID not found"}
+                           title={(hltbData[sub.game_name]?.id || sub.hltb_id) ? `View on HowLongToBeat (ID: ${hltbData[sub.game_name]?.id || sub.hltb_id})` : "HLTB ID not found"}
                          >
-                           <img src="https://www.google.com/s2/favicons?domain=howlongtobeat.com&sz=32" className={cn("w-5 h-5", !sub.hltb_id && "grayscale opacity-30")} alt="" />
+                           <img src="https://www.google.com/s2/favicons?domain=howlongtobeat.com&sz=32" className={cn("w-5 h-5", !(hltbData[sub.game_name]?.id || sub.hltb_id) && "grayscale opacity-30")} alt="" />
                          </a>
                          <a 
                            href={sub.steam_appid ? `https://store.steampowered.com/app/${sub.steam_appid}` : undefined}
@@ -649,6 +649,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to 100% complete">
                                 <span className="text-[10px] font-bold text-purple-400">Comp:</span>
                                 <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].completionist}h</span>
+                             </div>
+                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 opacity-40 group/hltb" title="HowLongToBeat ID">
+                                <span className="text-[10px] font-bold text-white/50">ID:</span>
+                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].id}</span>
                              </div>
 
                              {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
@@ -737,50 +741,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="col-span-full mb-2">
-                           {hltbData[sub.game_name] ? (
-                             <div className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
-                                <div className="flex flex-col">
-                                  <span className="text-[10px] uppercase font-black opacity-40 dark:text-white text-slate-300 mb-1">HLTB Full Statistics</span>
-                                  <div className="flex flex-wrap items-center gap-4">
-                                     <div className="flex flex-col">
-                                       <span className="text-[10px] text-amber-400 font-bold uppercase">Main</span>
-                                       <span className="text-sm font-mono font-bold">{hltbData[sub.game_name].main}h</span>
-                                     </div>
-                                     <div className="flex flex-col">
-                                       <span className="text-[10px] text-blue-400 font-bold uppercase">Main+Extra</span>
-                                       <span className="text-sm font-mono font-bold">{hltbData[sub.game_name].mainExtra}h</span>
-                                     </div>
-                                     <div className="flex flex-col">
-                                       <span className="text-[10px] text-purple-400 font-bold uppercase">Comp</span>
-                                       <span className="text-sm font-mono font-bold">{hltbData[sub.game_name].completionist}h</span>
-                                     </div>
-                                  </div>
-                                </div>
-
-                                {hltbData[sub.game_name].main > 0 && (
-                                  <div className="md:ml-auto">
-                                    {sub.hours_during > hltbData[sub.game_name].main * 5 ? (
-                                      <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/40">
-                                         <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse" />
-                                         <span className="text-xs font-black text-red-500 uppercase tracking-tighter">Review Required (Suspicious Time)</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                                         <div className="w-2 h-2 rounded-full bg-emerald-500/60" />
-                                         <span className="text-xs font-bold text-emerald-500 uppercase tracking-tighter">Time within normal range</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                             </div>
-                           ) : (
-                             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-xs font-bold opacity-30 uppercase tracking-widest italic animate-pulse">
-                               HLTB Data Not Found or Loading...
-                             </div>
-                           )}
-                        </div>
-
                         <div className="space-y-2">
                           <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆</label>
                           <input 
