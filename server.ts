@@ -6,6 +6,7 @@ import { Strategy as SteamStrategy } from 'passport-steam';
 import { Strategy as DiscordStrategy } from 'passport-discord';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getHLTBData } from './src/lib/hltbService.js';
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
@@ -868,6 +869,8 @@ async function createServer() {
     }
   });
 
+const hltbCache = new Map<string, any>();
+
   app.get('/api/admin/submissions', async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -881,13 +884,29 @@ async function createServer() {
       if (error) throw error;
       
       // Flatten the profile team into the submission object for easier use
-      const flattenedData = data.map(sub => ({
+      const baseData = data.map(sub => ({
         ...sub,
         userTeam: (sub as any).profiles?.team || 'none'
       }));
 
-      res.json(flattenedData);
+      // Enrich with HLTB data
+      const enrichedData = await Promise.all(baseData.map(async (sub) => {
+        const cacheKey = sub.game_name || sub.game_title;
+        if (!hltbCache.has(cacheKey)) {
+          console.log(`[HLTB] Fetching for ${cacheKey}...`);
+          const hltb = await getHLTBData(cacheKey);
+          hltbCache.set(cacheKey, hltb);
+        }
+        return {
+          ...sub,
+          hltb_data: hltbCache.get(cacheKey)
+        };
+      }));
+
+      res.json(enrichedData);
     } catch (err) {
+      console.error('HLTB enrichment failed:', err);
+      // Return base data if enrichment fails to prevent total failure
       res.status(500).json({ error: 'Failed to fetch' });
     }
   });

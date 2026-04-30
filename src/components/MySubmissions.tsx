@@ -449,7 +449,7 @@ export default function MySubmissions() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Proof Link / Notes (Optional)</label>
                     <textarea 
-                      placeholder="Any links to screenshots or other notes..."
+                      placeholder="Any links to screenshots or other notes such as 'played on Epic' or 'will update later'..."
                       className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-4 focus:outline-none min-h-[100px] resize-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                       value={formData.notes}
                       onChange={(e) => setFormData({...formData, notes: e.target.value})}
