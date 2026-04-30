@@ -572,6 +572,7 @@ export default function MySubmissions() {
                    </div>
                 </div>
                 <div className="flex flex-col gap-2 px-1">
+                  <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize">{sub.game_name}</h4>
                   <div className="flex items-center gap-2">
                     {sub.status === 'verified' ? (
                       <>

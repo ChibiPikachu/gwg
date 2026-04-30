@@ -41,7 +41,20 @@ async function createServer() {
   const isCloud = process.env.NODE_ENV === 'production' || 
                   process.env.VERCEL === '1' || 
                   (process.env.APP_URL && process.env.APP_URL.includes('https')) ||
-                  !!process.env.K_SERVICE; // Cloud Run detection
+                  !!process.env.K_SERVICE;
+
+  console.log('[Server] Starting initialization. Cloud Mode:', isCloud);
+
+  // Health check for Vercel
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      isCloud, 
+      hasSupabase: !!process.env.SUPABASE_URL,
+      hasSteam: !!process.env.STEAM_API_KEY,
+      timestamp: new Date().toISOString()
+    });
+  });
 
   // Custom Supabase Session Store
   class SupabaseStore extends session.Store {
@@ -51,12 +64,7 @@ async function createServer() {
       this.supabase = getSupabase();
       console.log('SupabaseStore initialized. Client available:', !!this.supabase);
       if (this.supabase) {
-        // Quick check for table access
-        this.supabase.from('sessions').select('*', { count: 'exact', head: true }).limit(1)
-          .then(({ error }: any) => {
-            if (error) console.error('[SessionStore] Initial table check failed:', error.message);
-            else console.log('[SessionStore] Initial table check successful.');
-          });
+        console.log('[SessionStore] Initialized.');
       }
     }
 
@@ -131,15 +139,15 @@ async function createServer() {
 
   app.use(session({
     secret: process.env.SESSION_SECRET || 'gwg-tracker-secret',
-    resave: true, // Set to true for debugging store updates
+    resave: false,
     saveUninitialized: false,
     name: 'gwg.sid',
     proxy: true,
     store: new SupabaseStore(),
     cookie: {
-      secure: true, // Forces secure for cookies in modern browsers/iframes
-      sameSite: 'none', // Critical for cross-origin/iframe contexts
-      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+      secure: isCloud, 
+      sameSite: 'none', 
+      maxAge: 1000 * 60 * 60 * 24 * 30, 
       httpOnly: true,
     }
   }));
@@ -158,26 +166,24 @@ async function createServer() {
   passport.serializeUser((user: any, done) => done(null, user));
   passport.deserializeUser((user: any, done) => done(null, user));
 
-  // Derive base URL for auth redirects
-  const appBaseUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}`)).replace(/\/$/, '');
-
   const getAppBaseUrl = (req: any) => {
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
-    const protocol = req.get('x-forwarded-proto') || req.protocol;
-    const host = req.get('x-forwarded-host') || req.get('host');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.get('host');
     let url = `${protocol}://${host}`;
-    // Force HTTPS for known cloud domains or if proto is https
     if (url.includes('.run.app') || url.includes('.ais.') || url.includes('.vercel.app') || protocol === 'https') {
       url = url.replace('http://', 'https://');
     }
     return url.replace(/\/$/, '');
   };
 
+  const initialAppUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')).replace(/\/$/, '');
+
   // Auth Strategies
   const steamApiKey = process.env.STEAM_API_KEY;
   passport.use(new SteamStrategy({
-    returnURL: `${appBaseUrl}/auth/steam/return`,
-    realm: appBaseUrl,
+    returnURL: `${initialAppUrl}/auth/steam/return`,
+    realm: initialAppUrl,
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
     profile.identifier = identifier;
@@ -215,7 +221,6 @@ async function createServer() {
     if (strategy) {
       strategy._returnURL = `${appUrl}/auth/steam/return`;
       strategy._realm = appUrl;
-      console.log('[Auth] Steam login start. ReturnURL:', strategy._returnURL, 'Realm:', strategy._realm);
     }
     passport.authenticate('steam')(req, res, next);
   });
@@ -1375,18 +1380,33 @@ async function createServer() {
   return { app, PORT };
 }
 
-// Start the server
-const { app, PORT } = await createServer();
+// Initialize the server setup promise
+let serverApp: any = null;
+const serverSetupPromise = createServer();
 
-if (process.env.VERCEL) {
-  // Export for Vercel
-  // No need for a custom handler here if we use the export below
-} else {
-  // For local and container environments
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://0.0.0.0:${PORT}`);
+// For non-Vercel environments (like local and container/Cloud Run environments)
+if (!process.env.VERCEL) {
+  serverSetupPromise.then(({ app, PORT }) => {
+    serverApp = app;
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running at http://0.0.0.0:${PORT}`);
+    });
+  }).catch(err => {
+    console.error('Failed to start local server:', err);
   });
 }
 
-export default app;
+// Export a handler for Vercel
+export default async (req: any, res: any) => {
+  try {
+    if (!serverApp) {
+      const { app } = await serverSetupPromise;
+      serverApp = app;
+    }
+    return serverApp(req, res);
+  } catch (err) {
+    console.error('Vercel handler initialization failed:', err);
+    res.status(500).send('Internal Server Error: Server failed to initialize.');
+  }
+};
 

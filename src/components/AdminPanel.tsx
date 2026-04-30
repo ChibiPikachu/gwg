@@ -607,7 +607,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     <div className="flex flex-row items-center gap-4">
                       <div className="flex flex-col">
-                        <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900">{sub.game_name}</h4>
+                        <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
                         {hltbData[sub.game_name] && (
                           <div className="flex items-center gap-3 mt-1">
                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#252525] border border-[#353535] group/hltb">
@@ -671,14 +671,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             setPointsAwarded(String(calculated));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
-                          className="dark:bg-white/5 bg-black/5 dark:hover:bg-white/10 hover:bg-black/10 dark:text-white text-slate-800 px-6 py-2 rounded-lg font-bold text-xs transition-all border dark:border-white/5 border-black/10"
+                          className={cn(
+                            "px-6 py-2 rounded-xl font-bold text-xs transition-all border shrink-0",
+                            "dark:bg-white/5 bg-black/5 dark:hover:bg-white/10 hover:bg-black/10 dark:text-white text-slate-800 border-black/10 dark:border-white/5"
+                          )}
                         >
-                          {sub.status === 'pending' ? 'Review & Modify' : 'Modify Submission'}
+                          {sub.status === 'pending' ? 'Review' : 'Modify'}
                         </button>
                         <button 
                           disabled={updating === sub.id}
                           onClick={() => handleDeleteSubmission(sub.id)}
-                          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-6 py-2 rounded-lg font-bold text-xs transition-all border border-red-500/20"
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-xl font-bold text-xs transition-all border border-red-500/20 shrink-0"
                         >
                           Delete
                         </button>
