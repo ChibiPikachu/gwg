@@ -504,6 +504,48 @@ async function createServer() {
     }
   };
 
+  const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string) => {
+    const cleanedTitle = cleanGameTitle(title);
+    
+    // 1. Check if game already exists in our 'games' table
+    const { data: existingGame } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', String(gameId))
+      .maybeSingle();
+
+    if (existingGame) return existingGame.id;
+
+    // 2. If not, fetch HLTB data
+    console.log(`[Sync] Fetching HLTB for new game: ${cleanedTitle}`);
+    const hltb = await fetchHLTBData(cleanedTitle);
+    
+    // 3. Upsert into the 'games' table
+    const gameData = {
+      id: String(gameId),
+      title: cleanedTitle,
+      image_url: image,
+      hltb_main: hltb?.main || 0,
+      hltb_extra: hltb?.mainExtra || 0,
+      hltb_completionist: hltb?.completionist || 0,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data: newGame, error } = await supabase
+      .from('games')
+      .upsert(gameData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Sync] Error upserting game:', error);
+      // If we can't upsert, we still want to return the ID so the submission doesn't fail
+      return String(gameId);
+    }
+
+    return newGame?.id;
+  };
+
   const hltbCache = new Map<string, any>();
 
   // Advanced title cleaner and edition stripper logic
@@ -666,6 +708,21 @@ async function createServer() {
       });
     }
     res.json(null);
+  });
+
+  app.get('/api/games/:id', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { data, error } = await supabase
+      .from('games')
+      .select('*, submissions(count)')
+      .eq('id', req.params.id)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ error: 'Database error' });
+    if (!data) return res.status(404).json({ error: 'Game not found' });
+    res.json(data);
   });
 
   // Admin APIs
@@ -891,6 +948,9 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      // Sync the game to the games table first
+      const internalGameId = await getAndSyncGameData(supabase, gameTitle || game_title, gameId, gameImage);
+
       // Server-side point calculation
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
@@ -933,7 +993,7 @@ async function createServer() {
         user_id: steamId,
         user_name: currentUser.displayName || currentUser.steam_name,
         user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
-        game_id: String(gameId),
+        game_id: internalGameId,
         game_name: gameTitle || game_title || "Unknown Game", 
         game_image: gameImage,
         achievements_during: achievements || 0,
