@@ -9,11 +9,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 1. Advanced Cleaner (Removes trademarks, punctuation, and trailing years)
-function cleanNameForHLTB(name) {
-    let clean = name.replace(/[®™©]/g, '');             
-    clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');     
-    clean = clean.replace(/[^\w\s]/g, ' ');             
-    clean = clean.replace(/\s{2,}/g, ' ');              
+function cleanGameTitle(title) {
+    let clean = title.replace(/[®™©]/g, '');
+    clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');
+    clean = clean.replace(/[^\w\s]/g, ' ');
+    clean = clean.replace(/\s{2,}/g, ' ');
     return clean.trim();
 }
 
@@ -28,11 +28,11 @@ function stripEditionForHLTB(name) {
 async function callPythonBridge(gameName) {
     try {
         const pythonScript = path.join(__dirname, 'hltb_bridge.py');
-        
+
         // execFile passes arguments as an array, completely neutralizing shell injection risks.
         // We no longer need to manually escape quotes!
         const { stdout } = await execFilePromise('python', [pythonScript, gameName]);
-        
+
         // Find the JSON object in the output, ignoring any Python warnings
         const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
         if (jsonMatch && jsonMatch[0] !== 'null') {
@@ -46,32 +46,32 @@ async function callPythonBridge(gameName) {
 
 export async function getHLTBData(title) {
     try {
-        const searchName = cleanNameForHLTB(title);
+        const searchName = cleanGameTitle(title);
         console.log(`[HLTB Bridge] Searching for: "${searchName}"`);
-        
+
         let results = await callPythonBridge(searchName);
-        
+
         // Fallback 1: Strip the "Edition" and try again
         if (!results) {
-             const noEditionName = stripEditionForHLTB(searchName);
-             if (noEditionName !== searchName) {
-                 console.log(`[HLTB Bridge] Attempting Edition-Stripped search for: "${noEditionName}"`);
-                 results = await callPythonBridge(noEditionName);
-             }
+            const noEditionName = stripEditionForHLTB(searchName);
+            if (noEditionName !== searchName) {
+                console.log(`[HLTB Bridge] Attempting Edition-Stripped search for: "${noEditionName}"`);
+                results = await callPythonBridge(noEditionName);
+            }
         }
 
         // Fallback 2: Your original Colon-Splitter
         if (!results && title.includes(':')) {
-             const splitTitle = cleanNameForHLTB(title.split(':')[0]);
-             console.log(`[HLTB Bridge] Attempting Colon-Split search for: "${splitTitle}"`);
-             results = await callPythonBridge(splitTitle);
+            const splitTitle = cleanGameTitle(title.split(':')[0]);
+            console.log(`[HLTB Bridge] Attempting Colon-Split search for: "${splitTitle}"`);
+            results = await callPythonBridge(splitTitle);
         }
-        
+
         if (results) {
             console.log(`[HLTB Bridge] Success! Scraped accurate times via Python!`);
             return results;
         }
-        
+
         console.log(`[HLTB Bridge] No match found for "${title}".`);
         return null;
     } catch (error) {
