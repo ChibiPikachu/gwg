@@ -8,8 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import * as hltb from 'howlongtobeat';
-const { HowLongToBeatService } = hltb;
+// Lazy-load howlongtobeat to prevent startup crashes if module is missing or incompatible in some environments
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -397,8 +396,31 @@ async function createServer() {
     res.json({ success: true, user });
   });
 
-  // HLTB Service & Cache
-  const hltbService = new HowLongToBeatService();
+  // HLTB Service & Cache (Lazy-loaded for resilience)
+  let hltbService: any = null;
+  try {
+    const hltbModule = await import('howlongtobeat').catch(() => null);
+    if (hltbModule) {
+      const ServiceClass = hltbModule.HowLongToBeatService || hltbModule.default?.HowLongToBeatService || hltbModule.default || hltbModule;
+      if (typeof ServiceClass === 'function') {
+        hltbService = new ServiceClass();
+      }
+    }
+  } catch (err) {
+    console.error('[HLTB] Error loading howlongtobeat module:', err);
+  }
+
+  // Fallback mock if loading failed or module missing
+  if (!hltbService) {
+    console.warn('[HLTB] Service could not be initialized, using fallback mock.');
+    hltbService = {
+      search: async () => {
+        console.warn('[HLTB] search() called but service is not available');
+        return [];
+      }
+    };
+  }
+
   const hltbCache = new Map<string, any>();
 
   // Advanced title cleaner and edition stripper logic
