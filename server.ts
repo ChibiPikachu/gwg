@@ -650,7 +650,6 @@ async function createServer() {
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     const { 
       gameId, 
-      gameName, 
       gameTitle,
       game_title,
       gameImage, 
@@ -658,8 +657,7 @@ async function createServer() {
       hours, 
       achievementsBefore,
       hoursBefore,
-      multiplier,
-      calculatedScore,
+      completionStatus,
       notes 
     } = req.body;
 
@@ -674,25 +672,34 @@ async function createServer() {
       else if (numHours >= 15) serverMultiplier = 3.0;
       else if (numHours >= 8) serverMultiplier = 2.0;
 
-      const serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+      let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+      
+      // Completion Bonus: +20 for 'completed'
+      if (completionStatus === 'completed') {
+        serverPoints += 20;
+      }
 
       // Find active event
       const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
       if (eventError) console.error('Error fetching active event:', eventError);
 
-      // 1. Check for duplicate submission (same user, game, and event) to prevent point bloat
+      // 1. Check for duplicate submission (same user, game, and event)
       if (activeEvent) {
         const { data: existingSub } = await supabase
           .from('submissions')
-          .select('id')
+          .select('id, status, completion_status')
           .eq('user_id', steamId)
           .eq('game_id', String(gameId))
           .eq('event_id', activeEvent.id)
-          .neq('status', 'rejected') // Ignore previously rejected ones if they want to resubmit correctly
+          .neq('status', 'rejected') 
           .maybeSingle();
 
         if (existingSub) {
-          return res.status(400).json({ error: 'You have already submitted progress for this game in the current event.' });
+          // Exception: If the existing submission is 'verified' AND 'unfinished', allow a NEW submission.
+          // Otherwise, block duplicates.
+          if (!(existingSub.status === 'verified' && existingSub.completion_status === 'unfinished')) {
+            return res.status(400).json({ error: 'You have already submitted progress for this game in the current event.' });
+          }
         }
       }
 
@@ -701,7 +708,7 @@ async function createServer() {
         user_name: currentUser.displayName || currentUser.steam_name,
         user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
         game_id: String(gameId),
-        game_name: gameName || gameTitle || game_title || "Unknown Game", 
+        game_name: gameTitle || game_title || "Unknown Game", 
         game_image: gameImage,
         achievements_during: achievements || 0,
         hours_during: hours || 0,
@@ -709,9 +716,8 @@ async function createServer() {
         hours_before: hoursBefore || 0,
         multiplier: serverMultiplier,
         calculated_score: serverPoints,
-        points: serverPoints, // Set points directly now for pending too, or wait until verified? 
-        // Actually points in profile sync only counts verified. 
-        // But the submission record should have the calculated points pre-saved.
+        completion_status: completionStatus || 'beaten',
+        points: serverPoints, 
         notes: notes || '',
         status: 'pending',
         event_id: activeEvent?.id || null,
@@ -754,6 +760,7 @@ async function createServer() {
       hours, 
       achievementsBefore,
       hoursBefore,
+      completionStatus,
       notes 
     } = req.body;
 
@@ -777,14 +784,17 @@ async function createServer() {
         return res.status(400).json({ error: 'Cannot edit a submission that has already been reviewed' });
       }
 
-      // 2. Recalculate preview points
+      // 2. Recalculate points
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
       if (numHours >= 25) serverMultiplier = 4.0;
       else if (numHours >= 15) serverMultiplier = 3.0;
       else if (numHours >= 8) serverMultiplier = 2.0;
 
-      const serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+      let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+      if (completionStatus === 'completed') {
+        serverPoints += 20;
+      }
 
       const { data, error } = await supabase
         .from('submissions')
@@ -795,6 +805,7 @@ async function createServer() {
           hours_before: hoursBefore || 0,
           multiplier: serverMultiplier,
           calculated_score: serverPoints,
+          completion_status: completionStatus || sub.completion_status || 'beaten',
           points: serverPoints,
           notes: notes || '',
         })

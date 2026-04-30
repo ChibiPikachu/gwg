@@ -20,6 +20,7 @@ export default function MySubmissions() {
     hoursPlayed: '',
     achievementsBefore: '0',
     hoursBefore: '0',
+    completionStatus: 'beaten' as any,
     notes: ''
   });
   const [submitting, setSubmitting] = React.useState(false);
@@ -35,8 +36,9 @@ export default function MySubmissions() {
 
   const scorePreview = React.useMemo(() => {
     const earned = parseInt(formData.achievementsEarned) || 0;
-    return earned * multiplierPreview;
-  }, [formData.achievementsEarned, multiplierPreview]);
+    const bonus = formData.completionStatus === 'completed' ? 20 : 0;
+    return (earned * multiplierPreview) + bonus;
+  }, [formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
@@ -148,6 +150,7 @@ export default function MySubmissions() {
           achievementsBefore: parseInt(formData.achievementsBefore) || 0,
           hoursBefore: parseFloat(formData.hoursBefore) || 0,
           multiplier: multiplierPreview,
+          completionStatus: formData.completionStatus,
           calculatedScore: scorePreview,
           notes: formData.notes
         })
@@ -181,7 +184,14 @@ export default function MySubmissions() {
   };
 
   const handleEdit = (sub: any) => {
-    setEditingId(sub.id);
+    // If it's a verified unfinished game, we want to create a NEW submission
+    // instead of editing the old one, as per requirements.
+    if (sub.status === 'verified' && sub.completion_status === 'unfinished') {
+      setEditingId(null); 
+    } else {
+      setEditingId(sub.id);
+    }
+    
     setSelectedGame({
       id: sub.game_id,
       title: sub.game_name,
@@ -192,6 +202,7 @@ export default function MySubmissions() {
       hoursPlayed: String(sub.hours_during),
       achievementsBefore: String(sub.achievements_before),
       hoursBefore: String(sub.hours_before),
+      completionStatus: sub.completion_status || 'beaten',
       notes: sub.notes || ''
     });
     setShowForm(true);
@@ -225,6 +236,7 @@ export default function MySubmissions() {
       hoursPlayed: '', 
       achievementsBefore: '0', 
       hoursBefore: '0', 
+      completionStatus: 'beaten',
       notes: '' 
     });
     setSearchResults([]);
@@ -248,10 +260,9 @@ export default function MySubmissions() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className={cn(
-            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200",
-            theme.border,
+            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 mt-20 mb-20",
             theme.glow
           )}>
             <div className="p-8">
@@ -334,6 +345,32 @@ export default function MySubmissions() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                    <div className="space-y-2 col-span-2">
+                       <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Completion Status</label>
+                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                         {(['unfinished', 'beaten', 'completed', 'abandoned'] as const).map((s) => (
+                           <button
+                            key={s}
+                            type="button"
+                            onClick={() => setFormData({...formData, completionStatus: s})}
+                            className={cn(
+                              "py-2 px-1 text-[10px] font-bold uppercase rounded-lg border transition-all truncate",
+                              formData.completionStatus === s 
+                                ? `${theme.bg} text-white ${theme.border}` 
+                                : "dark:bg-white/5 bg-slate-50 border-black/5 dark:border-white/5 opacity-40 hover:opacity-100"
+                            )}
+                           >
+                             {s}
+                           </button>
+                         ))}
+                       </div>
+                       {formData.completionStatus === 'completed' && (
+                         <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
+                           <CheckCircle2 size={10} /> +20 Completion Bonus Applied
+                         </div>
+                       )}
+                    </div>
+
                     <div className="space-y-2">
                       <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Achievements Earned</label>
                       <input 
@@ -437,8 +474,8 @@ export default function MySubmissions() {
                 <div className={cn(
                   "aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border relative shadow-xl transition-all duration-300",
                   "dark:border-white/5 border-slate-200",
-                  `group-hover:${theme.border}`,
-                  theme.glow.split(' ').map(c => `group-hover:${c}`).join(' ')
+                  theme.glow,
+                  "group-hover:shadow-[0_0_25px_-5px_rgba(0,0,0,0.2)]"
                 )}>
                    <img 
                      src={sub.game_image} 
@@ -458,7 +495,7 @@ export default function MySubmissions() {
                       </div>
                       
                       <div className="flex flex-col gap-2 w-full max-w-[120px]">
-                        {(sub.status === 'pending' || sub.status === 'rejected') && (
+                        {(sub.status === 'pending' || sub.status === 'rejected' || (sub.status === 'verified' && sub.completion_status === 'unfinished')) && (
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();

@@ -217,10 +217,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       accent: base,
       text: `text-${base}`,
       bg: `bg-${base}`,
-      border: `border-${base}`,
+      border: `border-${base}/50`,
       ring: `ring-${base}`,
       shadow: `shadow-${base}`,
-      glow: `shadow-lg shadow-${base}/50`,
+      glow: `shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-${base}/20 border-${base}/50`,
       secondary: `bg-${base}/10`,
       muted: `text-${base}/50`,
     };

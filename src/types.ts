@@ -16,6 +16,7 @@ export interface UserProfile {
 }
 
 export type SubmissionStatus = 'pending' | 'verified' | 'rejected';
+export type CompletionStatus = 'unfinished' | 'beaten' | 'completed' | 'abandoned';
 
 export interface Submission {
   id: string;
@@ -32,6 +33,7 @@ export interface Submission {
   multiplier: number;
   points: number;
   status: SubmissionStatus;
+  completionStatus?: CompletionStatus;
   notes: string;
   eventId: string;
   createdAt: number;
