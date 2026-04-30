@@ -562,7 +562,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                     </div>
 
-                    {hltbData[sub.game_name] && (
+                    {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                           <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-black/5">
                              <div className="flex items-center gap-1.5 w-full pb-1 border-b dark:border-white/5 border-black/5">
                                 <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">HLTB Main: {hltbData[sub.game_name].main}h</span>
@@ -578,6 +578,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                 </div>
                              )}
                           </div>
+                    )}
+                    {hltbData[sub.game_name]?.notFound && (
+                      <div className="p-2 rounded-xl border border-dashed dark:border-white/5 border-black/5 text-center">
+                        <span className="text-[8px] font-bold opacity-20 uppercase tracking-widest">HLTB Not Found</span>
+                      </div>
                     )}
                   </div>
 
@@ -607,7 +612,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            target="_blank"
                            rel="noopener noreferrer"
                            className={cn(
-                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
+                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all shadow-sm",
                              (hltbData[sub.game_name]?.id || sub.hltb_id) 
                                ? "bg-[#252525] border-[#353535] hover:bg-[#303030]" 
                                : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
@@ -623,7 +628,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            className={cn(
                              "w-10 h-10 flex items-center justify-center rounded-xl border transition-all shadow-sm",
                              sub.steam_appid 
-                               ? "dark:bg-[#171a21] bg-[#1b2838] border-white/10 dark:border-[#2a475e] hover:brightness-110" 
+                               ? "dark:bg-[#171a21] bg-slate-100 dark:border-[#2a475e] border-black/10 hover:brightness-110" 
                                : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
                            )}
                            title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
@@ -654,6 +659,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
                            {!hltbData[sub.game_name] && sub.status === 'pending' && (
                              <span className="text-[10px] opacity-20 font-bold uppercase animate-pulse">Searching HLTB...</span>
+                           )}
+                           {hltbData[sub.game_name]?.error && (
+                             <span className="text-[10px] text-red-500/40 font-bold uppercase">HLTB Error</span>
+                           )}
+                           {hltbData[sub.game_name]?.notFound && (
+                             <span className="text-[10px] opacity-20 font-bold uppercase">HLTB Empty</span>
                            )}
                         </div>
                       </div>

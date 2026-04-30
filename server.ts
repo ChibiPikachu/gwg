@@ -456,7 +456,7 @@ async function createServer() {
       const results = await hltbService.search(cleanedTitle);
       if (results && results.length > 0) {
         // Find the best match - prioritize exact match after cleaning
-        const bestMatch = results.find(r => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || results[0];
+        const bestMatch = results.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || results[0];
         const data = {
           main: bestMatch.gameplayMain,
           mainExtra: bestMatch.gameplayMainExtra,
@@ -467,10 +467,13 @@ async function createServer() {
         hltbCache.set(cleanedTitle, data);
         return res.json(data);
       }
-      res.json({ error: 'Not found' });
+      const notFoundData = { main: 0, mainExtra: 0, completionist: 0, notFound: true };
+      hltbCache.set(cleanedTitle, notFoundData);
+      res.json(notFoundData);
     } catch (err) {
       console.error('HLTB search failed:', err);
-      res.status(500).json({ error: 'HLTB fetch failed' });
+      const errorData = { main: 0, mainExtra: 0, completionist: 0, error: true };
+      res.status(500).json(errorData);
     }
   });
 
@@ -489,7 +492,7 @@ async function createServer() {
           const cleanedTitle = cleanGameTitle(title);
           const searchResults = await hltbService.search(cleanedTitle);
           if (searchResults && searchResults.length > 0) {
-            const bestMatch = searchResults.find(r => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || searchResults[0];
+            const bestMatch = searchResults.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || searchResults[0];
             const data = {
               main: bestMatch.gameplayMain,
               mainExtra: bestMatch.gameplayMainExtra,
@@ -499,9 +502,17 @@ async function createServer() {
             };
             hltbCache.set(cleanedTitle, data);
             results[title] = data;
+          } else {
+            // Negative cache
+            const data = { main: 0, mainExtra: 0, completionist: 0, notFound: true };
+            hltbCache.set(cleanedTitle, data);
+            results[title] = data;
           }
         } catch (e) {
           console.warn(`HLTB fetch failed for ${title}`, e);
+          const data = { main: 0, mainExtra: 0, completionist: 0, error: true };
+          hltbCache.set(cleanGameTitle(title), data);
+          results[title] = data;
         }
       }));
     }
