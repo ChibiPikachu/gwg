@@ -600,7 +600,7 @@ const fetchHLTBData = async (title: string) => {
 
     if (error) {
       console.error('[Sync] Error upserting game:', error);
-      // If we can't upsert, we still want to return the ID so the submission doesn't fail
+      
       return String(gameId);
     }
 
