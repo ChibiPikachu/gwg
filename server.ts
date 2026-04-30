@@ -159,7 +159,7 @@ async function createServer() {
   passport.deserializeUser((user: any, done) => done(null, user));
 
   // Derive base URL for auth redirects
-  const appBaseUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')).replace(/\/$/, '');
+  const appBaseUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}`)).replace(/\/$/, '');
 
   const getAppBaseUrl = (req: any) => {
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
