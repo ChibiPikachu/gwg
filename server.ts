@@ -520,7 +520,7 @@ async function callPythonBridge(gameName: string) {
         const pythonScript = path.join(__dirname, 'hltb_bridge.py');
         
         // Use 'python3' for Vercel/Linux environments[cite: 7]
-        const { stdout } = await execFilePromise('python3', [pythonScript, gameName]);
+        const { stdout } = await execFilePromise('python', [pythonScript, gameName]);
         
         const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
         if (jsonMatch && jsonMatch[0] !== 'null') {
