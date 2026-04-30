@@ -1,19 +1,17 @@
 {
   "version": 2,
   "functions": {
-    "server.ts": {
+    "api/server.ts": {
       "includeFiles": "hltb_bridge.py"
     }
   },
   "routes": [
     {
       "src": "/(api|auth)(.*)",
-      "dest": "server.ts"
+      "dest": "/api/server.ts"
     },
     {
-      "src": "/(.*)",
-      "dest": "/$1",
-      "check": true
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
