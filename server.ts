@@ -399,15 +399,27 @@ async function createServer() {
   // HLTB Service & Cache (Lazy-loaded for resilience)
   let hltbService: any = null;
   try {
-    const hltbModule = await import('howlongtobeat').catch(() => null);
-    if (hltbModule) {
-      const ServiceClass = hltbModule.HowLongToBeatService || hltbModule.default?.HowLongToBeatService || hltbModule.default || hltbModule;
-      if (typeof ServiceClass === 'function') {
-        hltbService = new ServiceClass();
-      }
+    const { createRequire } = await import('module');
+    const require = createRequire(import.meta.url);
+    const hltb = require('howlongtobeat');
+    const ServiceClass = hltb.HowLongToBeatService || hltb.default?.HowLongToBeatService;
+    if (typeof ServiceClass === 'function') {
+      hltbService = new ServiceClass();
+      console.log('[HLTB] Service successfully initialized via require().');
     }
   } catch (err) {
-    console.error('[HLTB] Error loading howlongtobeat module:', err);
+    console.error('[HLTB] Error loading howlongtobeat module via require:', err);
+    // Fallback to dynamic import if require fails
+    try {
+      const hltbModule = await import('howlongtobeat');
+      const ServiceClass = hltbModule.HowLongToBeatService || hltbModule.default?.HowLongToBeatService || hltbModule.default;
+      if (typeof ServiceClass === 'function') {
+        hltbService = new ServiceClass();
+        console.log('[HLTB] Service successfully initialized via import().');
+      }
+    } catch (importErr) {
+      console.error('[HLTB] Error loading howlongtobeat module via import:', importErr);
+    }
   }
 
   // Fallback mock if loading failed or module missing

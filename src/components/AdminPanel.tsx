@@ -68,13 +68,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         // Batch fetch HLTB data for these submissions
         const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name)));
         if (uniqueTitles.length > 0) {
+          console.log('[Admin] Fetching HLTB batch for:', uniqueTitles);
           fetch('/api/admin/hltb-batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ titles: uniqueTitles })
           })
           .then(r => r.json())
-          .then(hltb => setHltbData(prev => ({ ...prev, ...hltb })))
+          .then(hltb => {
+            console.log('[Admin] Received HLTB data:', hltb);
+            setHltbData(prev => ({ ...prev, ...hltb }));
+          })
           .catch(err => console.error('HLTB batch fetch failed:', err));
         }
       }
@@ -607,23 +611,28 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     <div className="flex flex-row items-center gap-4">
                       <div className="flex flex-col">
-                        <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
+                        <div className="flex flex-row items-center gap-2">
+                           <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
+                           {!hltbData[sub.game_name] && sub.status === 'pending' && (
+                             <span className="text-[10px] opacity-20 font-bold uppercase animate-pulse">Searching HLTB...</span>
+                           )}
+                        </div>
                         {hltbData[sub.game_name] && (
                           <div className="flex items-center gap-3 mt-1">
-                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#252525] border border-[#353535] group/hltb">
+                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb">
                                 <span className="text-[10px] font-bold text-amber-400">HLTB Main:</span>
                                 <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].main}h</span>
                              </div>
                              {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/10 border border-red-500/30 animate-pulse">
-                                   <div className="w-2 h-2 rounded-full bg-red-500" />
-                                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tight">(Review Required!)</span>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 animate-pulse">
+                                   <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
+                                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tight">Review Required!</span>
                                 </div>
                              )}
                              {hltbData[sub.game_name].main > 0 && sub.hours_during <= hltbData[sub.game_name].main * 5 && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/5 border border-emerald-500/20">
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" />
-                                   <span className="text-[10px] font-bold text-emerald-500/60 uppercase tracking-tight">Normal</span>
+                                   <span className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-tight">Normal</span>
                                 </div>
                              )}
                           </div>
@@ -700,6 +709,41 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="col-span-full mb-2">
+                           {hltbData[sub.game_name] ? (
+                             <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] uppercase font-black opacity-40 dark:text-white text-slate-300 mb-1">HLTB Statistics</span>
+                                  <div className="flex items-center gap-2">
+                                     <span className="text-sm font-mono font-bold text-amber-400">Main: {hltbData[sub.game_name].main}h</span>
+                                     <span className="text-white/20">|</span>
+                                     <span className="text-sm font-mono font-bold text-white/60">Comp: {hltbData[sub.game_name].completionist}h</span>
+                                  </div>
+                                </div>
+
+                                {hltbData[sub.game_name].main > 0 && (
+                                  <div className="ml-auto">
+                                    {sub.hours_during > hltbData[sub.game_name].main * 5 ? (
+                                      <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/40">
+                                         <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse" />
+                                         <span className="text-xs font-black text-red-500 uppercase tracking-tighter">Review Required / Potential Abuse</span>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                         <div className="w-2 h-2 rounded-full bg-emerald-500/60" />
+                                         <span className="text-xs font-bold text-emerald-500 uppercase tracking-tighter">Time within normal range</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                             </div>
+                           ) : (
+                             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-xs font-bold opacity-30 uppercase tracking-widest italic animate-pulse">
+                               HLTB Data Not Found or Loading...
+                             </div>
+                           )}
+                        </div>
+
                         <div className="space-y-2">
                           <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆</label>
                           <input 
