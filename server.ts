@@ -517,16 +517,22 @@ function cleanNameForHLTB(name: string) {
 // 2. The Bridge Caller[cite: 6, 7]
 async function callPythonBridge(gameName: string) {
     try {
-        const pythonScript = path.join(__dirname, 'hltb_bridge.py');
+        // Ensure we point to the absolute path of the script
+        const pythonScript = path.join(process.cwd(), 'hltb_bridge.py');
         
-        // Use 'python3' for Vercel/Linux environments[cite: 7]
-        const pythonCmd = process.env.NODE_ENV === 'production' ? 'python3' : 'python';
+        // Vercel uses 'python3'; local environments usually use 'python'
+        const pythonCmd = (process.env.VERCEL === '1' || process.env.NODE_ENV === 'production') 
+            ? 'python3' 
+            : 'python';
+
+        console.log(`[HLTB Bridge] Executing: ${pythonCmd} ${pythonScript} "${gameName}"`);
+
         const { stdout } = await execFilePromise(pythonCmd, [pythonScript, gameName]);
-        
+
         const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
         if (jsonMatch && jsonMatch[0] !== 'null') {
             const data = JSON.parse(jsonMatch[0]);
-            // Map Python bridge "Hours" strings back to numbers
+            // Map the Python keys (hastily, normally, completionist) to your server's expected keys[cite: 3, 5]
             return {
                 main: parseInt(data.hastily) || 0,
                 mainExtra: parseInt(data.normally) || 0,
@@ -535,7 +541,7 @@ async function callPythonBridge(gameName: string) {
         }
         return null;
     } catch (error) {
-        console.error('[HLTB Bridge] Error calling Python:', error);
+        console.error('[HLTB Bridge] Execution Error:', error.message);
         return null;
     }
 }
