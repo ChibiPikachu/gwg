@@ -975,7 +975,7 @@ async function createServer() {
           .from('submissions')
           .select('id, status, completion_status')
           .eq('user_id', steamId)
-          .eq('game_id', String(gameId))
+          .eq('game_id', internalGameId)
           .eq('event_id', activeEvent.id)
           .neq('status', 'rejected') 
           .maybeSingle();
@@ -1547,6 +1547,11 @@ async function createServer() {
 
     try {
       const token = await getIGDBToken();
+      // Escape internal quotes in query
+      const safeQuery = String(query).replace(/"/g, '\\"');
+      
+      console.log(`[IGDB Search] Searching for: ${safeQuery}`);
+
       const response = await fetch('https://api.igdb.com/v4/games', {
         method: 'POST',
         headers: {
@@ -1554,12 +1559,24 @@ async function createServer() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'text/plain'
         },
-        body: `search "${query}"; fields name, cover.url, summary, category, external_games.category, external_games.uid, websites.url, websites.category; where category = (0, 4, 8, 9, 10, 11); limit 5;`
+        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; where category = (0, 4, 8, 9, 10, 11); limit 20;`
       });
 
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('[IGDB Search] IGDB API error:', response.status, errText);
+        // If 401, maybe token expired or credentials wrong
+        if (response.status === 401) {
+          igdbToken = null; // Clear token to retry next time
+        }
+        return res.status(response.status).json({ error: 'IGDB API error' });
+      }
+
       const data: any = await response.json();
+      console.log(`[IGDB Search] Found ${Array.isArray(data) ? data.length : 0} results`);
       
       if (!Array.isArray(data)) {
+        console.error('[IGDB Search] Unexpected response format:', data);
         return res.json([]);
       }
 
