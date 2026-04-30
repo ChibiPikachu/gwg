@@ -10,6 +10,20 @@ type AdminTab = 'users' | 'submissions';
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
   const { user: currentUser, theme } = useAuth();
   const [activeTab, setActiveTab] = React.useState<AdminTab>(activeAdminTab || 'users');
+
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'admins')) {
+    return (
+      <div className="p-12 text-center flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
+          <Shield className="text-red-500" size={32} />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
+        <p className="opacity-60 max-w-sm">
+          You do not have the required permissions to access the Administration Panel.
+        </p>
+      </div>
+    );
+  }
   
   React.useEffect(() => {
     if (activeAdminTab) {

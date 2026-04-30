@@ -446,22 +446,28 @@ async function createServer() {
   });
 
   // Admin APIs
-  app.get('/api/admin/users', async (req, res) => {
+  const adminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-
     const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    // Verify admin role from database
-    const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    next();
+  };
+
+  app.use('/api/admin', adminOnly);
+
+  app.get('/api/admin/users', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const { data: users, error } = await supabase
       .from('profiles')
@@ -566,41 +572,16 @@ async function createServer() {
   });
 
   app.post('/api/admin/update-user-team', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { targetSteamId, team } = req.body;
     console.log('[Admin] Update Team Start:', { targetSteamId, team });
     
-    const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) {
       console.error('[Admin] Database unavailable');
       return res.status(500).json({ error: 'Database unavailable' });
     }
 
-    // Verify admin role
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
-    console.log('[Admin] Verifying Steam ID:', steamId);
-    
     try {
-      // Diagnostic: Check what teams actually look like in the DB
-      const { data: sampleUsers } = await supabase.from('profiles').select('team').limit(5);
-      console.log('[Admin] Sample team values from DB:', sampleUsers?.map(u => u.team));
-
-      const { data: profile, error: roleError } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (roleError) {
-        console.error('[Admin] Role verification error:', roleError.message);
-        return res.status(403).json({ error: `Forbidden: ${roleError.message}` });
-      }
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        console.warn('[Admin] Insufficient permissions for:', steamId, 'Role:', profile?.role);
-        return res.status(403).json({ error: 'Forbidden: Not an admin' });
-      }
-
       // If team is 'none', we store it as null. 
       // If the DB constraint fails, it might expect a specific string instead.
       const dbTeam = team === 'none' ? null : team;
@@ -873,22 +854,10 @@ async function createServer() {
   });
 
   app.get('/api/admin/submissions', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
       const { data, error } = await supabase
         .from('submissions')
         .select('*')
@@ -902,22 +871,11 @@ async function createServer() {
   });
 
   app.post('/api/admin/verify-submission', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { submissionId, status, points, rejectionReason } = req.body;
-    const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
 
       // Start a "transaction" via sequence of calls (Supabase JS doesn't have true transactions easily for this)
       // 1. Get the submission to find out who submitted it
@@ -950,22 +908,11 @@ async function createServer() {
   });
 
   app.delete('/api/admin/submissions/:id', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { id } = req.params;
-    const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
 
       // 1. Get the submission to find out who submitted it (for point sync)
       const { data: sub, error: fetchError } = await supabase.from('submissions').select('user_id').eq('id', id).single();
@@ -989,21 +936,10 @@ async function createServer() {
   });
 
   app.post('/api/admin/recalculate-all', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
 
       // 1. Fetch all verified submissions
       const { data: subs, error: fetchError } = await supabase.from('submissions').select('*').eq('status', 'verified');
@@ -1048,22 +984,13 @@ async function createServer() {
   });
 
   app.delete('/api/admin/users/:steamId', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { steamId } = req.params;
     const currentUser = (req as any).user;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const adminSteamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', adminSteamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
+      const adminSteamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
 
       // Prevent self-deletion via this admin endpoint for safety
       if (adminSteamId === steamId) {
@@ -1096,10 +1023,6 @@ async function createServer() {
   });
 
   app.post('/api/admin/update-user-role', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { targetSteamId, role } = req.body;
     const currentUser = (req as any).user;
     const supabase = getSupabase();
@@ -1107,11 +1030,6 @@ async function createServer() {
 
     try {
       const adminSteamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', adminSteamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
 
       // Prevent self-role changing to avoid locking oneself out
       if (adminSteamId === targetSteamId) {
@@ -1182,23 +1100,11 @@ async function createServer() {
   });
 
   app.post('/api/admin/events', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const currentUser = (req as any).user;
     const { title, description, startDate, endDate, isActive } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
       const { data, error } = await supabase
         .from('events')
         .insert({
@@ -1221,24 +1127,12 @@ async function createServer() {
   });
 
   app.put('/api/admin/events/:id', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { id } = req.params;
-    const currentUser = (req as any).user;
     const { title, description, startDate, endDate, isActive } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const steamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
-      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
-
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
       const { data, error } = await supabase
         .from('events')
         .update({
