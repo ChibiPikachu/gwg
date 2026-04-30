@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, AlertTriangle, Check } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -592,54 +592,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     </div>
 
                     <h4 className="text-xl font-black tracking-tight -mt-2 truncate dark:text-white text-slate-900">{sub.game_name}</h4>
-
-                    {/* HLTB Stats & Risk Tag */}
-                    {(sub as any).hltb_data && (
-                      <div className="flex flex-wrap items-center gap-4 py-2 border-y dark:border-white/5 border-black/5 mt-2">
-                        <div className="flex items-center gap-4">
-                           <div className="flex flex-col">
-                             <span className="text-[8px] uppercase font-bold opacity-30 dark:text-white text-slate-500">HLTB Main</span>
-                             <span className="text-xs font-bold dark:text-white/80 text-slate-600">{(sub as any).hltb_data.hastily}</span>
-                           </div>
-                           <div className="flex flex-col">
-                             <span className="text-[8px] uppercase font-bold opacity-30 dark:text-white text-slate-500">HLTB Extra</span>
-                             <span className="text-xs font-bold dark:text-white/80 text-slate-600">{(sub as any).hltb_data.normally}</span>
-                           </div>
-                           <div className="flex flex-col">
-                             <span className="text-[8px] uppercase font-bold opacity-30 dark:text-white text-slate-500">HLTB 100%</span>
-                             <span className="text-xs font-bold dark:text-white/80 text-slate-600">{(sub as any).hltb_data.completionist}</span>
-                           </div>
-                        </div>
-
-                        {/* Risk Tag Logic */}
-                        {(() => {
-                           const userTime = parseFloat(sub.hours_during) || 0;
-                           const hltbTime = (sub as any).hltb_data.mainTime || 0;
-                           const isDangerous = hltbTime > 0 && userTime >= (hltbTime * 5);
-                           
-                           return (
-                             <div className={cn(
-                               "px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5",
-                               isDangerous 
-                                 ? "bg-red-500/10 text-red-500 border border-red-500/20 animate-pulse" 
-                                 : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                             )}>
-                               {isDangerous ? (
-                                 <>
-                                   <AlertTriangle size={12} />
-                                   Review Required! (x5 Alert)
-                                 </>
-                               ) : (
-                                 <>
-                                   <Check size={12} />
-                                   Time Normal
-                                 </>
-                               )}
-                             </div>
-                           );
-                        })()}
-                      </div>
-                    )}
 
                     {sub.notes && (
                       <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">
