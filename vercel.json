@@ -1,20 +1,25 @@
 {
   "version": 2,
-  "functions": {
-    "api/**/*.ts": {
-      "includeFiles": "hltb_bridge.py"
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
     },
-    "server.ts": {
-      "includeFiles": "hltb_bridge.py"
+    {
+      "src": "server.ts",
+      "use": "@vercel/node"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/(api|auth)(.*)",
       "dest": "server.ts"
     },
     {
-      "handle": "filesystem"
+      "src": "/(.*)",
+      "dest": "/$1",
+      "check": true
     },
     {
       "src": "/(.*)",
