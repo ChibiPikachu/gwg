@@ -8,7 +8,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { HowLongToBeatService, HowLongToBeatEntry } from 'howlongtobeat';
+import * as hltb from 'howlongtobeat';
+const { HowLongToBeatService } = hltb;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -194,7 +195,7 @@ async function createServer() {
   passport.use(new DiscordStrategy({
     clientID: process.env.DISCORD_CLIENT_ID || 'dummy',
     clientSecret: process.env.DISCORD_CLIENT_SECRET || 'dummy',
-    callbackURL: `${appBaseUrl}/auth/discord/callback`,
+    callbackURL: `${initialAppUrl}/auth/discord/callback`,
     scope: ['identify']
   }, (accessToken, refreshToken, profile, done) => {
     return done(null, profile);
