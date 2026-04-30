@@ -459,7 +459,7 @@ async function createServer() {
 
   // Advanced HLTB Scraper (Direct fetch to bypass library issues)
   // 1. Helper functions from hltb.js
-function cleanNameForHLTB(name: string) {
+function cleanGameTitle(name: string) {
     let clean = name.replace(/[®™©]/g, '');             
     clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');     
     clean = clean.replace(/[^\w\s]/g, ' ');             
@@ -495,7 +495,7 @@ async function callPythonBridge(gameName: string) {
 // 3. Updated fetchHLTBData used by your routes[cite: 5, 7]
 const fetchHLTBData = async (title: string) => {
     try {
-        const searchName = cleanNameForHLTB(title);
+        const searchName = cleanGameTitle(title);
         console.log(`[HLTB Bridge] Searching: "${searchName}"`);
         return await callPythonBridge(searchName);
     } catch (err) {
@@ -505,7 +505,7 @@ const fetchHLTBData = async (title: string) => {
 };
 
   const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string) => {
-    const cleanedTitle = cleanNameForHLTB(title);
+    const cleanedTitle = cleanGameTitle(title);
     
     // 1. Check if game already exists in our 'games' table
     const { data: existingGame } = await supabase
@@ -549,7 +549,7 @@ const fetchHLTBData = async (title: string) => {
   const hltbCache = new Map<string, any>();
 
   // Advanced title cleaner and edition stripper logic
-  const cleanNameForHLTB = (title: string): string => {
+  const cleanGameTitle = (title: string): string => {
     return title
       .replace(/ - (Standard|Digital|Deluxe|Ultimate|Complete|Legacy|Definitive|Enhanced|Remastered|Remake|Gold|Platinum|GOTY|Game of the Year|Special|Premium|Collector's) Edition/gi, '')
       .replace(/[:®™]/g, '')
@@ -559,7 +559,7 @@ const fetchHLTBData = async (title: string) => {
 
   app.get('/api/admin/hltb/:title', async (req, res) => {
     const { title } = req.params;
-    const cleanedTitle = cleanNameForHLTB(title);
+    const cleanedTitle = cleanGameTitle(title);
     
     if (hltbCache.has(cleanedTitle)) {
       return res.json(hltbCache.get(cleanedTitle));
@@ -603,14 +603,14 @@ const fetchHLTBData = async (title: string) => {
     if (!Array.isArray(titles)) return res.status(400).json({ error: 'Invalid input' });
 
     const results: Record<string, any> = {};
-    const toFetch = titles.filter(t => !hltbCache.has(cleanNameForHLTB(t)));
+    const toFetch = titles.filter(t => !hltbCache.has(cleanGameTitle(t)));
 
     // Fetch in small batches to avoid rate limits
     for (let i = 0; i < toFetch.length; i += 3) {
       const batch = toFetch.slice(i, i + 3);
       await Promise.all(batch.map(async (title) => {
         try {
-          const cleanedTitle = cleanNameForHLTB(title);
+          const cleanedTitle = cleanGameTitle(title);
           let data = await fetchHLTBData(cleanedTitle);
 
           if (!data) {
@@ -639,7 +639,7 @@ const fetchHLTBData = async (title: string) => {
         } catch (e) {
           console.warn(`HLTB fetch failed for ${title}`, e);
           const data = { main: 0, mainExtra: 0, completionist: 0, error: true };
-          hltbCache.set(cleanNameForHLTB(title), data);
+          hltbCache.set(cleanGameTitle(title), data);
           results[title] = data;
         }
       }));
@@ -647,7 +647,7 @@ const fetchHLTBData = async (title: string) => {
 
     // Include cached ones
     titles.forEach(title => {
-      const cleaned = cleanNameForHLTB(title);
+      const cleaned = cleanGameTitle(title);
       if (hltbCache.has(cleaned)) {
         results[title] = hltbCache.get(cleaned);
       }
