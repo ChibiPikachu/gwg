@@ -517,22 +517,29 @@ function cleanNameForHLTB(name: string) {
 // 2. The Bridge Caller[cite: 6, 7]
 async function callPythonBridge(gameName: string) {
     try {
-        // process.cwd() refers to the root directory in Vercel[cite: 1, 2]
         const pythonScript = path.join(process.cwd(), 'hltb_bridge.py');
         
-        // Vercel production uses 'python3'
-        const pythonCmd = (process.env.VERCEL === '1' || process.env.NODE_ENV === 'production') 
-            ? 'python3' 
-            : 'python';
+        // Try 'python3' first, then 'python' as a fallback
+        const cmds = ['python3', 'python'];
+        let stdout = '';
+        let lastError = null;
 
-        const { stdout, stderr } = await execFilePromise(pythonCmd, [pythonScript, gameName]);
+        for (const cmd of cmds) {
+            try {
+                const result = await execFilePromise(cmd, [pythonScript, gameName]);
+                stdout = result.stdout;
+                lastError = null;
+                break; // If successful, stop looking
+            } catch (err) {
+                lastError = err;
+            }
+        }
 
-        if (stderr) console.warn('[HLTB Bridge] Python Stderr:', stderr);
+        if (lastError) throw lastError;
 
         const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
         if (jsonMatch && jsonMatch[0] !== 'null') {
             const data = JSON.parse(jsonMatch[0]);
-            // Ensure you map 'hastily' to 'main', etc., as per your script's output[cite: 3, 5]
             return {
                 main: parseInt(data.hastily) || 0,
                 mainExtra: parseInt(data.normally) || 0,
@@ -541,7 +548,7 @@ async function callPythonBridge(gameName: string) {
         }
         return null;
     } catch (error) {
-        console.error('[HLTB Bridge] Execution failed:', error.message);
+        console.error(`[HLTB Bridge] Final failure: ${error.message}`);
         return null;
     }
 }
