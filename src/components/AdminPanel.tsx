@@ -557,8 +557,28 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   "p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md",
                   TEAM_COLORS[sub.userTeam as Team || 'none'].glow
                 )}>
-                  <div className="w-full md:w-32 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group bg-black/20">
-                      <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                  <div className="flex flex-col gap-4 w-full md:w-32 shrink-0">
+                    <div className="w-full aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group bg-black/20">
+                        <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                    </div>
+
+                    {hltbData[sub.game_name] && (
+                          <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-black/5">
+                             <div className="flex items-center gap-1.5 w-full pb-1 border-b dark:border-white/5 border-black/5">
+                                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">HLTB Main: {hltbData[sub.game_name].main}h</span>
+                             </div>
+                             <div className="flex items-center gap-1.5 w-full">
+                                <span className="text-[9px] font-bold opacity-30 dark:text-white text-slate-500 uppercase">Comp: {hltbData[sub.game_name].completionist}h</span>
+                             </div>
+                             
+                             {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
+                                <div className="mt-2 w-full flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 animate-pulse">
+                                   <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                   <span className="text-[8px] font-black text-red-500 uppercase tracking-tight">Review Required</span>
+                                </div>
+                             )}
+                          </div>
+                    )}
                   </div>
 
                   <div className="flex-1 flex flex-col gap-4 w-full">
@@ -601,9 +621,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            target="_blank"
                            rel="noopener noreferrer"
                            className={cn(
-                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
+                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all shadow-sm",
                              sub.steam_appid 
-                               ? "bg-[#171a21] border-[#2a475e] hover:bg-[#1b2838]" 
+                               ? "dark:bg-[#171a21] bg-[#1b2838] border-white/10 dark:border-[#2a475e] hover:brightness-110" 
                                : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
                            )}
                            title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
@@ -636,39 +656,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                              <span className="text-[10px] opacity-20 font-bold uppercase animate-pulse">Searching HLTB...</span>
                            )}
                         </div>
-                        {hltbData[sub.game_name] && (
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to beat the main story">
-                                <span className="text-[10px] font-bold text-amber-400">Main:</span>
-                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].main}h</span>
-                             </div>
-                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to beat main story + extras">
-                                <span className="text-[10px] font-bold text-blue-400">Extra:</span>
-                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].mainExtra}h</span>
-                             </div>
-                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to 100% complete">
-                                <span className="text-[10px] font-bold text-purple-400">Comp:</span>
-                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].completionist}h</span>
-                             </div>
-                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 opacity-40 group/hltb" title="HowLongToBeat ID">
-                                <span className="text-[10px] font-bold text-white/50">ID:</span>
-                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].id}</span>
-                             </div>
-
-                             {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-                                   <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
-                                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tight">Review Required! (5x+ Main)</span>
-                                </div>
-                             )}
-                             {hltbData[sub.game_name].main > 0 && sub.hours_during <= hltbData[sub.game_name].main * 5 && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" />
-                                   <span className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-tight">Normal</span>
-                                </div>
-                             )}
-                          </div>
-                        )}
                       </div>
                     </div>
 
