@@ -1,22 +1,38 @@
 import sys
 import json
+import asyncio
 from howlongtobeatpy import HowLongToBeat
 
-def main():
+async def search_game(game_name):
     try:
-        game_name = sys.argv[1]
-        results = HowLongToBeat().search(game_name)
+        # Initialize and search
+        # If your version of the library is synchronous, remove 'await'
+        results = await HowLongToBeat().search(game_name)
+        
         if results:
-            best_element = max(results, key=lambda element: element.similarity)
-            print(json.dumps({
-                "main": best_element.main_extra, # or gameplay_main
-                "mainExtra": best_element.main_extra,
-                "completionist": best_element.completionist
-            }))
+            # Find the best match
+            best = max(results, key=lambda element: element.similarity)
+            
+            def format_time(t):
+                # Ensure t is a number before rounding
+                try:
+                    if t is None or float(t) <= 0: return "--"
+                    return f"{int(round(float(t)))} Hours"
+                except (ValueError, TypeError):
+                    return "--"
+                
+            out = {
+                "hastily": format_time(best.main_story),
+                "normally": format_time(best.main_extra),
+                "completionist": format_time(best.completionist),
+            }
+            print(json.dumps(out))
         else:
-            print(json.dumps(None)) # Ensure valid JSON is always printed
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
+            print(json.dumps(None))
+    except Exception:
+        print(json.dumps(None))
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        game_query = " ".join(sys.argv[1:])
+        asyncio.run(search_game(game_query))
