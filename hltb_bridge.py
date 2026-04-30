@@ -2,30 +2,21 @@ import sys
 import json
 from howlongtobeatpy import HowLongToBeat
 
-def search_game(game_name):
+def main():
     try:
-        # 0.0 threshold returns all results, exactly like the PlayDate app does
-        results = HowLongToBeat(0.0).search(game_name, similarity_case_sensitive=False)
-        
-        if results and len(results) > 0:
-            # Grab the best match based on similarity
-            best = max(results, key=lambda element: element.similarity)
-            
-            def format_time(t):
-                if t is None or t <= 0: return "--"
-                return f"{int(round(t))} Hours"
-                
-            out = {
-                "hastily": format_time(best.main_story),
-                "normally": format_time(best.main_extra),
-                "completionist": format_time(best.completionist),
-            }
-            print(json.dumps(out))
+        game_name = sys.argv[1]
+        results = HowLongToBeat().search(game_name)
+        if results:
+            best_element = max(results, key=lambda element: element.similarity)
+            print(json.dumps({
+                "main": best_element.main_extra, # or gameplay_main
+                "mainExtra": best_element.main_extra,
+                "completionist": best_element.completionist
+            }))
         else:
-            print(json.dumps(None))
+            print(json.dumps(None)) # Ensure valid JSON is always printed
     except Exception as e:
-        print(json.dumps(None))
+        print(json.dumps({"error": str(e)}))
 
-if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        search_game(sys.argv[1])
+if __name__ == "__main__":
+    main()
