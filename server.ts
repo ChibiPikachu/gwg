@@ -872,6 +872,8 @@ async function createServer() {
 
   app.post('/api/admin/verify-submission', async (req, res) => {
     const { submissionId, status, points, rejectionReason } = req.body;
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 

@@ -249,7 +249,11 @@ export default function MySubmissions() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="dark:bg-[#151515] bg-white border dark:border-white/10 border-slate-200 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div className={cn(
+            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200",
+            theme.border,
+            theme.glow
+          )}>
             <div className="p-8">
               <div className="flex justify-between items-start mb-8">
                 <div>
@@ -430,7 +434,12 @@ export default function MySubmissions() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {submissions.map((sub) => (
               <div key={sub.id} className="flex flex-col gap-3 group">
-                <div className="aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border dark:border-white/5 border-slate-200 relative shadow-xl">
+                <div className={cn(
+                  "aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border relative shadow-xl transition-all duration-300",
+                  "dark:border-white/5 border-slate-200",
+                  `group-hover:${theme.border}`,
+                  theme.glow.split(' ').map(c => `group-hover:${c}`).join(' ')
+                )}>
                    <img 
                      src={sub.game_image} 
                      alt={sub.game_title} 
