@@ -391,10 +391,10 @@ export default function MySubmissions() {
                    
                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-4">
                       <div className="flex flex-col items-center gap-1">
-                         <div className="flex items-center gap-2 text-xs font-bold">
+                         <div className="flex items-center gap-2 text-s font-bold">
                             🏆 {sub.achievements_during}
                          </div>
-                         <div className="flex items-center gap-2 text-xs font-bold">
+                         <div className="flex items-center gap-2 text-s font-bold">
                             🕒 {sub.hours_during}h
                          </div>
                       </div>
