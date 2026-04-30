@@ -153,8 +153,8 @@ export default function MySubmissions() {
           completionStatus: formData.completionStatus,
           calculatedScore: scorePreview,
           notes: formData.notes,
-          steamAppId: selectedGame.steamAppId || null,
-          hltbId: selectedGame.hltbId || null
+          steam_appid: selectedGame.steam_appid || null,
+          hltb_id: selectedGame.hltb_id || null
         })
       });
 
@@ -344,9 +344,9 @@ export default function MySubmissions() {
                         >
                           Change Game
                         </button>
-                        {selectedGame.steamAppId && (
+                        {selectedGame.steam_appid && (
                            <a 
-                             href={`https://store.steampowered.com/app/${selectedGame.steamAppId}`} 
+                             href={`https://store.steampowered.com/app/${selectedGame.steam_appid}`} 
                              target="_blank" 
                              rel="noopener noreferrer"
                              className="flex items-center gap-1.5 text-[10px] font-bold dark:text-white/40 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"

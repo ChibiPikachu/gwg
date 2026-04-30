@@ -226,10 +226,9 @@ async function createServer() {
     if (strategy) {
       strategy._returnURL = `${appUrl}/auth/steam/return`;
       strategy._realm = appUrl;
-      console.log('[Auth] Steam return. Verifying against ReturnURL:', strategy._returnURL);
     }
 
-    passport.authenticate('steam', (err: any, user: any) => {
+    passport.authenticate('steam', { failureRedirect: '/?error=AuthFailed' }, (err: any, user: any) => {
       if (err) {
         console.error('Steam Auth Error:', err);
         return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
@@ -1310,15 +1309,15 @@ async function createServer() {
           }
         }
 
-        return {
-          id: game.id,
-          title: game.name,
-          image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
-          summary: game.summary,
-          steamAppId: steamId,
-          hltbId: hltbId
-        };
-      });
+          return {
+            id: game.id,
+            title: game.name,
+            image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+            summary: game.summary,
+            steam_appid: steamId,
+            hltb_id: hltbId
+          };
+        });
 
       res.json(results);
     } catch (err) {
