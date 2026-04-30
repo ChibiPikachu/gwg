@@ -21,8 +21,11 @@ export default function MySubmissions() {
     achievementsBefore: '0',
     hoursBefore: '0',
     completionStatus: 'beaten' as any,
+    platform: 'Steam' as string,
     notes: ''
   });
+  const [verifyingSteam, setVerifyingSteam] = React.useState(false);
+  const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
   const multiplierPreview = React.useMemo(() => {
@@ -151,6 +154,7 @@ export default function MySubmissions() {
           hoursBefore: parseFloat(formData.hoursBefore) || 0,
           multiplier: multiplierPreview,
           completionStatus: formData.completionStatus,
+          platform: formData.platform,
           calculatedScore: scorePreview,
           notes: formData.notes,
           steam_appid: selectedGame.steam_appid || null,
@@ -205,6 +209,7 @@ export default function MySubmissions() {
       achievementsBefore: String(sub.achievements_before),
       hoursBefore: String(sub.hours_before),
       completionStatus: sub.completion_status || 'beaten',
+      platform: sub.platform || 'Steam',
       notes: sub.notes || ''
     });
     setShowForm(true);
@@ -239,10 +244,51 @@ export default function MySubmissions() {
       achievementsBefore: '0', 
       hoursBefore: '0', 
       completionStatus: 'beaten',
+      platform: 'Steam',
       notes: '' 
     });
     setSearchResults([]);
     setGameSearch('');
+    setSteamVerifyMsg(null);
+  };
+
+  const handleVerifySteam = async () => {
+    if (!selectedGame) return;
+    setVerifyingSteam(true);
+    setSteamVerifyMsg({ type: 'info', text: 'Verifying ownership...' });
+
+    try {
+      let appId = selectedGame.steam_appid;
+      let url = `/api/steam/check-ownership/${appId}`;
+      
+      if (!appId) {
+        url = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title)}`;
+      }
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.owned) {
+        const hours = (data.playtime_forever / 60).toFixed(1);
+        setFormData(prev => ({
+          ...prev,
+          hoursPlayed: hours
+        }));
+        setSteamVerifyMsg({ 
+          type: 'success', 
+          text: `Verified! Found ${hours}h on Steam.` 
+        });
+      } else {
+        setSteamVerifyMsg({ 
+          type: 'error', 
+          text: 'Game not found in your Steam library. Please verify the game name or check your profile privacy.' 
+        });
+      }
+    } catch (err) {
+      setSteamVerifyMsg({ type: 'error', text: 'Failed to verify with Steam. API error.' });
+    } finally {
+      setVerifyingSteam(false);
+    }
   };
 
   return (
@@ -360,6 +406,63 @@ export default function MySubmissions() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                    <div className="col-span-1 space-y-2">
+                       <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Platform</label>
+                       <select 
+                         className={cn("w-full dark:bg-[#111] bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                         value={formData.platform}
+                         onChange={(e) => {
+                           const val = e.target.value;
+                           setFormData({...formData, platform: val});
+                           if (val === 'Steam') {
+                             handleVerifySteam();
+                           } else {
+                             setSteamVerifyMsg(null);
+                           }
+                         }}
+                       >
+                         {['Steam', 'Epic Games', 'Nintendo', 'Xbox', 'PlayStation', 'GoG', 'Others'].map(p => (
+                           <option key={p} value={p}>{p}</option>
+                         ))}
+                       </select>
+                    </div>
+
+                    <div className="col-span-1 space-y-2">
+                      <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Steam Verification</label>
+                      <div className="h-11 flex items-center">
+                        {formData.platform === 'Steam' ? (
+                          <button 
+                            type="button"
+                            disabled={verifyingSteam}
+                            onClick={handleVerifySteam}
+                            className={cn(
+                              "text-[10px] font-bold px-4 py-2 rounded-lg border transition-all flex items-center gap-2",
+                              verifyingSteam ? "opacity-50" : "hover:bg-white/5"
+                            )}
+                          >
+                            {verifyingSteam ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                            {verifyingSteam ? 'Verifying...' : 'Check Ownership'}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] opacity-20 italic">Only for Steam</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {steamVerifyMsg && (
+                      <div className={cn(
+                        "col-span-2 p-3 rounded-xl text-[10px] font-bold flex items-center gap-2",
+                        steamVerifyMsg.type === 'error' ? "bg-red-500/10 border border-red-500/20 text-red-400" :
+                        steamVerifyMsg.type === 'success' ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" :
+                        "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                      )}>
+                        {steamVerifyMsg.type === 'error' && <AlertCircle size={14} />}
+                        {steamVerifyMsg.type === 'success' && <CheckCircle2 size={14} />}
+                        {steamVerifyMsg.type === 'info' && <Loader2 size={14} className="animate-spin" />}
+                        {steamVerifyMsg.text}
+                      </div>
+                    )}
+
                     <div className="space-y-2 col-span-2">
                        <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Completion Status</label>
                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -572,7 +675,14 @@ export default function MySubmissions() {
                    </div>
                 </div>
                 <div className="flex flex-col gap-2 px-1">
-                  <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize">{sub.game_name}</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize flex-1">{sub.game_name}</h4>
+                    {sub.platform && (
+                      <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/5 font-black uppercase opacity-40">
+                        {sub.platform}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     {sub.status === 'verified' ? (
                       <>

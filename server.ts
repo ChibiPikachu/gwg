@@ -7,6 +7,20 @@ import { Strategy as DiscordStrategy } from 'passport-discord';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// Helper for Steam API calls
+async function fetchSteamOwnedGames(steamId: string) {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const response = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
+    const data: any = await response.json();
+    return data.response?.games || [];
+  } catch (err) {
+    console.error('Steam Owned Games Fetch Failed:', err);
+    return null;
+  }
+}
+
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 // Lazy-load howlongtobeat to prevent startup crashes if module is missing or incompatible in some environments
 
@@ -433,6 +447,63 @@ async function createServer() {
     };
   }
 
+  // Advanced HLTB Scraper (Direct fetch to bypass library issues)
+  const fetchHLTBData = async (title: string) => {
+    try {
+      const response = await fetch('https://howlongtobeat.com/api/search/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://howlongtobeat.com/',
+          'Origin': 'https://howlongtobeat.com'
+        },
+        body: JSON.stringify({
+          searchType: "games",
+          searchTerms: title.split(' '),
+          searchPage: 1,
+          size: 20,
+          searchOptions: {
+            games: {
+              userId: 0,
+              platform: "",
+              sortCategory: "popular",
+              rangeCategory: "id",
+              rangeTime: { min: 0, max: 0 },
+              gameplay: { perspective: "", flow: "", genre: "" },
+              modifier: ""
+            },
+            users: { sortCategory: "postcount" },
+            lists: { sortCategory: "follows" },
+            filter: "",
+            sort: 0,
+            randomizer: 0
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`HLTB HTTP error! status: ${response.status}`);
+      
+      const data: any = await response.json();
+      if (!data || !data.data || data.data.length === 0) return null;
+
+      // Find the best match
+      const results = data.data.map((game: any) => ({
+        id: game.game_id,
+        name: game.game_name,
+        main: Math.round(game.comp_main / 3600),
+        mainExtra: Math.round(game.comp_plus / 3600),
+        completionist: Math.round(game.comp_100 / 3600)
+      }));
+
+      const bestMatch = results.find((r: any) => r.name.toLowerCase() === title.toLowerCase()) || results[0];
+      return bestMatch;
+    } catch (err) {
+      console.error('Manual HLTB Fetch Failed:', err);
+      return null;
+    }
+  };
+
   const hltbCache = new Map<string, any>();
 
   // Advanced title cleaner and edition stripper logic
@@ -453,17 +524,25 @@ async function createServer() {
     }
 
     try {
-      const results = await hltbService.search(cleanedTitle);
-      if (results && results.length > 0) {
-        // Find the best match - prioritize exact match after cleaning
-        const bestMatch = results.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || results[0];
-        const data = {
-          main: bestMatch.gameplayMain,
-          mainExtra: bestMatch.gameplayMainExtra,
-          completionist: bestMatch.gameplayCompletionist,
-          id: bestMatch.id,
-          name: bestMatch.name
-        };
+      // Try robust scraper first as libraries are currently fragile
+      let data = await fetchHLTBData(cleanedTitle);
+      
+      if (!data) {
+        // Fallback to library if custom fails
+        const results = await hltbService.search(cleanedTitle);
+        if (results && results.length > 0) {
+          const bestMatch = results.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || results[0];
+          data = {
+            main: bestMatch.gameplayMain,
+            mainExtra: bestMatch.gameplayMainExtra,
+            completionist: bestMatch.gameplayCompletionist,
+            id: bestMatch.id,
+            name: bestMatch.name
+          };
+        }
+      }
+
+      if (data) {
         hltbCache.set(cleanedTitle, data);
         return res.json(data);
       }
@@ -490,23 +569,30 @@ async function createServer() {
       await Promise.all(batch.map(async (title) => {
         try {
           const cleanedTitle = cleanGameTitle(title);
-          const searchResults = await hltbService.search(cleanedTitle);
-          if (searchResults && searchResults.length > 0) {
-            const bestMatch = searchResults.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || searchResults[0];
-            const data = {
-              main: bestMatch.gameplayMain,
-              mainExtra: bestMatch.gameplayMainExtra,
-              completionist: bestMatch.gameplayCompletionist,
-              id: bestMatch.id,
-              name: bestMatch.name
-            };
+          let data = await fetchHLTBData(cleanedTitle);
+
+          if (!data) {
+            const searchResults = await hltbService.search(cleanedTitle);
+            if (searchResults && searchResults.length > 0) {
+              const bestMatch = searchResults.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || searchResults[0];
+              data = {
+                main: bestMatch.gameplayMain,
+                mainExtra: bestMatch.gameplayMainExtra,
+                completionist: bestMatch.gameplayCompletionist,
+                id: bestMatch.id,
+                name: bestMatch.name
+              };
+            }
+          }
+
+          if (data) {
             hltbCache.set(cleanedTitle, data);
             results[title] = data;
           } else {
             // Negative cache
-            const data = { main: 0, mainExtra: 0, completionist: 0, notFound: true };
-            hltbCache.set(cleanedTitle, data);
-            results[title] = data;
+            const notFoundData = { main: 0, mainExtra: 0, completionist: 0, notFound: true };
+            hltbCache.set(cleanedTitle, notFoundData);
+            results[title] = notFoundData;
           }
         } catch (e) {
           console.warn(`HLTB fetch failed for ${title}`, e);
@@ -796,6 +882,7 @@ async function createServer() {
       hoursBefore,
       completionStatus,
       notes,
+      platform,
       steamAppId,
       hltbId
     } = req.body;
@@ -856,6 +943,7 @@ async function createServer() {
         multiplier: serverMultiplier,
         calculated_score: serverPoints,
         completion_status: completionStatus || 'beaten',
+        platform: platform || 'Others',
         steam_appid: steamAppId || null,
         hltb_id: hltbId || null,
         points: serverPoints, 
@@ -1474,6 +1562,72 @@ async function createServer() {
       }
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch steam data' });
+    }
+  });
+
+  app.get('/api/steam/check-ownership/:appId', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { appId } = req.params;
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+
+    if (!steamId || steamId.length < 5) {
+      return res.status(400).json({ error: 'Steam ID not found in session' });
+    }
+
+    try {
+      const games = await fetchSteamOwnedGames(steamId);
+      if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
+
+      const game = games.find((g: any) => String(g.appid) === String(appId));
+      if (game) {
+        return res.json({ 
+          owned: true, 
+          playtime_forever: game.playtime_forever,
+          playtime_2weeks: game.playtime_2weeks || 0,
+          name: game.name
+        });
+      }
+
+      res.json({ owned: false });
+    } catch (err) {
+      console.error('Steam ownership check failed:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/steam/check-ownership-by-name', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { name } = req.query;
+    if (!name) return res.status(400).json({ error: 'Name required' });
+
+    const currentUser = (req as any).user;
+    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+
+    try {
+      const games = await fetchSteamOwnedGames(steamId);
+      if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
+
+      // Fuzzy match or exact match
+      const game = games.find((g: any) => g.name.toLowerCase() === (name as string).toLowerCase());
+      if (game) {
+        return res.json({ 
+          owned: true, 
+          appId: game.appid,
+          playtime_forever: game.playtime_forever,
+          name: game.name
+        });
+      }
+
+      res.json({ owned: false });
+    } catch (err) {
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
