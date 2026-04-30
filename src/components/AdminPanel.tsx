@@ -40,6 +40,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
+  const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [rejectionReason, setRejectionReason] = React.useState('');
   const [editHours, setEditHours] = React.useState('0');
   const [editAchievements, setEditAchievements] = React.useState('0');
@@ -63,6 +64,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       if (res.ok) {
         const data = await res.json();
         setSubmissions(Array.isArray(data) ? data : []);
+        
+        // Batch fetch HLTB data for these submissions
+        const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name)));
+        if (uniqueTitles.length > 0) {
+          fetch('/api/admin/hltb-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titles: uniqueTitles })
+          })
+          .then(r => r.json())
+          .then(hltb => setHltbData(prev => ({ ...prev, ...hltb })))
+          .catch(err => console.error('HLTB batch fetch failed:', err));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch submissions:', err);
@@ -591,7 +605,31 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                     </div>
 
-                    <h4 className="text-xl font-black tracking-tight -mt-2 truncate dark:text-white text-slate-900">{sub.game_name}</h4>
+                    <div className="flex flex-row items-center gap-4">
+                      <div className="flex flex-col">
+                        <h4 className="text-xl font-black tracking-tight truncate dark:text-white text-slate-900">{sub.game_name}</h4>
+                        {hltbData[sub.game_name] && (
+                          <div className="flex items-center gap-3 mt-1">
+                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#252525] border border-[#353535] group/hltb">
+                                <span className="text-[10px] font-bold text-amber-400">HLTB Main:</span>
+                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].main}h</span>
+                             </div>
+                             {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/10 border border-red-500/30 animate-pulse">
+                                   <div className="w-2 h-2 rounded-full bg-red-500" />
+                                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tight">(Review Required!)</span>
+                                </div>
+                             )}
+                             {hltbData[sub.game_name].main > 0 && sub.hours_during <= hltbData[sub.game_name].main * 5 && (
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/5 border border-emerald-500/20">
+                                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" />
+                                   <span className="text-[10px] font-bold text-emerald-500/60 uppercase tracking-tight">Normal</span>
+                                </div>
+                             )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     {sub.notes && (
                       <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">

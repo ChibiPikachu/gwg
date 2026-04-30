@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { HowLongToBeatService, HowLongToBeatEntry } from 'howlongtobeat';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -389,6 +390,92 @@ async function createServer() {
     user.displayName = displayName;
     user.status = status;
     res.json({ success: true, user });
+  });
+
+  // HLTB Service & Cache
+  const hltbService = new HowLongToBeatService();
+  const hltbCache = new Map<string, any>();
+
+  // Advanced title cleaner and edition stripper logic
+  const cleanGameTitle = (title: string): string => {
+    return title
+      .replace(/ - (Standard|Digital|Deluxe|Ultimate|Complete|Legacy|Definitive|Enhanced|Remastered|Remake|Gold|Platinum|GOTY|Game of the Year|Special|Premium|Collector's) Edition/gi, '')
+      .replace(/[:®™]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  app.get('/api/admin/hltb/:title', async (req, res) => {
+    const { title } = req.params;
+    const cleanedTitle = cleanGameTitle(title);
+    
+    if (hltbCache.has(cleanedTitle)) {
+      return res.json(hltbCache.get(cleanedTitle));
+    }
+
+    try {
+      const results = await hltbService.search(cleanedTitle);
+      if (results && results.length > 0) {
+        // Find the best match - prioritize exact match after cleaning
+        const bestMatch = results.find(r => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || results[0];
+        const data = {
+          main: bestMatch.gameplayMain,
+          mainExtra: bestMatch.gameplayMainExtra,
+          completionist: bestMatch.gameplayCompletionist,
+          id: bestMatch.id,
+          name: bestMatch.name
+        };
+        hltbCache.set(cleanedTitle, data);
+        return res.json(data);
+      }
+      res.json({ error: 'Not found' });
+    } catch (err) {
+      console.error('HLTB search failed:', err);
+      res.status(500).json({ error: 'HLTB fetch failed' });
+    }
+  });
+
+  app.post('/api/admin/hltb-batch', async (req, res) => {
+    const { titles } = req.body;
+    if (!Array.isArray(titles)) return res.status(400).json({ error: 'Invalid input' });
+
+    const results: Record<string, any> = {};
+    const toFetch = titles.filter(t => !hltbCache.has(cleanGameTitle(t)));
+
+    // Fetch in small batches to avoid rate limits
+    for (let i = 0; i < toFetch.length; i += 3) {
+      const batch = toFetch.slice(i, i + 3);
+      await Promise.all(batch.map(async (title) => {
+        try {
+          const cleanedTitle = cleanGameTitle(title);
+          const searchResults = await hltbService.search(cleanedTitle);
+          if (searchResults && searchResults.length > 0) {
+            const bestMatch = searchResults.find(r => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || searchResults[0];
+            const data = {
+              main: bestMatch.gameplayMain,
+              mainExtra: bestMatch.gameplayMainExtra,
+              completionist: bestMatch.gameplayCompletionist,
+              id: bestMatch.id,
+              name: bestMatch.name
+            };
+            hltbCache.set(cleanedTitle, data);
+            results[title] = data;
+          }
+        } catch (e) {
+          console.warn(`HLTB fetch failed for ${title}`, e);
+        }
+      }));
+    }
+
+    // Include cached ones
+    titles.forEach(title => {
+      const cleaned = cleanGameTitle(title);
+      if (hltbCache.has(cleaned)) {
+        results[title] = hltbCache.get(cleaned);
+      }
+    });
+
+    res.json(results);
   });
 
   app.get('/api/me', async (req, res) => {
