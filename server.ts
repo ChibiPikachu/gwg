@@ -1212,9 +1212,16 @@ async function createServer() {
           }
         }
 
-        // HLTB ID extraction from website URL
-        const hltbUrl = game.websites?.find((w: any) => w.url.includes('howlongtobeat.com'))?.url;
-        const hltbId = hltbUrl ? hltbUrl.split('/').pop()?.split('-')[0] : null;
+        // HLTB ID extraction: Check external_games (cat 14) or website URL
+        let hltbId = game.external_games?.find((eg: any) => eg.category === 14)?.uid;
+        if (!hltbId) {
+          const hltbUrl = game.websites?.find((w: any) => w.url.includes('howlongtobeat.com'))?.url;
+          if (hltbUrl) {
+            const match = hltbUrl.match(/(?:\/game\/|id=)(\d+)/);
+            if (match) hltbId = match[1];
+            else hltbId = hltbUrl.split('/').pop()?.split('-')[0];
+          }
+        }
 
         return {
           id: game.id,

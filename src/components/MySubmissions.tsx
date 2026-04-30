@@ -334,15 +334,28 @@ export default function MySubmissions() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="flex gap-4 p-4 dark:bg-white/5 bg-slate-50 rounded-2xl border dark:border-white/5 border-slate-200">
                     <img src={selectedGame.image} className="w-24 h-14 object-cover rounded-lg" alt="" />
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-bold dark:text-white text-slate-900">{selectedGame.title}</h3>
-                      <button 
-                        type="button"
-                        onClick={() => setSelectedGame(null)}
-                        className={cn("text-[10px] uppercase font-bold hover:underline", theme.text)}
-                      >
-                        Change Game
-                      </button>
+                      <div className="flex items-center gap-3 mt-1">
+                        <button 
+                          type="button"
+                          onClick={() => setSelectedGame(null)}
+                          className={cn("text-[10px] uppercase font-bold hover:underline", theme.text)}
+                        >
+                          Change Game
+                        </button>
+                        {selectedGame.steamAppId && (
+                           <a 
+                             href={`https://store.steampowered.com/app/${selectedGame.steamAppId}`} 
+                             target="_blank" 
+                             rel="noopener noreferrer"
+                             className="flex items-center gap-1.5 text-[10px] font-bold dark:text-white/40 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                           >
+                             <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-3 h-3" alt="" />
+                             Steam Page
+                           </a>
+                        )}
+                      </div>
                     </div>
                   </div>
 
