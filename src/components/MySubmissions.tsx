@@ -513,15 +513,12 @@ export default function MySubmissions() {
         </div>
       )}
 
-      {submissions.length > 0 && (
-        <div>
-          <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6">Past events</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 opacity-40 grayscale pointer-events-none">
-            <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
-            <div className="aspect-[3/4] bg-[#1a1a1a] rounded-xl border border-white/5" />
-          </div>
+      <div className="mt-12">
+        <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Past events</h3>
+        <div className="text-center py-12 dark:bg-white/5 bg-slate-50 rounded-2xl border border-dashed dark:border-white/5 border-black/5">
+          <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here...</p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
