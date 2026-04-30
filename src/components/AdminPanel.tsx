@@ -552,12 +552,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            className={cn(
                              "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
                              sub.hltb_id 
-                               ? "bg-[#252525] border-[#353535] text-amber-400 hover:bg-[#303030]" 
+                               ? "bg-[#252525] border-[#353535] hover:bg-[#303030]" 
                                : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
                            )}
                            title={sub.hltb_id ? "View on HowLongToBeat" : "HLTB ID not found"}
                          >
-                           <Clock size={16} />
+                           <img src="https://www.google.com/s2/favicons?domain=howlongtobeat.com&sz=32" className={cn("w-5 h-5", !sub.hltb_id && "grayscale opacity-30")} alt="" />
                          </a>
                          <a 
                            href={sub.steam_appid ? `https://store.steampowered.com/app/${sub.steam_appid}` : undefined}
@@ -566,12 +566,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            className={cn(
                              "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
                              sub.steam_appid 
-                               ? "bg-[#171a21] border-[#2a475e] text-[#66c0f4] hover:bg-[#1b2838]" 
+                               ? "bg-[#171a21] border-[#2a475e] hover:bg-[#1b2838]" 
                                : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
                            )}
                            title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
                          >
-                           <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12c0 1.25.19 2.455.546 3.593l5.52-2.285c.03-.023.06-.04.091-.059l2.766-4.526a2.809 2.809 0 0 1 3.535-1.077c1.196.551 1.71 1.97 1.159 3.167-.282.612-.792 1.03-1.391 1.21l-2.028 4.908c.03.024.057.051.085.078l5.52-2.285c.356 1.138.546 2.343.546 3.593 0 6.627-5.373 12-12 12A11.96 11.96 0 0 0 .546 12C.19 10.862 0 9.657 0 8.407A12 12 0 0 1 12 0z"/></svg>
+                           <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-5 h-5", !sub.steam_appid && "grayscale opacity-30")} alt="" />
                          </a>
                          <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
@@ -591,7 +591,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                     </div>
 
-                    <h4 className="text-xl font-black uppercase tracking-tight -mt-2 truncate dark:text-white text-slate-900">{sub.game_name}</h4>
+                    <h4 className="text-xl font-black tracking-tight -mt-2 truncate dark:text-white text-slate-900">{sub.game_name}</h4>
 
                     {sub.notes && (
                       <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">

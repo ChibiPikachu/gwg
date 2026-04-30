@@ -1202,9 +1202,17 @@ async function createServer() {
 
       // Transform IGDB format
       const results = data.map((game: any) => {
-        const steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
-        // HLTB is often website category 14 (or search by name)
-        // Some datasets use category 14 for HLTB
+        // Steam ID can be in external_games (category 1) or websites (category 13)
+        let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
+        if (!steamId) {
+          const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url.includes('store.steampowered.com/app/'));
+          if (steamWebsite) {
+            const match = steamWebsite.url.match(/\/app\/(\d+)/);
+            if (match) steamId = match[1];
+          }
+        }
+
+        // HLTB ID extraction from website URL
         const hltbUrl = game.websites?.find((w: any) => w.url.includes('howlongtobeat.com'))?.url;
         const hltbId = hltbUrl ? hltbUrl.split('/').pop()?.split('-')[0] : null;
 

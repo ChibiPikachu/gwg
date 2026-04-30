@@ -481,10 +481,44 @@ export default function MySubmissions() {
                 )}>
                    <img 
                      src={sub.game_image} 
-                     alt={sub.game_title} 
-                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                     alt={sub.game_name} 
+                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                      referrerPolicy="no-referrer"
                    />
+                   
+                   {/* Link Overlays */}
+                   <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10">
+                      <a 
+                        href={sub.steam_appid ? `https://store.steampowered.com/app/${sub.steam_appid}` : undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center border shadow-lg transition-all hover:scale-110",
+                          sub.steam_appid 
+                            ? "bg-[#171a21] border-[#2a475e]" 
+                            : "bg-slate-800/50 border-white/5 opacity-50 cursor-not-allowed pointer-events-none"
+                        )}
+                        title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-4 h-4", !sub.steam_appid && "grayscale opacity-30")} alt="" />
+                      </a>
+                      <a 
+                        href={sub.hltb_id ? `https://howlongtobeat.com/game/${sub.hltb_id}` : undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center border shadow-lg transition-all hover:scale-110",
+                          sub.hltb_id 
+                            ? "bg-[#252525] border-[#353535]" 
+                            : "bg-slate-800/50 border-white/5 opacity-50 cursor-not-allowed pointer-events-none"
+                        )}
+                        title={sub.hltb_id ? "View on HowLongToBeat" : "HLTB ID not found"}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <img src="https://www.google.com/s2/favicons?domain=howlongtobeat.com&sz=32" className={cn("w-4 h-4", !sub.hltb_id && "grayscale opacity-30")} alt="" />
+                      </a>
+                   </div>
                    
                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-4">
                       <div className="flex flex-col items-center gap-1">
