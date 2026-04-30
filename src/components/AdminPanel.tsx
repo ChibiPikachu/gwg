@@ -564,17 +564,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                           <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-black/5">
-                             <div className="flex items-center gap-1.5 w-full pb-1 border-b dark:border-white/5 border-black/5">
-                                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">HLTB Main: {hltbData[sub.game_name].main}h</span>
-                             </div>
-                             <div className="flex items-center gap-1.5 w-full">
-                                <span className="text-[9px] font-bold opacity-30 dark:text-white text-slate-500 uppercase">Comp: {hltbData[sub.game_name].completionist}h</span>
+                             <div className="grid grid-cols-2 gap-2 w-full pb-1 border-b dark:border-white/5 border-black/5">
+                                <div className="flex flex-col">
+                                   <span className="text-[8px] opacity-40 uppercase font-black">Main Story</span>
+                                   <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">{hltbData[sub.game_name].main}h</span>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                   <span className="text-[8px] opacity-40 uppercase font-black text-right">Completionist</span>
+                                   <span className="text-[10px] font-bold text-purple-400 uppercase tracking-tighter text-right">{hltbData[sub.game_name].completionist}h</span>
+                                </div>
                              </div>
                              
-                             {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
-                                <div className="mt-2 w-full flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 animate-pulse">
-                                   <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                   <span className="text-[8px] font-black text-red-500 uppercase tracking-tight">Review Required</span>
+                             {hltbData[sub.game_name].main > 0 && (
+                                <div className="mt-1 w-full">
+                                  {sub.hours_during > hltbData[sub.game_name].main * 5 ? (
+                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-red-500/10 border border-red-500/20 animate-pulse">
+                                       <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                       <span className="text-[8px] font-black text-red-500 uppercase tracking-tight">Review Required! (5x+)</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20">
+                                       <div className="w-1.2 h-1.2 rounded-full bg-emerald-500/60" />
+                                       <span className="text-[8px] font-bold text-emerald-500/80 uppercase tracking-tight">Normal</span>
+                                    </div>
+                                  )}
                                 </div>
                              )}
                           </div>
@@ -657,15 +670,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       <div className="flex flex-col">
                         <div className="flex flex-row items-center gap-2">
                            <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
-                           {!hltbData[sub.game_name] && sub.status === 'pending' && (
-                             <span className="text-[10px] opacity-20 font-bold uppercase animate-pulse">Searching HLTB...</span>
-                           )}
-                           {hltbData[sub.game_name]?.error && (
-                             <span className="text-[10px] text-red-500/40 font-bold uppercase">HLTB Error</span>
-                           )}
-                           {hltbData[sub.game_name]?.notFound && (
-                             <span className="text-[10px] opacity-20 font-bold uppercase">HLTB Empty</span>
-                           )}
                         </div>
                       </div>
                     </div>

@@ -73,7 +73,11 @@ export default function MySubmissions() {
       }, (payload) => {
         console.log('Real-time submission update:', payload);
         if (payload.eventType === 'INSERT') {
-          setSubmissions(prev => [payload.new as Submission, ...prev]);
+          const newSub = payload.new as Submission;
+          setSubmissions(prev => {
+            if (prev.some(s => s.id === newSub.id)) return prev;
+            return [newSub, ...prev];
+          });
         } else if (payload.eventType === 'UPDATE') {
           setSubmissions(prev => prev.map(s => s.id === (payload.new as Submission).id ? (payload.new as Submission) : s));
         } else if (payload.eventType === 'DELETE') {

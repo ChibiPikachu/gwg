@@ -1494,7 +1494,7 @@ async function createServer() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'text/plain'
         },
-        body: `search "${query}"; fields name, cover.url, summary, external_games.category, external_games.uid, websites.url, websites.category; limit 5;`
+        body: `search "${query}"; fields name, cover.url, summary, category, external_games.category, external_games.uid, websites.url, websites.category; where category = (0, 4, 8, 9, 10, 11); limit 5;`
       });
 
       const data: any = await response.json();
