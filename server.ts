@@ -1781,7 +1781,7 @@ const fetchHLTBData = async (title: string) => {
     app.use(vite.middlewares);
   } else {
     // On Vercel or in production, serve from dist
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), 'hltb_bridge.py');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       // In a serverless environment, we might need to be careful with paths
