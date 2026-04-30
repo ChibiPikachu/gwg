@@ -658,7 +658,9 @@ async function createServer() {
       achievementsBefore,
       hoursBefore,
       completionStatus,
-      notes 
+      notes,
+      steamAppId,
+      hltbId
     } = req.body;
 
     const supabase = getSupabase();
@@ -717,6 +719,8 @@ async function createServer() {
         multiplier: serverMultiplier,
         calculated_score: serverPoints,
         completion_status: completionStatus || 'beaten',
+        steam_appid: steamAppId || null,
+        hltb_id: hltbId || null,
         points: serverPoints, 
         notes: notes || '',
         status: 'pending',
@@ -871,11 +875,18 @@ async function createServer() {
     try {
       const { data, error } = await supabase
         .from('submissions')
-        .select('*')
+        .select('*, profiles!submissions_user_id_fkey(team)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      res.json(data);
+      
+      // Flatten the profile team into the submission object for easier use
+      const flattenedData = data.map(sub => ({
+        ...sub,
+        userTeam: (sub as any).profiles?.team || 'none'
+      }));
+
+      res.json(flattenedData);
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch' });
     }
@@ -1180,7 +1191,7 @@ async function createServer() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'text/plain'
         },
-        body: `search "${query}"; fields name, cover.url, summary; limit 5;`
+        body: `search "${query}"; fields name, cover.url, summary, external_games.category, external_games.uid, websites.url, websites.category; limit 5;`
       });
 
       const data: any = await response.json();
@@ -1190,12 +1201,22 @@ async function createServer() {
       }
 
       // Transform IGDB format
-      const results = data.map((game: any) => ({
-        id: game.id,
-        title: game.name,
-        image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
-        summary: game.summary
-      }));
+      const results = data.map((game: any) => {
+        const steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
+        // HLTB is often website category 14 (or search by name)
+        // Some datasets use category 14 for HLTB
+        const hltbUrl = game.websites?.find((w: any) => w.url.includes('howlongtobeat.com'))?.url;
+        const hltbId = hltbUrl ? hltbUrl.split('/').pop()?.split('-')[0] : null;
+
+        return {
+          id: game.id,
+          title: game.name,
+          image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+          summary: game.summary,
+          steamAppId: steamId,
+          hltbId: hltbId
+        };
+      });
 
       res.json(results);
     } catch (err) {

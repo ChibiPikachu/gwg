@@ -62,10 +62,35 @@ export interface ThemeHelper {
   muted: string;
 }
 
-export const TEAM_COLORS: Record<Team, { primary: string; secondary: string; border: string }> = {
-  blue: { primary: 'text-blue-accent', secondary: 'bg-blue-accent/10', border: 'border-blue-accent/50' },
-  green: { primary: 'text-green-accent', secondary: 'bg-green-accent/10', border: 'border-green-accent/50' },
-  purple: { primary: 'text-purple-accent', secondary: 'bg-purple-accent/10', border: 'border-purple-accent/50' },
-  red: { primary: 'text-red-accent', secondary: 'bg-red-accent/10', border: 'border-red-accent/50' },
-  none: { primary: 'text-white', secondary: 'bg-white/10', border: 'border-white/20' }
+export const TEAM_COLORS: Record<Team, { primary: string; secondary: string; border: string; glow: string }> = {
+  blue: { 
+    primary: 'text-blue-accent', 
+    secondary: 'bg-blue-accent/10', 
+    border: 'border-blue-accent/40',
+    glow: 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-blue-accent/30 border-blue-accent/40' 
+  },
+  green: { 
+    primary: 'text-green-accent', 
+    secondary: 'bg-green-accent/10', 
+    border: 'border-green-accent/40',
+    glow: 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-green-accent/30 border-green-accent/40' 
+  },
+  purple: { 
+    primary: 'text-purple-accent', 
+    secondary: 'bg-purple-accent/10', 
+    border: 'border-purple-accent/40',
+    glow: 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-purple-accent/30 border-purple-accent/40' 
+  },
+  red: { 
+    primary: 'text-red-accent', 
+    secondary: 'bg-red-accent/10', 
+    border: 'border-red-accent/40',
+    glow: 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-red-accent/30 border-red-accent/40' 
+  },
+  none: { 
+    primary: 'text-white', 
+    secondary: 'bg-white/10', 
+    border: 'border-white/20',
+    glow: 'shadow-none border-white/10' 
+  }
 };

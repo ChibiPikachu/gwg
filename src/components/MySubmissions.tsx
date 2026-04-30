@@ -152,7 +152,9 @@ export default function MySubmissions() {
           multiplier: multiplierPreview,
           completionStatus: formData.completionStatus,
           calculatedScore: scorePreview,
-          notes: formData.notes
+          notes: formData.notes,
+          steamAppId: selectedGame.steamAppId || null,
+          hltbId: selectedGame.hltbId || null
         })
       });
 

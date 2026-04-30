@@ -506,51 +506,92 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               </div>
             ) : (
               submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).map(sub => (
-                <div key={sub.id} className="p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md dark:shadow-none">
-                  <div className="w-full md:w-48 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group">
-                    <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                <div key={sub.id} className={cn(
+                  "p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md",
+                  TEAM_COLORS[sub.userTeam as Team || 'none'].glow
+                )}>
+                  <div className="w-full md:w-32 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group">
                     <a 
-                      href={`https://store.steampowered.com/app/${sub.game_id}`} 
+                      href={`https://www.igdb.com/games/${sub.game_id}`} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      className="block w-full h-full"
                     >
-                      <ExternalLink size={24} className="text-white" />
+                      <img src={sub.game_image} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="" referrerPolicy="no-referrer" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <ExternalLink size={16} className="text-white" />
+                      </div>
                     </a>
                   </div>
 
                   <div className="flex-1 flex flex-col gap-4 w-full">
-                    <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                    <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
                       <div>
-                        <div className={cn("flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold mb-1", theme.text)}>
-                          Submission from
+                        <div className="flex items-center gap-2 mb-2">
+                           <div className={cn(
+                             "px-2 py-0.5 rounded text-[8px] uppercase font-bold tracking-widest border",
+                             TEAM_COLORS[sub.userTeam as Team || 'none'].primary,
+                             TEAM_COLORS[sub.userTeam as Team || 'none'].border,
+                             TEAM_COLORS[sub.userTeam as Team || 'none'].secondary
+                           )}>
+                             Team {sub.userTeam || 'none'}
+                           </div>
+                           <span className="text-[10px] opacity-30 font-bold uppercase tracking-widest dark:text-white text-slate-500">Submission</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <img src={sub.user_avatar} className="w-6 h-6 rounded-full" alt="" referrerPolicy="no-referrer" />
-                          <h3 className="font-bold">{sub.user_name}</h3>
-                          <span className="text-[10px] opacity-30 font-mono">({sub.user_id})</span>
+                          <h3 className="font-bold truncate max-w-[150px]">{sub.user_name}</h3>
+                          <span className="text-[10px] opacity-30 font-mono hidden sm:inline">({sub.user_id})</span>
                         </div>
-                        <h4 className="text-xl font-black mt-2 uppercase">{sub.game_title}</h4>
                       </div>
-                      <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Earned</span>
-                          <span className="text-lg font-bold dark:text-white text-slate-800">🏆 {sub.achievements_during}</span>
-                          <span className="text-[8px] opacity-20 uppercase font-bold dark:text-white text-slate-400">Prev: {sub.achievements_before || 0}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Time</span>
-                          <span className="text-lg font-bold dark:text-white text-slate-800">🕒 {sub.hours_during}h</span>
-                          <span className="text-[8px] opacity-20 uppercase font-bold dark:text-white text-slate-400">Prev: {sub.hours_before || 0}h</span>
-                        </div>
-                        <div className="w-[1px] h-8 bg-black/5 dark:bg-white/10" />
-                        <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Preview</span>
-                          <span className={cn("text-lg font-black", theme.text)}>{sub.calculated_score || 0} pts</span>
-                          <span className="text-[8px] opacity-40 uppercase font-bold dark:text-white text-slate-400">{sub.achievements_during || 0} 🏆 × {sub.multiplier?.toFixed(1) || '1.0'}x</span>
+                      <div className="flex items-center gap-3">
+                         <a 
+                           href={sub.hltb_id ? `https://howlongtobeat.com/game/${sub.hltb_id}` : undefined}
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className={cn(
+                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
+                             sub.hltb_id 
+                               ? "bg-[#252525] border-[#353535] text-amber-400 hover:bg-[#303030]" 
+                               : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
+                           )}
+                           title={sub.hltb_id ? "View on HowLongToBeat" : "HLTB ID not found"}
+                         >
+                           <Clock size={16} />
+                         </a>
+                         <a 
+                           href={sub.steam_appid ? `https://store.steampowered.com/app/${sub.steam_appid}` : undefined}
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className={cn(
+                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all",
+                             sub.steam_appid 
+                               ? "bg-[#171a21] border-[#2a475e] text-[#66c0f4] hover:bg-[#1b2838]" 
+                               : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
+                           )}
+                           title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
+                         >
+                           <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12c0 1.25.19 2.455.546 3.593l5.52-2.285c.03-.023.06-.04.091-.059l2.766-4.526a2.809 2.809 0 0 1 3.535-1.077c1.196.551 1.71 1.97 1.159 3.167-.282.612-.792 1.03-1.391 1.21l-2.028 4.908c.03.024.057.051.085.078l5.52-2.285c.356 1.138.546 2.343.546 3.593 0 6.627-5.373 12-12 12A11.96 11.96 0 0 0 .546 12C.19 10.862 0 9.657 0 8.407A12 12 0 0 1 12 0z"/></svg>
+                         </a>
+                         <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
+                         <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
+                            <span className="text-lg font-bold dark:text-white text-slate-800">{sub.achievements_during}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🕒</span>
+                            <span className="text-lg font-bold dark:text-white text-slate-800">{sub.hours_during}h</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
+                            <span className={cn("text-lg font-black", theme.text)}>{sub.calculated_score || 0}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
+
+                    <h4 className="text-xl font-black uppercase tracking-tight -mt-2 truncate dark:text-white text-slate-900">{sub.game_name}</h4>
 
                     {sub.notes && (
                       <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">
