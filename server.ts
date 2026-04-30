@@ -455,11 +455,58 @@ async function createServer() {
   let hltbApiKey: string | null = null;
   let hltbApiKeyLastFetch = 0;
 
-  
+  const getHLTBApiKey = async () => {
+    // Refresh key every 30 minutes
+    if (hltbApiKey && (Date.now() - hltbApiKeyLastFetch < 30 * 60 * 1000)) {
+      return hltbApiKey;
+    }
+
+    try {
+      console.log('[HLTB] Refreshing API Key...');
+      const homeRes = await fetch('https://howlongtobeat.com/', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        }
+      });
+      const html = await homeRes.text();
+      
+      // Look for the main app JS file which contains the API key logic
+      const scriptMatch = html.match(/_next\/static\/chunks\/pages\/_app-[^"]+\.js/);
+      if (!scriptMatch) throw new Error('Could not find HLTB app script');
+
+      const scriptUrl = `https://howlongtobeat.com/${scriptMatch[0]}`;
+      const scriptRes = await fetch(scriptUrl);
+      const scriptText = await scriptRes.text();
+
+      // The key is typically found in a fetch call like .concat("/api/search/").concat("...")
+      // or similar patterns. It's usually a long hex string.
+      const apiKeyMatch = scriptText.match(/\.concat\("(?:\/api\/search\/)?([0-9a-fA-F]{16,})"\)/);
+      if (apiKeyMatch) {
+        hltbApiKey = apiKeyMatch[1];
+        hltbApiKeyLastFetch = Date.now();
+        console.log('[HLTB] Found API Key via concat:', hltbApiKey);
+        return hltbApiKey;
+      }
+
+      // Alternative pattern
+      const altMatch = scriptText.match(/"\/api\/search\/".concat\("([^"]+)"\)/);
+      if (altMatch) {
+        hltbApiKey = altMatch[1];
+        hltbApiKeyLastFetch = Date.now();
+        console.log('[HLTB] Found API Key via alt concat:', hltbApiKey);
+        return hltbApiKey;
+      }
+
+      throw new Error('API key not found in script');
+    } catch (err) {
+      console.error('[HLTB] Failed to get API Key:', err);
+      return null;
+    }
+  };
 
   // Advanced HLTB Scraper (Direct fetch to bypass library issues)
   // 1. Helper functions from hltb.js
-function cleanGameTitle(name: string) {
+function cleanNameForHLTB(name: string) {
     let clean = name.replace(/[®™©]/g, '');             
     clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');     
     clean = clean.replace(/[^\w\s]/g, ' ');             
