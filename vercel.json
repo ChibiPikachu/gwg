@@ -11,6 +11,11 @@
       "use": "@vercel/node"
     }
   ],
+  "functions": {
+    "server.ts": {
+      "includeFiles": "hltb_bridge.py"
+    }
+  },
   "routes": [
     {
       "src": "/(api|auth)(.*)",
@@ -25,11 +30,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-   "functions": [ {
-    "api/**/*.ts": {
-      "includeFiles": "hltb_bridge.py"
-    }
-  }
-]
+  ]
 }
