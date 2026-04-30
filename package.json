@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
+    "install-python": "pip install -r requirements.txt",
     "preview": "vite preview",
     "start": "node server.ts",
     "clean": "rm -rf dist",
