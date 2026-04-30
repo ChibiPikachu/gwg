@@ -1133,6 +1133,84 @@ async function createServer() {
     }
   });
 
+  app.post('/api/admin/repair-submissions', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      // Find submissions missing either IDs
+      const { data: subs, error: fetchError } = await supabase
+        .from('submissions')
+        .select('id, game_name, game_id')
+        .or('hltb_id.is.null,steam_appid.is.null');
+
+      if (fetchError) throw fetchError;
+      if (!subs || subs.length === 0) return res.json({ success: true, updatedCount: 0 });
+
+      console.log(`[Admin] Repairing ${subs.length} submissions with missing IDs...`);
+      let updatedCount = 0;
+
+      // Small batches to respect IGDB rate limits
+      for (let i = 0; i < subs.length; i++) {
+        const sub = subs[i];
+        try {
+          const token = await getIGDBToken();
+          const response = await fetch('https://api.igdb.com/v4/games', {
+            method: 'POST',
+            headers: {
+              'Client-ID': process.env.IGDB_CLIENT_ID!,
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'text/plain'
+            },
+            body: `search "${sub.game_name}"; fields name, external_games.category, external_games.uid, websites.url, websites.category; limit 5;`
+          });
+
+          const data: any = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            // Find best match or use first
+            const bestMatch = data.find((g: any) => g.name.toLowerCase() === sub.game_name.toLowerCase()) || data[0];
+            
+            let steamId = bestMatch.external_games?.find((eg: any) => eg.category === 1)?.uid;
+            if (!steamId) {
+              const steamWebsite = bestMatch.websites?.find((w: any) => w.category === 13 || w.url.includes('store.steampowered.com/app/'));
+              if (steamWebsite) {
+                const match = steamWebsite.url.match(/\/app\/(\d+)/);
+                if (match) steamId = match[1];
+              }
+            }
+
+            let hltbId = bestMatch.external_games?.find((eg: any) => eg.category === 14)?.uid;
+            if (!hltbId) {
+              const hltbUrl = bestMatch.websites?.find((w: any) => w.url.includes('howlongtobeat.com'))?.url;
+              if (hltbUrl) {
+                const match = hltbUrl.match(/(?:\/game\/|id=)(\d+)/);
+                if (match) hltbId = match[1];
+                else hltbId = hltbUrl.split('/').pop()?.split('-')[0];
+              }
+            }
+
+            if (steamId || hltbId) {
+              await supabase.from('submissions').update({
+                steam_appid: steamId || null,
+                hltb_id: hltbId || null
+              }).eq('id', sub.id);
+              updatedCount++;
+            }
+          }
+          // Slight delay to be nice to IGDB
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (e) {
+          console.warn(`[Admin] Repair failed for sub ${sub.id} (${sub.game_name}):`, e);
+        }
+      }
+
+      res.json({ success: true, updatedCount });
+    } catch (err) {
+      console.error('[Admin] Global repair error:', err);
+      res.status(500).json({ error: 'Repair failed' });
+    }
+  });
+
   app.delete('/api/admin/users/:steamId', async (req, res) => {
     const { steamId } = req.params;
     const currentUser = (req as any).user;

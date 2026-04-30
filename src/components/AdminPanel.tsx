@@ -372,6 +372,35 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
               <button 
                 onClick={async () => {
+                  if (!window.confirm('This will search IGDB for every submission missing hltb_id or steam_appid and attempt to repair them. Continue?')) return;
+                  setLoading(true);
+                  try {
+                    const res = await fetch('/api/admin/repair-submissions', { method: 'POST' });
+                    const result = await res.json();
+                    if (res.ok) {
+                      alert(`Repair complete! Updated ${result.updatedCount} submissions.`);
+                      fetchData();
+                    } else {
+                      alert(`Repair failed: ${result.error}`);
+                    }
+                  } catch (err) {
+                    alert('Failed to trigger repair');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className={cn(
+                  "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2 h-12 md:h-14",
+                  "dark:bg-emerald-500/10 bg-emerald-50 hover:dark:bg-emerald-500/20 hover:bg-emerald-100",
+                  "dark:text-emerald-400 text-emerald-700 dark:border-emerald-500/20 border-emerald-200",
+                  loading && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <Settings size={14} />
+                Repair Missing IDs
+              </button>
+              <button 
+                onClick={async () => {
                   if (!window.confirm('This will recalculate EVERY verified submission and sync user points. Continue?')) return;
                   setLoading(true);
                   try {
@@ -528,18 +557,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   "p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md",
                   TEAM_COLORS[sub.userTeam as Team || 'none'].glow
                 )}>
-                  <div className="w-full md:w-32 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group">
-                    <a 
-                      href={`https://www.igdb.com/games/${sub.game_id}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="block w-full h-full"
-                    >
-                      <img src={sub.game_image} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="" referrerPolicy="no-referrer" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <ExternalLink size={16} className="text-white" />
-                      </div>
-                    </a>
+                  <div className="w-full md:w-32 aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group bg-black/20">
+                      <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   </div>
 
                   <div className="flex-1 flex flex-col gap-4 w-full">
@@ -618,15 +637,24 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            )}
                         </div>
                         {hltbData[sub.game_name] && (
-                          <div className="flex items-center gap-3 mt-1">
-                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb">
-                                <span className="text-[10px] font-bold text-amber-400">HLTB Main:</span>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to beat the main story">
+                                <span className="text-[10px] font-bold text-amber-400">Main:</span>
                                 <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].main}h</span>
                              </div>
+                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to beat main story + extras">
+                                <span className="text-[10px] font-bold text-blue-400">Extra:</span>
+                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].mainExtra}h</span>
+                             </div>
+                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 group/hltb" title="Time to 100% complete">
+                                <span className="text-[10px] font-bold text-purple-400">Comp:</span>
+                                <span className="text-[10px] font-mono font-bold text-white/70">{hltbData[sub.game_name].completionist}h</span>
+                             </div>
+
                              {hltbData[sub.game_name].main > 0 && sub.hours_during > hltbData[sub.game_name].main * 5 && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 animate-pulse">
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.2)]">
                                    <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
-                                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tight">Review Required!</span>
+                                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tight">Review Required! (5x+ Main)</span>
                                 </div>
                              )}
                              {hltbData[sub.game_name].main > 0 && sub.hours_during <= hltbData[sub.game_name].main * 5 && (
@@ -711,22 +739,31 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="col-span-full mb-2">
                            {hltbData[sub.game_name] ? (
-                             <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
+                             <div className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
                                 <div className="flex flex-col">
-                                  <span className="text-[10px] uppercase font-black opacity-40 dark:text-white text-slate-300 mb-1">HLTB Statistics</span>
-                                  <div className="flex items-center gap-2">
-                                     <span className="text-sm font-mono font-bold text-amber-400">Main: {hltbData[sub.game_name].main}h</span>
-                                     <span className="text-white/20">|</span>
-                                     <span className="text-sm font-mono font-bold text-white/60">Comp: {hltbData[sub.game_name].completionist}h</span>
+                                  <span className="text-[10px] uppercase font-black opacity-40 dark:text-white text-slate-300 mb-1">HLTB Full Statistics</span>
+                                  <div className="flex flex-wrap items-center gap-4">
+                                     <div className="flex flex-col">
+                                       <span className="text-[10px] text-amber-400 font-bold uppercase">Main</span>
+                                       <span className="text-sm font-mono font-bold">{hltbData[sub.game_name].main}h</span>
+                                     </div>
+                                     <div className="flex flex-col">
+                                       <span className="text-[10px] text-blue-400 font-bold uppercase">Main+Extra</span>
+                                       <span className="text-sm font-mono font-bold">{hltbData[sub.game_name].mainExtra}h</span>
+                                     </div>
+                                     <div className="flex flex-col">
+                                       <span className="text-[10px] text-purple-400 font-bold uppercase">Comp</span>
+                                       <span className="text-sm font-mono font-bold">{hltbData[sub.game_name].completionist}h</span>
+                                     </div>
                                   </div>
                                 </div>
 
                                 {hltbData[sub.game_name].main > 0 && (
-                                  <div className="ml-auto">
+                                  <div className="md:ml-auto">
                                     {sub.hours_during > hltbData[sub.game_name].main * 5 ? (
                                       <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/40">
                                          <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse" />
-                                         <span className="text-xs font-black text-red-500 uppercase tracking-tighter">Review Required / Potential Abuse</span>
+                                         <span className="text-xs font-black text-red-500 uppercase tracking-tighter">Review Required (Suspicious Time)</span>
                                       </div>
                                     ) : (
                                       <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
