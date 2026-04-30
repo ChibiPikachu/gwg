@@ -532,7 +532,6 @@ async function callPythonBridge(gameName: string) {
         const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
         if (jsonMatch && jsonMatch[0] !== 'null') {
             const data = JSON.parse(jsonMatch[0]);
-            // Map the Python keys (hastily, normally, completionist) to your server's expected keys[cite: 3, 5]
             return {
                 main: parseInt(data.hastily) || 0,
                 mainExtra: parseInt(data.normally) || 0,
