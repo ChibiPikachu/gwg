@@ -25,10 +25,10 @@
         ,
         "exclude": [
             "node_modules",
-            "api", // Ignore the folder containing server.ts
-            "hltb_bridge.py" // Ignore the python script
-        ]
-    "allowImportingTsExtensions": true,
+            "api",
+            "hltb_bridge.py"
+        ],
+        "allowImportingTsExtensions": true,
         "noEmit": true
     }
 }
