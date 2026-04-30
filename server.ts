@@ -723,6 +723,90 @@ async function createServer() {
     res.json(null);
   });
 
+  // IGDB Game Search
+  app.get('/api/games/search', async (req, res) => {
+    const { query } = req.query;
+    if (!query) return res.json([]);
+
+    try {
+      console.log(`[IGDB Search] Querying for: ${query}`);
+      const token = await getIGDBToken();
+      
+      // Escape for IGDB query
+      const safeQuery = String(query).replace(/"/g, '\\"');
+      
+      const response = await fetch('https://api.igdb.com/v4/games', {
+        method: 'POST',
+        headers: {
+          'Client-ID': process.env.IGDB_CLIENT_ID!,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain'
+        },
+        // Simplified query to ensure reliability
+        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 15;`
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('[IGDB Search] API Error:', response.status, errText);
+        
+        if (response.status === 401) {
+          igdbToken = null; 
+        }
+        
+        return res.status(response.status).json({ error: 'IGDB API rejected request', details: errText });
+      }
+
+      const data: any = await response.json();
+      console.log(`[IGDB Search] Success - results: ${Array.isArray(data) ? data.length : 'not array'}`);
+      
+      if (!Array.isArray(data)) {
+        return res.json([]);
+      }
+
+      // Filter DLCs and other categories if version_parent is present or category is 1 (DLC)
+      const filteredData = data.filter((game: any) => {
+        if (data.length > 1 && game.category === 1) return false;
+        return true;
+      });
+
+      const results = filteredData.map((game: any) => {
+        let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
+        if (!steamId) {
+          const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url?.includes('store.steampowered.com/app/'));
+          if (steamWebsite) {
+            const match = steamWebsite.url.match(/\/app\/(\d+)/);
+            if (match) steamId = match[1];
+          }
+        }
+
+        let hltbId = game.external_games?.find((eg: any) => eg.category === 14)?.uid;
+        if (!hltbId) {
+          const hltbUrl = game.websites?.find((w: any) => w.url?.includes('howlongtobeat.com'))?.url;
+          if (hltbUrl) {
+            const match = hltbUrl.match(/(?:\/game\/|id=)(\d+)/);
+            if (match) hltbId = match[1];
+            else hltbId = hltbUrl.split('/').pop()?.split('-')[0];
+          }
+        }
+
+        return {
+          id: game.id,
+          title: game.name,
+          image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+          summary: game.summary,
+          steam_appid: steamId,
+          hltb_id: hltbId
+        };
+      });
+
+      res.json(results);
+    } catch (err) {
+      console.error('[IGDB Search] Crash:', err);
+      res.status(500).json({ error: 'Search crashed', details: String(err) });
+    }
+  });
+
   app.get('/api/games/:id', async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -733,7 +817,10 @@ async function createServer() {
       .eq('id', req.params.id)
       .maybeSingle();
 
-    if (error) return res.status(500).json({ error: 'Database error' });
+    if (error) {
+       console.error('[API] Game fetch error:', error);
+       return res.status(500).json({ error: `Database error: ${error.message}`, details: error.details });
+    }
     if (!data) return res.status(404).json({ error: 'Game not found' });
     res.json(data);
   });
@@ -1554,91 +1641,6 @@ async function createServer() {
     }
   });
 
-  app.get('/api/games/search', async (req, res) => {
-    const { query } = req.query;
-    if (!query) return res.json([]);
-
-    try {
-      console.log(`[IGDB Search] Querying for: ${query}`);
-      const token = await getIGDBToken();
-      
-      // Escape for IGDB query
-      const safeQuery = String(query).replace(/"/g, '\\"');
-      
-      const response = await fetch('https://api.igdb.com/v4/games', {
-        method: 'POST',
-        headers: {
-          'Client-ID': process.env.IGDB_CLIENT_ID!,
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'text/plain'
-        },
-        // Simplified query to ensure reliability
-        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 15;`
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error('[IGDB Search] API Error:', response.status, errText);
-        
-        if (response.status === 401) {
-          igdbToken = null; 
-        }
-        
-        return res.status(response.status).json({ error: 'IGDB API rejected request', details: errText });
-      }
-
-      const data: any = await response.json();
-      console.log(`[IGDB Search] Success - results: ${Array.isArray(data) ? data.length : 'not array'}`);
-      
-      if (!Array.isArray(data)) {
-        return res.json([]);
-      }
-
-      // Filter DLCs and other categories if version_parent is present or category is 1 (DLC)
-      // Category 0 is main game
-      const filteredData = data.filter((game: any) => {
-        // Exclude categorised DLCs (cat 1) or things with parents (likely editions/dlcs)
-        // unless clearly the only result
-        if (data.length > 1 && game.category === 1) return false;
-        return true;
-      });
-
-      const results = filteredData.map((game: any) => {
-        let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
-        if (!steamId) {
-          const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url?.includes('store.steampowered.com/app/'));
-          if (steamWebsite) {
-            const match = steamWebsite.url.match(/\/app\/(\d+)/);
-            if (match) steamId = match[1];
-          }
-        }
-
-        let hltbId = game.external_games?.find((eg: any) => eg.category === 14)?.uid;
-        if (!hltbId) {
-          const hltbUrl = game.websites?.find((w: any) => w.url?.includes('howlongtobeat.com'))?.url;
-          if (hltbUrl) {
-            const match = hltbUrl.match(/(?:\/game\/|id=)(\d+)/);
-            if (match) hltbId = match[1];
-            else hltbId = hltbUrl.split('/').pop()?.split('-')[0];
-          }
-        }
-
-        return {
-          id: game.id,
-          title: game.name,
-          image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
-          summary: game.summary,
-          steam_appid: steamId,
-          hltb_id: hltbId
-        };
-      });
-
-      res.json(results);
-    } catch (err) {
-      console.error('[IGDB Search] Crash:', err);
-      res.status(500).json({ error: 'Search crashed', details: String(err) });
-    }
-  });
 
   // Keep existing steam proxy but maybe rename or update if needed
   app.get('/api/steam/game/:appId', async (req, res) => {
