@@ -14,12 +14,12 @@ async def search_game(game_name):
             best = max(results, key=lambda element: element.similarity)
             
             def format_time(t):
-                # Ensure t is a number before rounding
-                try:
-                    if t is None or float(t) <= 0: return "--"
-                    return f"{int(round(float(t)))} Hours"
-                except (ValueError, TypeError):
-                    return "--"
+    try:
+        # Return 0 instead of "--" so parseInt doesn't fail
+        if t is None or float(t) <= 0: return 0 
+        return int(round(float(t))) 
+    except (ValueError, TypeError):
+        return 0
                 
             out = {
                 "hastily": format_time(best.main_story),

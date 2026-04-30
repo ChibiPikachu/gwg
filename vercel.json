@@ -26,4 +26,10 @@
       "dest": "/index.html"
     }
   ]
+  [  "functions": {
+    "api/**/*.ts": {
+      "includeFiles": "hltb_bridge.py"
+    }
+  }
+]
 }
