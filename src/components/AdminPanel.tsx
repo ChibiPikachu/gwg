@@ -599,7 +599,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
-                            <span className={cn("text-lg font-black", theme.text)}>{sub.calculated_score || 0}</span>
+                            <span className={cn("text-lg font-bold", theme.text)}>{sub.calculated_score || 0}</span>
                           </div>
                         </div>
                       </div>
@@ -607,7 +607,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     <div className="flex flex-row items-center gap-4">
                       <div className="flex flex-col">
-                        <h4 className="text-xl font-black tracking-tight truncate dark:text-white text-slate-900">{sub.game_name}</h4>
+                        <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900">{sub.game_name}</h4>
                         {hltbData[sub.game_name] && (
                           <div className="flex items-center gap-3 mt-1">
                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#252525] border border-[#353535] group/hltb">
