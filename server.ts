@@ -7,6 +7,10 @@ import { Strategy as DiscordStrategy } from 'passport-discord';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { execFile } from 'child_process';
+import util from 'util';
+const execFilePromise = util.promisify(execFile);
+
 // Helper for Steam API calls
 async function fetchSteamOwnedGames(steamId: string) {
   const apiKey = process.env.STEAM_API_KEY;
@@ -501,79 +505,51 @@ async function createServer() {
   };
 
   // Advanced HLTB Scraper (Direct fetch to bypass library issues)
-  const fetchHLTBData = async (title: string) => {
+  // 1. Helper functions from hltb.js
+function cleanNameForHLTB(name: string) {
+    let clean = name.replace(/[®™©]/g, '');             
+    clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');     
+    clean = clean.replace(/[^\w\s]/g, ' ');             
+    clean = clean.replace(/\s{2,}/g, ' ');              
+    return clean.trim();
+}
+
+// 2. The Bridge Caller[cite: 6, 7]
+async function callPythonBridge(gameName: string) {
     try {
-      const apiKey = await getHLTBApiKey();
-      const endpoint = apiKey ? `https://howlongtobeat.com/api/search/${apiKey}` : 'https://howlongtobeat.com/api/search/';
-      
-      console.log(`[HLTB] Scraper attempting search: ${title} at ${endpoint}`);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Referer': 'https://howlongtobeat.com/',
-          'Origin': 'https://howlongtobeat.com',
-          'Accept': '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        body: JSON.stringify({
-          searchType: "games",
-          searchTerms: title.split(' '),
-          searchPage: 1,
-          size: 20,
-          searchOptions: {
-            games: {
-              userId: 0,
-              platform: "",
-              sortCategory: "popular",
-              rangeCategory: "id",
-              rangeTime: { min: 0, max: 0 },
-              gameplay: { perspective: "", flow: "", genre: "" },
-              modifier: ""
-            },
-            users: { sortCategory: "postcount" },
-            lists: { sortCategory: "follows" },
-            filter: "",
-            sort: 0,
-            randomizer: 0
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[HLTB] HTTP error! status: ${response.status}`, errText);
-        // If 404, maybe the key is dead
-        if (response.status === 404) hltbApiKey = null;
+        const pythonScript = path.join(__dirname, 'hltb_bridge.py');
+        
+        // Use 'python3' for Vercel/Linux environments[cite: 7]
+        const { stdout } = await execFilePromise('python3', [pythonScript, gameName]);
+        
+        const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
+        if (jsonMatch && jsonMatch[0] !== 'null') {
+            const data = JSON.parse(jsonMatch[0]);
+            // Map Python bridge "Hours" strings back to numbers
+            return {
+                main: parseInt(data.hastily) || 0,
+                mainExtra: parseInt(data.normally) || 0,
+                completionist: parseInt(data.completionist) || 0
+            };
+        }
         return null;
-      }
-      
-      const data: any = await response.json();
-      if (!data || !data.data || data.data.length === 0) {
-        console.log(`[HLTB] No results for: ${title}`);
+    } catch (error) {
+        console.error('[HLTB Bridge] Error calling Python:', error);
         return null;
-      }
-
-      // Find the best match
-      const results = data.data.map((game: any) => ({
-        id: String(game.game_id),
-        name: game.game_name,
-        main: Math.round(game.comp_main / 3600),
-        mainExtra: Math.round(game.comp_plus / 3600),
-        completionist: Math.round(game.comp_100 / 3600)
-      }));
-
-      const bestMatch = results.find((r: any) => r.name.toLowerCase() === title.toLowerCase()) || results[0];
-      console.log(`[HLTB] Found match for ${title}:`, bestMatch);
-      return bestMatch;
-    } catch (err) {
-      console.error('[HLTB] Manual HLTB Fetch Failed:', err);
-      return null;
     }
-  };
+}
+
+// 3. Updated fetchHLTBData used by your routes[cite: 5, 7]
+const fetchHLTBData = async (title: string) => {
+    try {
+        const searchName = cleanNameForHLTB(title);
+        console.log(`[HLTB Bridge] Searching: "${searchName}"`);
+        return await callPythonBridge(searchName);
+    } catch (err) {
+        console.error('[HLTB Bridge] Search failed:', err);
+        return null;
+    }
+};
 
   const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string) => {
     const cleanedTitle = cleanGameTitle(title);
