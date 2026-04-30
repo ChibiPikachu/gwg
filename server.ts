@@ -1095,6 +1095,44 @@ async function createServer() {
     }
   });
 
+  app.post('/api/admin/update-user-role', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { targetSteamId, role } = req.body;
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const adminSteamId = currentUser.id || currentUser.steamid || currentUser.steam_id;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', adminSteamId).single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      // Prevent self-role changing to avoid locking oneself out
+      if (adminSteamId === targetSteamId) {
+        return res.status(400).json({ error: 'Cannot change your own role' });
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ role: role || 'member' })
+        .eq('steamid', targetSteamId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      console.error('Update role failed:', err);
+      res.status(500).json({ error: 'Failed to update user role' });
+    }
+  });
+
   let igdbToken: { access_token: string, expires_at: number } | null = null;
 
   async function getIGDBToken() {

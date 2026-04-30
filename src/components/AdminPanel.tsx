@@ -24,6 +24,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [rejectionReason, setRejectionReason] = React.useState('');
   const [editHours, setEditHours] = React.useState('0');
@@ -123,12 +124,35 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
       if (res.ok) {
         setUsers(prev => prev.filter(u => u.steamid !== steamId));
+        setSettingsUserId(null);
       } else {
         const data = await res.json();
         alert(`Failed to kick: ${data.error}`);
       }
     } catch (err) {
       alert('Failed to kick user');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleUpdateRole = async (targetSteamId: string, role: 'admin' | 'member') => {
+    setUpdating(targetSteamId);
+    try {
+      const res = await fetch('/api/admin/update-user-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetSteamId, role })
+      });
+      
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.steamid === targetSteamId ? { ...u, role } : u));
+      } else {
+        const data = await res.json();
+        alert(`Failed to update role: ${data.error}`);
+      }
+    } catch (err) {
+      alert('Failed to update user role');
     } finally {
       setUpdating(null);
     }
@@ -268,7 +292,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
       {activeTab === 'users' ? (
         <>
-          <section className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-end">
+          <section className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
             <div className="flex-1 w-full flex flex-col gap-6">
               <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                 <div className="w-full sm:max-w-md">
@@ -284,32 +308,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     />
                   </div>
                 </div>
-                <button 
-                  onClick={async () => {
-                    if (!window.confirm('This will recalculate EVERY verified submission and sync user points. Continue?')) return;
-                    setLoading(true);
-                    try {
-                      const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
-                      if (res.ok) {
-                        alert('Points recalculated successfully!');
-                        fetchData();
-                      }
-                    } catch (err) {
-                      alert('Failed to recalculate');
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  className={cn(
-                    "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2",
-                    "dark:bg-purple-500/10 bg-purple-50 hover:dark:bg-purple-500/20 hover:bg-purple-100",
-                    "dark:text-purple-400 text-purple-700 dark:border-purple-500/20 border-purple-200",
-                    loading && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  <Clock size={14} />
-                  Recalculate All Points
-                </button>
               </div>
               
               <div className="flex flex-wrap gap-2 md:gap-3">
@@ -339,9 +337,37 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               </div>
             </div>
             
-            <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
-              <span className={cn("text-2xl font-mono font-bold", theme.text)}>{filteredUsers.length}</span>
-              <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">Users Found</span>
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+              <button 
+                onClick={async () => {
+                  if (!window.confirm('This will recalculate EVERY verified submission and sync user points. Continue?')) return;
+                  setLoading(true);
+                  try {
+                    const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
+                    if (res.ok) {
+                      alert('Points recalculated successfully!');
+                      fetchData();
+                    }
+                  } catch (err) {
+                    alert('Failed to recalculate');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className={cn(
+                  "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2 h-12 md:h-14",
+                  "dark:bg-purple-500/10 bg-purple-50 hover:dark:bg-purple-500/20 hover:bg-purple-100",
+                  "dark:text-purple-400 text-purple-700 dark:border-purple-500/20 border-purple-200",
+                  loading && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <Clock size={14} />
+                Recalculate All Points
+              </button>
+              <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto">
+                <span className={cn("text-2xl font-mono font-bold", theme.text)}>{filteredUsers.length}</span>
+                <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">Users Found</span>
+              </div>
             </div>
           </section>
 
@@ -371,36 +397,63 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                   </div>
 
-                  <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-3">
                         <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Assign to team:</span>
-                        <button 
-                          disabled={updating === u.steamid}
-                          onClick={() => handleKickUser(u.steamid, u.steam_name)}
-                          className="text-[10px] uppercase font-bold text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
-                        >
-                          Kick Member
-                        </button>
+                        <div className="flex gap-2">
+                          {teamsFilter.map(team => (
+                              <button 
+                                key={team}
+                                disabled={updating === u.steamid}
+                                onClick={() => assignTeam(u.steamid, team)}
+                                className={cn(
+                                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
+                                    (u.team === team || (!u.team && team === 'none')) 
+                                      ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
+                                      : "dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:bg-white/10 hover:bg-slate-100",
+                                    updating === u.steamid && "opacity-50 cursor-not-allowed"
+                                )}
+                              >
+                                {team}
+                              </button>
+                          ))}
+                          
+                          <div className="relative group/settings shrink-0">
+                             <button
+                               onClick={() => setSettingsUserId(settingsUserId === u.steamid ? null : u.steamid)}
+                               className="h-full px-3 dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-slate-900 rounded-lg transition-colors flex items-center justify-center border dark:border-transparent border-black/5"
+                             >
+                               <Settings size={14} className={cn(settingsUserId === u.steamid && theme.text)} />
+                             </button>
+                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-[10px] font-bold rounded opacity-0 group-hover/settings:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-30">
+                               Settings
+                             </div>
+                             
+                             {settingsUserId === u.steamid && (
+                               <div className="absolute right-0 bottom-full mb-3 w-48 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                 <div className="p-2 flex flex-col gap-1">
+                                   <button 
+                                     onClick={() => handleUpdateRole(u.steamid, u.role === 'admin' ? 'member' : 'admin')}
+                                     disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
+                                     className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase dark:text-white text-slate-700 hover:dark:bg-white/5 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
+                                   >
+                                     <Shield size={14} className={u.role === 'admin' ? 'text-red-500' : 'text-emerald-500'} />
+                                     {u.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                                   </button>
+                                   <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
+                                   <button 
+                                     onClick={() => handleKickUser(u.steamid, u.steam_name)}
+                                     disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
+                                     className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                                   >
+                                     <XCircle size={14} />
+                                     Kick Member
+                                   </button>
+                                 </div>
+                               </div>
+                             )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        {teamsFilter.map(team => (
-                            <button 
-                              key={team}
-                              disabled={updating === u.steamid}
-                              onClick={() => assignTeam(u.steamid, team)}
-                              className={cn(
-                                  "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
-                                  (u.team === team || (!u.team && team === 'none')) 
-                                    ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
-                                    : "dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:bg-white/10 hover:bg-slate-100",
-                                  updating === u.steamid && "opacity-50 cursor-not-allowed"
-                              )}
-                            >
-                              {team}
-                            </button>
-                        ))}
-                      </div>
-                  </div>
                 </div>
               ))}
             </div>
