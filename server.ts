@@ -450,13 +450,18 @@ async function createServer() {
   // Advanced HLTB Scraper (Direct fetch to bypass library issues)
   const fetchHLTBData = async (title: string) => {
     try {
+      console.log(`[HLTB] Scraper attempting search: ${title}`);
       const response = await fetch('https://howlongtobeat.com/api/search/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Referer': 'https://howlongtobeat.com/',
-          'Origin': 'https://howlongtobeat.com'
+          'Origin': 'https://howlongtobeat.com',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
         body: JSON.stringify({
           searchType: "games",
@@ -482,14 +487,21 @@ async function createServer() {
         })
       });
 
-      if (!response.ok) throw new Error(`HLTB HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[HLTB] HTTP error! status: ${response.status}`, errText);
+        return null;
+      }
       
       const data: any = await response.json();
-      if (!data || !data.data || data.data.length === 0) return null;
+      if (!data || !data.data || data.data.length === 0) {
+        console.log(`[HLTB] No results for: ${title}`);
+        return null;
+      }
 
       // Find the best match
       const results = data.data.map((game: any) => ({
-        id: game.game_id,
+        id: String(game.game_id),
         name: game.game_name,
         main: Math.round(game.comp_main / 3600),
         mainExtra: Math.round(game.comp_plus / 3600),
@@ -497,9 +509,10 @@ async function createServer() {
       }));
 
       const bestMatch = results.find((r: any) => r.name.toLowerCase() === title.toLowerCase()) || results[0];
+      console.log(`[HLTB] Found match for ${title}:`, bestMatch);
       return bestMatch;
     } catch (err) {
-      console.error('Manual HLTB Fetch Failed:', err);
+      console.error('[HLTB] Manual HLTB Fetch Failed:', err);
       return null;
     }
   };
@@ -1546,12 +1559,12 @@ async function createServer() {
     if (!query) return res.json([]);
 
     try {
+      console.log(`[IGDB Search] Querying for: ${query}`);
       const token = await getIGDBToken();
-      // Escape internal quotes in query
+      
+      // Escape for IGDB query
       const safeQuery = String(query).replace(/"/g, '\\"');
       
-      console.log(`[IGDB Search] Searching for: ${safeQuery}`);
-
       const response = await fetch('https://api.igdb.com/v4/games', {
         method: 'POST',
         headers: {
@@ -1559,43 +1572,50 @@ async function createServer() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'text/plain'
         },
-        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; where category = (0, 4, 8, 9, 10, 11); limit 20;`
+        // Simplified query to ensure reliability
+        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 15;`
       });
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error('[IGDB Search] IGDB API error:', response.status, errText);
-        // If 401, maybe token expired or credentials wrong
+        console.error('[IGDB Search] API Error:', response.status, errText);
+        
         if (response.status === 401) {
-          igdbToken = null; // Clear token to retry next time
+          igdbToken = null; 
         }
-        return res.status(response.status).json({ error: 'IGDB API error' });
+        
+        return res.status(response.status).json({ error: 'IGDB API rejected request', details: errText });
       }
 
       const data: any = await response.json();
-      console.log(`[IGDB Search] Found ${Array.isArray(data) ? data.length : 0} results`);
+      console.log(`[IGDB Search] Success - results: ${Array.isArray(data) ? data.length : 'not array'}`);
       
       if (!Array.isArray(data)) {
-        console.error('[IGDB Search] Unexpected response format:', data);
         return res.json([]);
       }
 
-      // Transform IGDB format
-      const results = data.map((game: any) => {
-        // Steam ID can be in external_games (category 1) or websites (category 13)
+      // Filter DLCs and other categories if version_parent is present or category is 1 (DLC)
+      // Category 0 is main game
+      const filteredData = data.filter((game: any) => {
+        // Exclude categorised DLCs (cat 1) or things with parents (likely editions/dlcs)
+        // unless clearly the only result
+        if (data.length > 1 && game.category === 1) return false;
+        return true;
+      });
+
+      const results = filteredData.map((game: any) => {
         let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
         if (!steamId) {
-          const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url.includes('store.steampowered.com/app/'));
+          const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url?.includes('store.steampowered.com/app/'));
           if (steamWebsite) {
             const match = steamWebsite.url.match(/\/app\/(\d+)/);
             if (match) steamId = match[1];
           }
         }
 
-        // HLTB ID extraction: Check external_games (cat 14) or website URL
         let hltbId = game.external_games?.find((eg: any) => eg.category === 14)?.uid;
         if (!hltbId) {
-          const hltbUrl = game.websites?.find((w: any) => w.url.includes('howlongtobeat.com'))?.url;
+          const hltbUrl = game.websites?.find((w: any) => w.url?.includes('howlongtobeat.com'))?.url;
           if (hltbUrl) {
             const match = hltbUrl.match(/(?:\/game\/|id=)(\d+)/);
             if (match) hltbId = match[1];
@@ -1603,20 +1623,20 @@ async function createServer() {
           }
         }
 
-          return {
-            id: game.id,
-            title: game.name,
-            image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
-            summary: game.summary,
-            steam_appid: steamId,
-            hltb_id: hltbId
-          };
-        });
+        return {
+          id: game.id,
+          title: game.name,
+          image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+          summary: game.summary,
+          steam_appid: steamId,
+          hltb_id: hltbId
+        };
+      });
 
       res.json(results);
     } catch (err) {
-      console.error('IGDB Error:', err);
-      res.status(500).json({ error: 'Search failed' });
+      console.error('[IGDB Search] Crash:', err);
+      res.status(500).json({ error: 'Search crashed', details: String(err) });
     }
   });
 

@@ -670,6 +670,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       <div className="flex flex-col">
                         <div className="flex flex-row items-center gap-2">
                            <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
+                           {!hltbData[sub.game_name] && sub.status === 'pending' && (
+                             <span className="text-[10px] opacity-20 font-bold uppercase animate-pulse">Searching HLTB...</span>
+                           )}
+                           {hltbData[sub.game_name]?.error && (
+                             <span className="text-[10px] text-red-500/40 font-bold uppercase">HLTB Error</span>
+                           )}
                         </div>
                       </div>
                     </div>

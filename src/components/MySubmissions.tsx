@@ -13,6 +13,7 @@ export default function MySubmissions() {
   const [gameSearch, setGameSearch] = React.useState('');
   const [searching, setSearching] = React.useState(false);
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
   const [selectedGame, setSelectedGame] = React.useState<any | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [formData, setFormData] = React.useState({
@@ -100,14 +101,19 @@ export default function MySubmissions() {
 
     const timer = setTimeout(async () => {
       setSearching(true);
+      setSearchError(null);
       try {
         const res = await fetch(`/api/games/search?query=${encodeURIComponent(gameSearch)}`);
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data);
+        } else {
+          const err = await res.json().catch(() => ({ error: 'Search failed' }));
+          setSearchError(err.error || 'Server error');
         }
       } catch (err) {
         console.error('Search error:', err);
+        setSearchError('Network error');
       } finally {
         setSearching(false);
       }
@@ -351,6 +357,13 @@ export default function MySubmissions() {
                       )}
                     </div>
                   </div>
+
+                  {searchError && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-center text-red-400 text-xs font-bold flex items-center justify-center gap-2">
+                      <XCircle size={16} />
+                      {searchError}
+                    </div>
+                  )}
 
                   {searchResults.length > 0 && (
                     <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
