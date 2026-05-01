@@ -184,6 +184,98 @@ async function createServer() {
   passport.serializeUser((user: any, done) => done(null, user));
   passport.deserializeUser((user: any, done) => done(null, user));
 
+  // --- CRITICAL API ROUTES (Moved to Top for Matching) ---
+  
+  // Me route - used for auth state
+  app.get('/api/me', async (req, res) => {
+    if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
+      const user = (req as any).user;
+      const supabase = getSupabase();
+      
+      const steamId = user.id || user.steamid || user.steam_id || user.steamId;
+      
+      if (supabase && steamId) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('steamid', steamId)
+            .single();
+            
+          if (data && !error) {
+            return res.json({
+              ...user,
+              ...data,
+              isAdmin: data.role === 'admin' || data.role === 'admins'
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching profile from Supabase:', err);
+        }
+      }
+      
+      return res.json(user);
+    }
+    // Check if demo query param is set
+    if (req.query.demo === 'true') {
+      const demoUser = {
+        id: '76561198117650232',
+        displayName: 'Demo User',
+        photos: [{ value: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg' }],
+        team: 'blue',
+        isAdmin: true,
+        points: 420,
+        status: 'Exploring the platform!'
+      };
+      return (req as any).logIn(demoUser, (err: any) => {
+        if (err) return res.json(null);
+        if ((req as any).session) {
+          (req as any).session.save(() => res.json(demoUser));
+        } else {
+          res.json(demoUser);
+        }
+      });
+    }
+    res.json(null);
+  });
+
+  // Events route - high priority
+  app.get('/api/events', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.json([]);
+
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: false });
+
+      if (error) throw error;
+      res.json(data || []);
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+      res.status(500).json({ error: 'Failed to fetch events' });
+    }
+  });
+
+  // Leaderboard route
+  app.get('/api/leaderboard/users', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { data: users, error } = await supabase
+      .from('profiles')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
+      .not('team', 'is', null)
+      .neq('team', 'none')
+      .order('points', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(users);
+  });
+
+  // ----------------------------------------------------
+
   const getAppBaseUrl = (req: any) => {
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
     const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -245,7 +337,7 @@ async function createServer() {
     passport.authenticate('steam')(req, res, next);
   });
 
-  app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback'], (req, res, next) => {
+  app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback', '/api/auth/steam/return'], (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
@@ -778,10 +870,12 @@ async function createServer() {
 
   // Catch-all for API to debug routes
   app.all('/api/*', (req, res, next) => {
-    // If we've reached here and no route matched, log it
-    // But we need to check if a route was already handled
-    if (!res.headersSent) {
-      console.log(`[404 Debug] No matched API route for: ${req.method} ${req.url}`);
+    // If headers were already sent, something else handled it
+    if (res.headersSent) return;
+
+    // Log for debugging
+    if (process.env.NODE_ENV !== 'production') {
+       console.log(`[API Call] ${req.method} ${req.url}`);
     }
     next();
   });
@@ -896,59 +990,7 @@ async function createServer() {
     res.json(results);
   });
 
-  app.get('/api/me', async (req, res) => {
-    if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
-      const user = (req as any).user;
-      const supabase = getSupabase();
-      
-      const steamId = user.id || user.steamid || user.steam_id || user.steamId;
-      
-      if (supabase && steamId) {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('steamid', steamId)
-            .single();
-            
-          if (data && !error) {
-            // Merge database data with session data for the frontend
-            return res.json({
-              ...user,
-              ...data,
-              isAdmin: data.role === 'admin' || data.role === 'admins' // Ensure isAdmin is correctly set based on role
-            });
-          }
-        } catch (err) {
-          console.error('Error fetching profile from Supabase:', err);
-        }
-      }
-      
-      return res.json(user);
-    }
-    // Check if demo query param is set (useful for quick testing)
-    if (req.query.demo === 'true') {
-      const demoUser = {
-        id: '76561198117650232',
-        displayName: 'Demo User',
-        photos: [{ value: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg' }],
-        team: 'blue',
-        isAdmin: true,
-        points: 420,
-        status: 'Exploring the platform!'
-      };
-      // Use passport's logIn to establish session
-      return (req as any).logIn(demoUser, (err: any) => {
-        if (err) return res.json(null);
-        if ((req as any).session) {
-          (req as any).session.save(() => res.json(demoUser));
-        } else {
-          res.json(demoUser);
-        }
-      });
-    }
-    res.json(null);
-  });
+  // --- MOVED TO TOP ---
 
   // IGDB Game Search
   app.get('/api/games/search', async (req, res) => {
@@ -1062,7 +1104,7 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
-    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).maybeSingle();
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1129,22 +1171,7 @@ async function createServer() {
     }
   }
 
-  app.get('/api/leaderboard/users', async (req, res) => {
-    const supabase = getSupabase();
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
-
-    // Publicly return profiles assigned to a team
-    const { data: users, error } = await supabase
-      .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
-      .not('team', 'is', null)
-      .neq('team', 'none')
-      .order('points', { ascending: false });
-
-    if (error) return res.status(500).json({ error: error.message });
-    
-    res.json(users);
-  });
+  // --- MOVED TO TOP ---
 
   app.get('/api/users/:steamid', async (req, res) => {
     const supabase = getSupabase();
@@ -1794,24 +1821,7 @@ async function createServer() {
     return igdbToken.access_token;
   }
 
-  // Event APIs
-  app.get('/api/events', async (req, res) => {
-    const supabase = getSupabase();
-    if (!supabase) return res.json([]);
-
-    try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('start_date', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
-    } catch (err) {
-      console.error('Failed to fetch events:', err);
-      res.status(500).json({ error: 'Failed to fetch events' });
-    }
-  });
+  // --- MOVED TO TOP ---
 
   app.post('/api/admin/events', async (req, res) => {
     const { title, description, startDate, endDate, isActive } = req.body;
@@ -1962,6 +1972,14 @@ async function createServer() {
 
   // Removed duplicate leaderboard route
 
+
+  // Final JSON 404 handler for API to prevent HTML parsing errors on frontend
+  app.use('/api/*', (req, res) => {
+    if (!res.headersSent) {
+      console.warn(`[404 API] ${req.method} ${req.originalUrl || req.url}`);
+      res.status(404).json({ error: 'API route not found', path: req.originalUrl || req.url });
+    }
+  });
 
   // Vite middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
