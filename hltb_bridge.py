@@ -1,11 +1,6 @@
 import sys
 import json
-
-try:
-    from howlongtobeatpy import HowLongToBeat
-except ImportError:
-    print(json.dumps({"error": "howlongtobeatpy dependency missing"}))
-    sys.exit(0) # Exit with 0 so stdout is captured normally
+from howlongtobeatpy import HowLongToBeat
 
 def search_game(game_name):
     try:
@@ -17,12 +12,10 @@ def search_game(game_name):
             best = max(results, key=lambda element: element.similarity)
             
             def format_time(t):
-                if t is None or t <= 0: return 0
-                return int(round(t))
+                if t is None or t <= 0: return "0"
+                return str(int(round(t)))
                 
             out = {
-                "id": str(best.game_id),
-                "name": best.game_name,
                 "hastily": format_time(best.main_story),
                 "normally": format_time(best.main_extra),
                 "completionist": format_time(best.completionist),

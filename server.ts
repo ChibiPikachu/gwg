@@ -65,15 +65,12 @@ async function createServer() {
 
   // Health check for Vercel
   app.get('/api/health', (req, res) => {
-    console.log('[Health] Request received');
     res.json({ 
       status: 'ok', 
       isCloud, 
-      hasSupabase: !!(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL),
+      hasSupabase: !!process.env.SUPABASE_URL,
       hasSteam: !!process.env.STEAM_API_KEY,
-      timestamp: new Date().toISOString(),
-      url: req.url,
-      baseUrl: req.baseUrl
+      timestamp: new Date().toISOString()
     });
   });
 
@@ -181,142 +178,29 @@ async function createServer() {
     next();
   });
 
-  // favicon.ico 404 fix
-  app.get('/favicon.ico', (req, res) => res.status(204).end());
-
   app.use(passport.initialize());
   app.use(passport.session());
 
   passport.serializeUser((user: any, done) => done(null, user));
   passport.deserializeUser((user: any, done) => done(null, user));
 
-  // --- CRITICAL API ROUTES (Moved to Top for Matching) ---
-  
-  // Me route - used for auth state
-  app.get(['/api/me', '/me'], async (req, res) => {
-    try {
-      if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
-        const user = (req as any).user;
-        const supabase = getSupabase();
-        
-        const steamId = String(user.id || user.steamid || user.steam_id || user.steamId);
-        
-        if (supabase && steamId && steamId !== 'undefined') {
-          try {
-            const { data, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('steamid', steamId)
-              .maybeSingle();
-              
-            if (data && !error) {
-              return res.json({
-                ...user,
-                ...data,
-                isAdmin: (data.role === 'admin' || data.role === 'admins')
-              });
-            }
-          } catch (err) {
-            console.error('Error fetching profile from Supabase:', err);
-          }
-        }
-        
-        return res.json(user);
-      }
-      
-      // Check if demo query param is set
-      if (req.query.demo === 'true') {
-        const demoUser = {
-          id: '76561198117650232',
-          displayName: 'Demo User',
-          photos: [{ value: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg' }],
-          team: 'blue',
-          isAdmin: true,
-          points: 420,
-          status: 'Exploring the platform!'
-        };
-        return (req as any).logIn(demoUser, (err: any) => {
-          if (err) return res.json(null);
-          if ((req as any).session) {
-            (req as any).session.save(() => res.json(demoUser));
-          } else {
-            res.json(demoUser);
-          }
-        });
-      }
-      res.json(null);
-    } catch (err) {
-      console.error('[API/Me] Critical error:', err);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // Events route - high priority
-  app.get(['/api/events', '/events'], async (req, res) => {
-    const supabase = getSupabase();
-    if (!supabase) return res.json([]);
-
-    try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('start_date', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
-    } catch (err) {
-      console.error('Failed to fetch events:', err);
-      res.status(500).json({ error: 'Failed to fetch events' });
-    }
-  });
-
-  // Leaderboard route
-  app.get(['/api/leaderboard/users', '/leaderboard/users'], async (req, res) => {
-    const supabase = getSupabase();
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
-
-    try {
-      const { data: users, error } = await supabase
-        .from('profiles')
-        .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
-        .not('team', 'is', null)
-        .neq('team', 'none')
-        .order('points', { ascending: false });
-
-      if (error) throw error;
-      res.json(users);
-    } catch (err) {
-      console.error('Failed to fetch leaderboard:', err);
-      res.status(500).json({ error: 'Failed to fetch leaderboard' });
-    }
-  });
-
-  // ----------------------------------------------------
-
   const getAppBaseUrl = (req: any) => {
-    // Priority 1: Environment variable
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
-    
-    // Priority 2: Vercel headers
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers['host'];
-    
-    if (host) {
-      return `${protocol}://${host}`.replace(/\/$/, '');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    let url = `${protocol}://${host}`;
+    if (url.includes('.run.app') || url.includes('.ais.') || url.includes('.vercel.app') || protocol === 'https') {
+      url = url.replace('http://', 'https://');
     }
-    
-    // Fallback
-    return (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000').replace(/\/$/, '');
+    return url.replace(/\/$/, '');
   };
 
   const initialAppUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')).replace(/\/$/, '');
 
   // Auth Strategies
   const steamApiKey = process.env.STEAM_API_KEY;
-  const steamCallbackPath = '/api/auth/steam/callback';
-
   passport.use(new SteamStrategy({
-    returnURL: `${initialAppUrl}${steamCallbackPath}`,
+    returnURL: `${initialAppUrl}/auth/steam/return`,
     realm: initialAppUrl,
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
@@ -337,7 +221,7 @@ async function createServer() {
   // Auth Routes
   app.get('/api/auth/steam/url', (req, res) => {
     const appUrl = getAppBaseUrl(req);
-    const returnTo = `${appUrl}${steamCallbackPath}`;
+    const returnTo = `${appUrl}/auth/steam/return`;
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
@@ -353,122 +237,69 @@ async function createServer() {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
-      strategy._returnURL = `${appUrl}${steamCallbackPath}`;
+      strategy._returnURL = `${appUrl}/auth/steam/return`;
       strategy._realm = appUrl;
     }
     passport.authenticate('steam')(req, res, next);
   });
 
-  app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback', '/api/auth/steam/return', '/api/auth/steam/callback/'], (req, res, next) => {
+  app.get(['/auth/steam/return', '/auth/steam/return/'], (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
-    
-    console.log(`[Steam Callback] Path: ${req.path} | App URL: ${appUrl}`);
-    
     if (strategy) {
-      strategy._returnURL = `${appUrl}${steamCallbackPath}`;
+      strategy._returnURL = `${appUrl}/auth/steam/return`;
       strategy._realm = appUrl;
     }
 
-    passport.authenticate('steam', { 
-      session: true,
-      failureRedirect: '/?error=AuthFailed'
-    }, async (err: any, user: any, info: any) => {
-      try {
-        if (err) {
-          console.error('❌ Steam Auth Error:', err);
-          return res.redirect('/?error=' + encodeURIComponent(err.message || 'Steam Authentication Failed'));
-        }
-        if (!user) {
-          console.warn('⚠️ Steam Auth: No user returned. Info:', info);
-          return res.redirect('/?error=NoUserFound&details=' + encodeURIComponent(info?.message || 'Check Steam API Key and Callback URL'));
+    passport.authenticate('steam', { failureRedirect: '/?error=AuthFailed' }, (err: any, user: any) => {
+      if (err) {
+        console.error('Steam Auth Error:', err);
+        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
+      }
+      if (!user) return res.redirect('/');
+      
+      (req as any).logIn(user, async (loginErr: any) => {
+        if (loginErr) {
+          console.error('❌ Login Error:', loginErr);
+          return res.redirect('/?error=LoginFailed');
         }
         
-        console.log('✅ Steam Auth Success. User ID:', user.id || user.steamid);
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            // This part extracts the correct ID from Steam's response
+            const steamId = String(user.id || user._json?.steamid);
+            console.log('--- SYNC START ---');
+            console.log('Syncing Steam ID:', steamId);
 
-        (req as any).logIn(user, async (loginErr: any) => {
-          if (loginErr) {
-            console.error('❌ Passport Login Error:', loginErr);
-            return res.redirect('/?error=LoginFailed&details=' + encodeURIComponent(loginErr.message || 'Session creation failed'));
-          }
-          
-          const supabase = getSupabase();
-          if (supabase) {
-            try {
-              const steamId = String(user.id || user._json?.steamid || user.identifier?.split('/').pop());
-              if (!steamId || steamId === 'undefined') {
-                console.error('❌ Failed to resolve SteamID from profile:', user);
-              } else {
-                console.log('--- SYNC START ---');
-                // First, check if a profile already exists to get its ID and preserve data
-                const { data: existingProfile, error: fetchErr } = await supabase
-                  .from('profiles')
-                  .select('*')
-                  .eq('steamid', steamId)
-                  .maybeSingle();
-
-                if (fetchErr) {
-                  console.warn('[Sync] Note: Error fetching existing profile:', fetchErr.message);
-                }
-
-                const profileData: any = {
-                  steamid: steamId,
-                  steam_name: user.displayName || user.personaname || 'Steam User',
-                  steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
-                  last_login: new Date().toISOString()
-                };
-
-                if (existingProfile) {
-                  // User exists, updating
-                  console.log('[Sync] Updating existing profile:', existingProfile.id);
-                  profileData.id = existingProfile.id;
-                } else {
-                  // New user, creating
-                  console.log('[Sync] Creating new profile for:', steamId);
-                  try {
-                    const { randomUUID } = await import('crypto');
-                    profileData.id = randomUUID();
-                  } catch (e) {
-                    console.warn('[Sync] Could not generate UUID locally');
-                  }
-                  profileData.role = 'member';
-                  profileData.points = 0;
-                  profileData.created_at = new Date().toISOString();
-                }
-
-                const { error: upsertErr } = await supabase
-                  .from('profiles')
-                  .upsert(profileData, { onConflict: 'steamid' });
-                
-                if (upsertErr) {
-                  console.error('❌ Supabase Sync (Upsert) Failed:', upsertErr.message);
-                  console.error('Data attempted:', JSON.stringify(profileData));
-                  // We don't block the login if sync fails, but we log the hell out of it
-                } else {
-                  console.log('✅ Supabase Sync Success!');
-                }
-              }
-            } catch (dbErr: any) {
-              console.error('❌ Critical Database Exception in Auth Callback:', dbErr);
+            const { data, error: syncError } = await supabase.from('profiles').upsert({
+              steamid: steamId,
+              steam_name: user.displayName || user.personaname || 'Steam User',
+              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
+              last_login: new Date().toISOString()
+            }, { onConflict: 'steamid' }).select(); // .select() lets us see the result
+            
+            if (syncError) {
+              console.error('❌ Supabase Sync Error:', syncError.message);
+              console.error('Error Details:', syncError.details);
+            } else {
+              console.log('✅ Supabase Sync Success! Data in DB:', data);
             }
+            console.log('--- SYNC END ---');
+          } catch (dbErr) {
+            console.error('❌ Critical Database Exception:', dbErr);
           }
-
-          // Final response
-          if ((req as any).session) {
-            (req as any).session.save(() => res.redirect('/'));
-          } else {
-            res.redirect('/');
-          }
-        });
-      } catch (fatalErr: any) {
-        console.error('❌ Fatal Error in Auth Callback handler:', fatalErr);
-        if (!res.headersSent) {
-          res.redirect('/?error=FatalCallbackError');
         }
-      }
+
+        if ((req as any).session) {
+          (req as any).session.save(() => res.redirect('/'));
+        } else {
+          res.redirect('/');
+        }
+      });
+      
     })(req, res, next);
   });
-
 
   app.get('/api/auth/discord/url', (req, res) => {
     const clientId = process.env.DISCORD_CLIENT_ID;
@@ -686,8 +517,7 @@ async function createServer() {
   // 2. The Bridge Caller
   const callPythonBridge = async (gameName: string) => {
     try {
-      // On Vercel, server.ts is in /api, so we look one level up for the root-level bridge file
-      const pythonScript = path.join(__dirname, '..', 'hltb_bridge.py');
+      const pythonScript = path.join(process.cwd(), 'hltb_bridge.py');
       const cmds = ['python3', 'python'];
       let stdout = '';
       let lastError = null;
@@ -708,13 +538,6 @@ async function createServer() {
       const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
       if (jsonMatch && jsonMatch[0] !== 'null') {
         const data = JSON.parse(jsonMatch[0]);
-        
-        if (data.error) {
-          console.error(`[HLTB Bridge] Python Error: ${data.error}`);
-          return { error: data.error };
-        }
-
-        console.log(`[HLTB Bridge] Python Success: ${data.name || gameName} (${data.hastily}h)`);
         return {
           main: parseInt(data.hastily) || 0,
           mainExtra: parseInt(data.normally) || 0,
@@ -807,38 +630,15 @@ async function createServer() {
   // 3. Updated fetchHLTBData used by routes
   const fetchHLTBData = async (title: string) => {
     const searchName = cleanNameForHLTB(title);
-    console.log(`[HLTB] Starting search process for: "${title}" (Cleaned: "${searchName}")`);
+    console.log(`[HLTB] Searching for: "${searchName}"`);
     
-    // Try Python bridge first with original title (more reliable for HLTB fuzzy search)
-    let results: any = await callPythonBridge(title);
+    // Try Python bridge first (requested by user)
+    let results = await callPythonBridge(searchName);
     
-    // If original fails, try cleaned
-    if (!results || results.error) {
-      if (title !== searchName) {
-        console.log(`[HLTB] Retrying Python bridge with cleaned name: "${searchName}"`);
-        results = await callPythonBridge(searchName);
-      }
-    }
-
-    // Fallback to Node scraper if Python fails or is missing dependency
-    if (!results || results.error || (results.main === 0 && results.mainExtra === 0)) {
-        console.log(`[HLTB] Python bridge failed or returned 0s, falling back to Node scraper for: "${title}"`);
-        const nodeResults = await fetchHLTBDataNode(title);
-        if (nodeResults) results = nodeResults;
-    }
-
-    // One more try with colon-split if still nothing
-    if ((!results || results.main === 0) && title.includes(':')) {
-        const splitTitle = title.split(':')[0].trim();
-        console.log(`[HLTB] Trying colon-split fallback: "${splitTitle}"`);
-        const splitResults = await fetchHLTBDataNode(splitTitle);
-        if (splitResults) results = splitResults;
-    }
-
-    if (results) {
-        console.log(`[HLTB] Final match found: ${results.name || title} - Main: ${results.main}h (Source: ${results.source})`);
-    } else {
-        console.log(`[HLTB] No match found for "${title}" after all attempts.`);
+    // Fallback to Node scraper if Python fails
+    if (!results) {
+      console.log(`[HLTB] Python bridge failed or missing, falling back to Node scraper for: "${searchName}"`);
+      results = await fetchHLTBDataNode(searchName);
     }
 
     return results;
@@ -854,38 +654,22 @@ async function createServer() {
       .eq('id', String(gameId))
       .maybeSingle();
 
-    // If it exists and already has valid HLTB data, skip the lookup
-    if (existingGame && (existingGame.hltb_main > 0 || (existingGame.hltb_id && existingGame.hltb_id !== '0'))) {
-      return existingGame.id;
-    }
+    if (existingGame) return existingGame.id;
 
-    // 2. If not found or has missing data, fetch HLTB data
-    console.log(`[Sync] Fetching HLTB for: ${cleanedTitle} (found in DB: ${!!existingGame})`);
+    // 2. If not, fetch HLTB data
+    console.log(`[Sync] Fetching HLTB for new game: ${cleanedTitle}`);
     const hltb = await fetchHLTBData(cleanedTitle);
     
-    // If lookup failed and we already have a record, just return it
-    if (!hltb && existingGame) return existingGame.id;
-
-    // 3. Prepare data for upsert
-    const gameData: any = {
+    // 3. Upsert into the 'games' table
+    const gameData = {
       id: String(gameId),
       title: cleanedTitle,
       image_url: image,
+      hltb_main: hltb?.main || 0,
+      hltb_extra: hltb?.mainExtra || 0,
+      hltb_completionist: hltb?.completionist || 0,
       updated_at: new Date().toISOString()
     };
-
-    if (hltb) {
-      gameData.hltb_id = hltb.id || existingGame?.hltb_id || null;
-      // Convert to string to match TEXT columns in Supabase and avoid operator errors
-      gameData.hltb_main = String(hltb.main || 0);
-      gameData.hltb_extra = String(hltb.mainExtra || 0);
-      gameData.hltb_completionist = String(hltb.completionist || 0);
-    } else {
-      // Fallback to existing or zeros, converted to strings
-      gameData.hltb_main = String(existingGame?.hltb_main || 0);
-      gameData.hltb_extra = String(existingGame?.hltb_extra || 0);
-      gameData.hltb_completionist = String(existingGame?.hltb_completionist || 0);
-    }
 
     const { data: newGame, error } = await supabase
       .from('games')
@@ -895,23 +679,12 @@ async function createServer() {
 
     if (error) {
       console.error('[Sync] Error upserting game:', error);
+      // If we can't upsert, we still want to return the ID so the submission doesn't fail
       return String(gameId);
     }
 
     return newGame?.id;
   };
-
-  // Catch-all for API to debug routes
-  app.all('/api/*', (req, res, next) => {
-    // If headers were already sent, something else handled it
-    if (res.headersSent) return;
-
-    // Log for debugging
-    if (process.env.NODE_ENV !== 'production') {
-       console.log(`[API Call] ${req.method} ${req.url}`);
-    }
-    next();
-  });
 
   const hltbCache = new Map<string, any>();
 
@@ -1023,7 +796,59 @@ async function createServer() {
     res.json(results);
   });
 
-  // --- MOVED TO TOP ---
+  app.get('/api/me', async (req, res) => {
+    if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
+      const user = (req as any).user;
+      const supabase = getSupabase();
+      
+      const steamId = user.id || user.steamid || user.steam_id || user.steamId;
+      
+      if (supabase && steamId) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('steamid', steamId)
+            .single();
+            
+          if (data && !error) {
+            // Merge database data with session data for the frontend
+            return res.json({
+              ...user,
+              ...data,
+              isAdmin: data.role === 'admin' || data.role === 'admins' // Ensure isAdmin is correctly set based on role
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching profile from Supabase:', err);
+        }
+      }
+      
+      return res.json(user);
+    }
+    // Check if demo query param is set (useful for quick testing)
+    if (req.query.demo === 'true') {
+      const demoUser = {
+        id: '76561198117650232',
+        displayName: 'Demo User',
+        photos: [{ value: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg' }],
+        team: 'blue',
+        isAdmin: true,
+        points: 420,
+        status: 'Exploring the platform!'
+      };
+      // Use passport's logIn to establish session
+      return (req as any).logIn(demoUser, (err: any) => {
+        if (err) return res.json(null);
+        if ((req as any).session) {
+          (req as any).session.save(() => res.json(demoUser));
+        } else {
+          res.json(demoUser);
+        }
+      });
+    }
+    res.json(null);
+  });
 
   // IGDB Game Search
   app.get('/api/games/search', async (req, res) => {
@@ -1137,7 +962,7 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
-    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).maybeSingle();
+    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1204,7 +1029,22 @@ async function createServer() {
     }
   }
 
-  // --- MOVED TO TOP ---
+  app.get('/api/leaderboard/users', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    // Publicly return profiles assigned to a team
+    const { data: users, error } = await supabase
+      .from('profiles')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
+      .not('team', 'is', null)
+      .neq('team', 'none')
+      .order('points', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    
+    res.json(users);
+  });
 
   app.get('/api/users/:steamid', async (req, res) => {
     const supabase = getSupabase();
@@ -1854,7 +1694,24 @@ async function createServer() {
     return igdbToken.access_token;
   }
 
-  // --- MOVED TO TOP ---
+  // Event APIs
+  app.get('/api/events', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.json([]);
+
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: false });
+
+      if (error) throw error;
+      res.json(data || []);
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+      res.status(500).json({ error: 'Failed to fetch events' });
+    }
+  });
 
   app.post('/api/admin/events', async (req, res) => {
     const { title, description, startDate, endDate, isActive } = req.body;
@@ -2006,14 +1863,6 @@ async function createServer() {
   // Removed duplicate leaderboard route
 
 
-  // Final JSON 404 handler for API to prevent HTML parsing errors on frontend
-  app.use('/api/*', (req, res) => {
-    if (!res.headersSent) {
-      console.warn(`[404 API] ${req.method} ${req.originalUrl || req.url}`);
-      res.status(404).json({ error: 'API route not found', path: req.originalUrl || req.url });
-    }
-  });
-
   // Vite middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const { createServer: createViteServer } = await import('vite');
@@ -2022,12 +1871,12 @@ async function createServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else if (!process.env.VERCEL) {
-    // ONLY serve static files if NOT on Vercel (e.g. running in a Docker container)
-    // On Vercel, assets are served by the Vercel CDN using vercel.json routes
+  } else {
+    // On Vercel or in production, serve from dist
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
+      // In a serverless environment, we might need to be careful with paths
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

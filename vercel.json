@@ -1,15 +1,29 @@
 {
   "version": 2,
-  "functions": {
-    "api/server.ts": {
-      "includeFiles": "hltb_bridge.py"
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "server.ts",
+      "use": "@vercel/node"
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/server.ts" },
-    { "source": "/auth/(.*)", "destination": "/api/server.ts" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/((?!api|auth|assets|.*\\.).*)", "destination": "/index.html" }
   ],
-  "cleanUrls": true
+  "routes": [
+    {
+      "src": "/(api|auth)(.*)",
+      "dest": "server.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1",
+      "check": true
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }

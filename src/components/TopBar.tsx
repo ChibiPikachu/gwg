@@ -242,9 +242,8 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           <div className="flex items-center gap-3 cursor-pointer group" onClick={onProfileClick}>
             <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block dark:text-white text-slate-600">Welcome {user.steamName}!</span>
             <div className={cn(
-              "w-10 h-10 rounded-full border-2 p-0.5 transition-all duration-300",
-              colors ? colors.border : "dark:border-white/20 border-black/10",
-              colors && "group-hover:border-opacity-100 shadow-sm"
+              "w-10 h-10 rounded-full border-2 p-0.5 transition-colors",
+              colors ? `${colors.border.replace('/50', '')}/50 group-hover:${colors.border.replace('/50', '')}` : "dark:border-white/20 border-black/10"
             )}>
               <img 
                 src={user.steamAvatar || user.discordAvatar} 
