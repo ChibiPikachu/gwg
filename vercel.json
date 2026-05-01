@@ -2,11 +2,11 @@
   "version": 2,
   "functions": {
     "api/server.ts": {
-      "includeFiles": "api/hltb_bridge.py"
+      "includeFiles": "hltb_bridge.py"
     }
   },
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/server.ts" },
+    { "src": "/(.*)", "dest": "/server.ts" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
