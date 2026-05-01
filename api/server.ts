@@ -337,7 +337,7 @@ async function createServer() {
     passport.authenticate('steam')(req, res, next);
   });
 
-  app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback', '/api/auth/steam/return'], (req, res, next) => {
+  app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback', '/api/auth/steam/return', '/api/auth/steam/callback/'], (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
@@ -381,11 +381,20 @@ async function createServer() {
             };
 
             // Check if user already exists to avoid PK 'id' collision
-            const { data: existingProfile } = await supabase
-              .from('profiles')
-              .select('id, role, points')
-              .eq('steamid', steamId)
-              .maybeSingle();
+            let existingProfile = null;
+            try {
+              const { data } = await supabase
+                .from('profiles')
+                .select('id, role, points')
+                .eq('steamid', steamId)
+                .maybeSingle();
+              existingProfile = data;
+            } catch (selErr) {
+              console.warn('Profile select failed (likely missing columns):', selErr);
+              // Try basic select if complex one fails
+              const { data } = await supabase.from('profiles').select('id').eq('steamid', steamId).maybeSingle();
+              existingProfile = data;
+            }
 
             if (existingProfile) {
               profileData.id = existingProfile.id;
