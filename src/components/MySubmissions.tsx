@@ -167,8 +167,7 @@ export default function MySubmissions() {
           platform: formData.platform,
           calculatedScore: scorePreview,
           notes: formData.notes,
-          steam_appid: selectedGame.steam_appid || null,
-          hltb_id: selectedGame.hltb_id || null
+          steam_appid: selectedGame.steam_appid || null
         })
       });
 
@@ -635,21 +634,6 @@ export default function MySubmissions() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-5 h-5", !sub.steam_appid && "grayscale opacity-30")} alt="" />
-                      </a>
-                      <a 
-                        href={sub.hltb_id ? `https://howlongtobeat.com/game/${sub.hltb_id}` : undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(
-                          "w-9 h-9 rounded-xl flex items-center justify-center border shadow-xl transition-all hover:scale-110",
-                          sub.hltb_id 
-                            ? "bg-[#252525] border-[#353535]" 
-                            : "bg-slate-800/40 border-white/5 opacity-50 cursor-not-allowed pointer-events-none"
-                        )}
-                        title={sub.hltb_id ? "View on HowLongToBeat" : "HLTB ID not found"}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <img src="https://www.google.com/s2/favicons?domain=howlongtobeat.com&sz=32" className={cn("w-5 h-5", !sub.hltb_id && "grayscale opacity-30")} alt="" />
                       </a>
                    </div>
                    

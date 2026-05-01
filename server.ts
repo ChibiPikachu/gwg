@@ -7,26 +7,7 @@ import { Strategy as DiscordStrategy } from 'passport-discord';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { execFile } from 'child_process';
-import util from 'util';
-const execFilePromise = util.promisify(execFile);
-
-// Helper for Steam API calls
-async function fetchSteamOwnedGames(steamId: string) {
-  const apiKey = process.env.STEAM_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const response = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
-    const data: any = await response.json();
-    return data.response?.games || [];
-  } catch (err) {
-    console.error('Steam Owned Games Fetch Failed:', err);
-    return null;
-  }
-}
-
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-// Lazy-load howlongtobeat to prevent startup crashes if module is missing or incompatible in some environments
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,10 +24,60 @@ function getSupabase() {
     }
     
     console.log('Initializing Supabase client with URL:', url.substring(0, 10) + '...');
-    supabaseClient = createSupabaseClient(url, key);
+    supabaseClient = createClient(url, key);
   }
   return supabaseClient;
 }
+
+import util from 'util';
+import { execFile } from 'child_process';
+const execFilePromise = util.promisify(execFile);
+
+// Helper for Steam API calls
+async function fetchSteamOwnedGames(steamId: string) {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const response = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
+    const data: any = await response.json();
+    return data.response?.games || [];
+  } catch (err) {
+    console.error('Steam Owned Games Fetch Failed:', err);
+    return null;
+  }
+}
+
+const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string) => {
+    // 1. Check if game already exists in our 'games' table
+    const { data: existingGame } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', String(gameId))
+      .maybeSingle();
+
+    if (existingGame) return existingGame.id;
+
+    // 2. If not, upsert into the 'games' table (simplified without HLTB)
+    const gameData = {
+      id: String(gameId),
+      title: title,
+      image_url: image,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data: newGame, error } = await supabase
+      .from('games')
+      .upsert(gameData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Sync] Error upserting game:', error);
+      return String(gameId);
+    }
+
+    return newGame?.id;
+  };
 
 async function createServer() {
   const app = express();
@@ -414,388 +445,6 @@ async function createServer() {
     res.json({ success: true, user });
   });
 
-  // HLTB Service & Cache (Lazy-loaded for resilience)
-  let hltbService: any = null;
-  try {
-    const { createRequire } = await import('module');
-    const require = createRequire(import.meta.url);
-    const hltb = require('howlongtobeat');
-    const ServiceClass = hltb.HowLongToBeatService || hltb.default?.HowLongToBeatService;
-    if (typeof ServiceClass === 'function') {
-      hltbService = new ServiceClass();
-      console.log('[HLTB] Service successfully initialized via require().');
-    }
-  } catch (err) {
-    console.error('[HLTB] Error loading howlongtobeat module via require:', err);
-    // Fallback to dynamic import if require fails
-    try {
-      const hltbModule = await import('howlongtobeat');
-      const ServiceClass = hltbModule.HowLongToBeatService || hltbModule.default?.HowLongToBeatService || hltbModule.default;
-      if (typeof ServiceClass === 'function') {
-        hltbService = new ServiceClass();
-        console.log('[HLTB] Service successfully initialized via import().');
-      }
-    } catch (importErr) {
-      console.error('[HLTB] Error loading howlongtobeat module via import:', importErr);
-    }
-  }
-
-  // Fallback mock if loading failed or module missing
-  if (!hltbService) {
-    console.warn('[HLTB] Service could not be initialized, using fallback mock.');
-    hltbService = {
-      search: async () => {
-        console.warn('[HLTB] search() called but service is not available');
-        return [];
-      }
-    };
-  }
-
-  // Cache for the HLTB API key/hash to avoid fetching it on every request
-  let hltbApiKey: string | null = null;
-  let hltbApiKeyLastFetch = 0;
-
-  const getHLTBApiKey = async () => {
-    // Refresh key every 30 minutes
-    if (hltbApiKey && (Date.now() - hltbApiKeyLastFetch < 30 * 60 * 1000)) {
-      return hltbApiKey;
-    }
-
-    try {
-      console.log('[HLTB] Refreshing API Key...');
-      const homeRes = await fetch('https://howlongtobeat.com/', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-        }
-      });
-      const html = await homeRes.text();
-      
-      // Look for the main app JS file which contains the API key logic
-      const scriptMatch = html.match(/_next\/static\/chunks\/pages\/_app-[^"]+\.js/);
-      if (!scriptMatch) throw new Error('Could not find HLTB app script');
-
-      const scriptUrl = `https://howlongtobeat.com/${scriptMatch[0]}`;
-      const scriptRes = await fetch(scriptUrl);
-      const scriptText = await scriptRes.text();
-
-      // The key is typically found in a fetch call like .concat("/api/search/").concat("...")
-      // or similar patterns. It's usually a long hex string.
-      const apiKeyMatch = scriptText.match(/\.concat\("(?:\/api\/search\/)?([0-9a-fA-F]{16,})"\)/);
-      if (apiKeyMatch) {
-        hltbApiKey = apiKeyMatch[1];
-        hltbApiKeyLastFetch = Date.now();
-        console.log('[HLTB] Found API Key via concat:', hltbApiKey);
-        return hltbApiKey;
-      }
-
-      // Alternative pattern
-      const altMatch = scriptText.match(/"\/api\/search\/".concat\("([^"]+)"\)/);
-      if (altMatch) {
-        hltbApiKey = altMatch[1];
-        hltbApiKeyLastFetch = Date.now();
-        console.log('[HLTB] Found API Key via alt concat:', hltbApiKey);
-        return hltbApiKey;
-      }
-
-      throw new Error('API key not found in script');
-    } catch (err) {
-      console.error('[HLTB] Failed to get API Key:', err);
-      return null;
-    }
-  };
-
-  // Advanced HLTB Scraper (Bridge to Python + Node Fallback)
-  // 1. Helper functions from HLTB bridge
-  const cleanNameForHLTB = (name: string) => {
-    let clean = name.replace(/[®™©]/g, '');
-    clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');
-    clean = clean.replace(/[^\w\s]/g, ' ');
-    clean = clean.replace(/\s{2,}/g, ' ');
-    return clean.trim();
-  };
-
-  // 2. The Bridge Caller
-  const callPythonBridge = async (gameName: string) => {
-    try {
-      const pythonScript = path.join(process.cwd(), 'hltb_bridge.py');
-      const cmds = ['python3', 'python'];
-      let stdout = '';
-      let lastError = null;
-
-      for (const cmd of cmds) {
-        try {
-          const result = await execFilePromise(cmd, [pythonScript, gameName]);
-          stdout = result.stdout;
-          lastError = null;
-          break; // If successful, stop looking
-        } catch (err) {
-          lastError = err;
-        }
-      }
-
-      if (lastError) throw lastError;
-
-      const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
-      if (jsonMatch && jsonMatch[0] !== 'null') {
-        const data = JSON.parse(jsonMatch[0]);
-        return {
-          main: parseInt(data.hastily) || 0,
-          mainExtra: parseInt(data.normally) || 0,
-          completionist: parseInt(data.completionist) || 0,
-          id: data.id || null,
-          name: data.name || null,
-          source: 'python-bridge'
-        };
-      }
-      return null;
-    } catch (error: any) {
-      console.warn(`[HLTB Bridge] Bridge call failed: ${error.message}`);
-      return null;
-    }
-  };
-
-  // Node-based scraper for HLTB (Fallback)
-  const fetchHLTBDataNode = async (title: string) => {
-    try {
-      const apiKey = await getHLTBApiKey();
-      const endpoint = apiKey ? `https://howlongtobeat.com/api/search/${apiKey}` : 'https://howlongtobeat.com/api/search/';
-      
-      console.log(`[HLTB Node] Scraper attempting search: ${title} at ${endpoint}`);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Referer': 'https://howlongtobeat.com/',
-          'Origin': 'https://howlongtobeat.com',
-          'Accept': '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        body: JSON.stringify({
-          searchType: "games",
-          searchTerms: title.split(' '),
-          searchPage: 1,
-          size: 20,
-          searchOptions: {
-            games: {
-              userId: 0,
-              platform: "",
-              sortCategory: "popular",
-              rangeCategory: "id",
-              rangeTime: { min: 0, max: 0 },
-              gameplay: { perspective: "", flow: "", genre: "" },
-              modifier: ""
-            },
-            users: { sortCategory: "postcount" },
-            lists: { sortCategory: "follows" },
-            filter: "",
-            sort: 0,
-            randomizer: 0
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[HLTB Node] HTTP error! status: ${response.status}`, errText);
-        if (response.status === 404) hltbApiKey = null;
-        return null;
-      }
-      
-      const data: any = await response.json();
-      if (!data || !data.data || data.data.length === 0) {
-        console.log(`[HLTB Node] No results for: ${title}`);
-        return null;
-      }
-
-      const results = data.data.map((game: any) => ({
-        id: String(game.game_id),
-        name: game.game_name,
-        main: Math.round(game.comp_main / 3600),
-        mainExtra: Math.round(game.comp_plus / 3600),
-        completionist: Math.round(game.comp_100 / 3600),
-        source: 'node-scraper'
-      }));
-
-      const bestMatch = results.find((r: any) => r.name.toLowerCase() === title.toLowerCase()) || results[0];
-      return bestMatch;
-    } catch (err) {
-      console.error('[HLTB Node] Fetch Failed:', err);
-      return null;
-    }
-  };
-
-  // 3. Updated fetchHLTBData used by routes
-  const fetchHLTBData = async (title: string) => {
-    const searchName = cleanNameForHLTB(title);
-    console.log(`[HLTB] Searching for: "${searchName}"`);
-    
-    // Try Python bridge first (requested by user)
-    let results = await callPythonBridge(searchName);
-    
-    // Fallback to Node scraper if Python fails
-    if (!results) {
-      console.log(`[HLTB] Python bridge failed or missing, falling back to Node scraper for: "${searchName}"`);
-      results = await fetchHLTBDataNode(searchName);
-    }
-
-    return results;
-  };
-
-  const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string) => {
-    const cleanedTitle = cleanGameTitle(title);
-    
-    // 1. Check if game already exists in our 'games' table
-    const { data: existingGame } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', String(gameId))
-      .maybeSingle();
-
-    if (existingGame) return existingGame.id;
-
-    // 2. If not, fetch HLTB data
-    console.log(`[Sync] Fetching HLTB for new game: ${cleanedTitle}`);
-    const hltb = await fetchHLTBData(cleanedTitle);
-    
-    // 3. Upsert into the 'games' table
-    const gameData = {
-      id: String(gameId),
-      title: cleanedTitle,
-      image_url: image,
-      hltb_main: hltb?.main || 0,
-      hltb_extra: hltb?.mainExtra || 0,
-      hltb_completionist: hltb?.completionist || 0,
-      updated_at: new Date().toISOString()
-    };
-
-    const { data: newGame, error } = await supabase
-      .from('games')
-      .upsert(gameData, { onConflict: 'id' })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[Sync] Error upserting game:', error);
-      // If we can't upsert, we still want to return the ID so the submission doesn't fail
-      return String(gameId);
-    }
-
-    return newGame?.id;
-  };
-
-  const hltbCache = new Map<string, any>();
-
-  // Advanced title cleaner and edition stripper logic
-  const cleanGameTitle = (title: string): string => {
-    return title
-      .replace(/ - (Standard|Digital|Deluxe|Ultimate|Complete|Legacy|Definitive|Enhanced|Remastered|Remake|Gold|Platinum|GOTY|Game of the Year|Special|Premium|Collector's) Edition/gi, '')
-      .replace(/[:®™]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
-  app.get('/api/admin/hltb/:title', async (req, res) => {
-    const { title } = req.params;
-    const cleanedTitle = cleanGameTitle(title);
-    
-    if (hltbCache.has(cleanedTitle)) {
-      return res.json(hltbCache.get(cleanedTitle));
-    }
-
-    try {
-      // Try robust scraper first as libraries are currently fragile
-      let data: any = await fetchHLTBData(cleanedTitle);
-      
-      if (!data) {
-        // Fallback to library if custom fails
-        const results = await hltbService.search(cleanedTitle);
-        if (results && results.length > 0) {
-          const bestMatch = results.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || results[0];
-          data = {
-            main: bestMatch.gameplayMain,
-            mainExtra: bestMatch.gameplayMainExtra,
-            completionist: bestMatch.gameplayCompletionist,
-            id: bestMatch.id,
-            name: bestMatch.name
-          };
-        }
-      }
-
-      if (data) {
-        hltbCache.set(cleanedTitle, data);
-        return res.json(data);
-      }
-      const notFoundData = { main: 0, mainExtra: 0, completionist: 0, notFound: true };
-      hltbCache.set(cleanedTitle, notFoundData);
-      res.json(notFoundData);
-    } catch (err) {
-      console.error('HLTB search failed:', err);
-      const errorData = { main: 0, mainExtra: 0, completionist: 0, error: true };
-      res.status(500).json(errorData);
-    }
-  });
-
-  app.post('/api/admin/hltb-batch', async (req, res) => {
-    const { titles } = req.body;
-    if (!Array.isArray(titles)) return res.status(400).json({ error: 'Invalid input' });
-
-    const results: Record<string, any> = {};
-    const toFetch = titles.filter(t => !hltbCache.has(cleanGameTitle(t)));
-
-    // Fetch in small batches to avoid rate limits
-    for (let i = 0; i < toFetch.length; i += 3) {
-      const batch = toFetch.slice(i, i + 3);
-      await Promise.all(batch.map(async (title) => {
-        try {
-          const cleanedTitle = cleanGameTitle(title);
-          let data: any = await fetchHLTBData(cleanedTitle);
-
-          if (!data) {
-            const searchResults = await hltbService.search(cleanedTitle);
-            if (searchResults && searchResults.length > 0) {
-              const bestMatch = searchResults.find((r: any) => r.name.toLowerCase() === cleanedTitle.toLowerCase()) || searchResults[0];
-              data = {
-                main: bestMatch.gameplayMain,
-                mainExtra: bestMatch.gameplayMainExtra,
-                completionist: bestMatch.gameplayCompletionist,
-                id: bestMatch.id,
-                name: bestMatch.name
-              };
-            }
-          }
-
-          if (data) {
-            hltbCache.set(cleanedTitle, data);
-            results[title] = data;
-          } else {
-            // Negative cache
-            const notFoundData = { main: 0, mainExtra: 0, completionist: 0, notFound: true };
-            hltbCache.set(cleanedTitle, notFoundData);
-            results[title] = notFoundData;
-          }
-        } catch (e) {
-          console.warn(`HLTB fetch failed for ${title}`, e);
-          const data = { main: 0, mainExtra: 0, completionist: 0, error: true };
-          hltbCache.set(cleanGameTitle(title), data);
-          results[title] = data;
-        }
-      }));
-    }
-
-    // Include cached ones
-    titles.forEach(title => {
-      const cleaned = cleanGameTitle(title);
-      if (hltbCache.has(cleaned)) {
-        results[title] = hltbCache.get(cleaned);
-      }
-    });
-
-    res.json(results);
-  });
-
   app.get('/api/me', async (req, res) => {
     if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
       const user = (req as any).user;
@@ -922,8 +571,7 @@ async function createServer() {
           title: game.name,
           image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
           summary: game.summary,
-          steam_appid: steamId,
-          hltb_id: hltbId
+          steam_appid: steamId
         };
       });
 
@@ -1232,7 +880,6 @@ async function createServer() {
         completion_status: completionStatus || 'beaten',
         platform: platform || 'Others',
         steam_appid: steamAppId || null,
-        hltb_id: hltbId || null,
         points: serverPoints, 
         notes: notes || '',
         status: 'pending',
@@ -1528,7 +1175,7 @@ async function createServer() {
       const { data: subs, error: fetchError } = await supabase
         .from('submissions')
         .select('id, game_name, game_id')
-        .or('hltb_id.is.null,steam_appid.is.null');
+        .or('steam_appid.is.null');
 
       if (fetchError) throw fetchError;
       if (!subs || subs.length === 0) return res.json({ success: true, updatedCount: 0 });
@@ -1575,10 +1222,9 @@ async function createServer() {
               }
             }
 
-            if (steamId || hltbId) {
+            if (steamId) {
               await supabase.from('submissions').update({
-                steam_appid: steamId || null,
-                hltb_id: hltbId || null
+                steam_appid: steamId || null
               }).eq('id', sub.id);
               updatedCount++;
             }
