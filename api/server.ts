@@ -221,7 +221,8 @@ async function createServer() {
   // Auth Routes
   app.get('/api/auth/steam/url', (req, res) => {
     const appUrl = getAppBaseUrl(req);
-    const returnTo = `${appUrl}/auth/steam/return`;
+    // Explicitly use /api/auth/steam/callback to match the user's reported callback URL
+    const returnTo = `${appUrl}/api/auth/steam/callback`;
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
@@ -237,7 +238,8 @@ async function createServer() {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
-      strategy._returnURL = `${appUrl}/auth/steam/return`;
+      // Align both potential return paths
+      strategy._returnURL = `${appUrl}/api/auth/steam/callback`;
       strategy._realm = appUrl;
     }
     passport.authenticate('steam')(req, res, next);
@@ -247,57 +249,78 @@ async function createServer() {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
-      strategy._returnURL = `${appUrl}/auth/steam/return`;
+      // This is dynamic strategy modification - critical for Vercel/proxies
+      strategy._returnURL = `${appUrl}/api/auth/steam/callback`;
       strategy._realm = appUrl;
     }
 
     passport.authenticate('steam', { failureRedirect: '/?error=AuthFailed' }, (err: any, user: any) => {
       if (err) {
-        console.error('Steam Auth Error:', err);
-        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Auth Error'));
+        console.error('Steam Auth Internal Error:', err);
+        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Steam Authentication Failed'));
       }
-      if (!user) return res.redirect('/');
+      if (!user) {
+        console.warn('Steam Auth: No user object returned');
+        return res.redirect('/?error=NoUserFound');
+      }
       
       (req as any).logIn(user, async (loginErr: any) => {
         if (loginErr) {
-          console.error('❌ Login Error:', loginErr);
-          return res.redirect('/?error=LoginFailed');
+          console.error('❌ Passport Login Error:', loginErr);
+          return res.redirect('/?error=LoginFailed&details=' + encodeURIComponent(loginErr.message || 'Session creation failed'));
         }
         
         const supabase = getSupabase();
         if (supabase) {
           try {
-            // This part extracts the correct ID from Steam's response
-            const steamId = String(user.id || user._json?.steamid);
-            console.log('--- SYNC START ---');
-            console.log('Syncing Steam ID:', steamId);
+            const steamId = String(user.id || user._json?.steamid || user.identifier?.split('/').pop());
+            if (!steamId || steamId === 'undefined') {
+              console.error('❌ Failed to resolve SteamID from profile:', user);
+              return res.redirect('/?error=InvalidSteamID');
+            }
 
-            const profileData = {
+            console.log('--- SYNC START ---');
+            console.log('Syncing User:', steamId, user.displayName);
+
+            const profileData: any = {
               steamid: steamId,
               steam_name: user.displayName || user.personaname || 'Steam User',
               steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
               last_login: new Date().toISOString()
             };
 
-            console.log('Upserting profile data:', profileData);
+            // Check if user already exists to avoid PK 'id' collision if no default exists
+            const { data: existingProfile } = await supabase
+              .from('profiles')
+              .select('id, steamid')
+              .eq('steamid', steamId)
+              .maybeSingle();
+
+            if (existingProfile) {
+              profileData.id = existingProfile.id;
+            }
 
             const { data, error: syncError } = await supabase.from('profiles').upsert(profileData, { onConflict: 'steamid' }).select();
             
             if (syncError) {
               console.error('❌ Supabase Sync Error:', syncError.message);
               console.error('Error Code:', syncError.code);
-              console.error('Error Details:', syncError.details);
-              console.error('Hint:', syncError.hint);
+              console.error('Details:', syncError.details);
               
-              // If it's a conflict on ID, we might need to fetch the ID first, but onConflict should handle it.
-              // Most common error is missing columns or type mismatch.
-              return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}&hint=${encodeURIComponent(syncError.hint || 'Check table schema')}`);
+              // If we see "null value in column 'id' violates not-null constraint", 
+              // it means the Supabase 'profiles' table doesn't have a default for 'id'
+              let hint = syncError.hint || 'Check table schema';
+              if (syncError.code === '23502' && syncError.message.includes('column "id"')) {
+                hint = 'The "id" column in "profiles" table needs a default value like gen_random_uuid() or you must provide it manually.';
+              }
+
+              return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}&hint=${encodeURIComponent(hint)}`);
             } else {
               console.log('✅ Supabase Sync Success! User:', steamId);
             }
             console.log('--- SYNC END ---');
           } catch (dbErr: any) {
-            console.error('❌ Critical Database Exception:', dbErr);
+            console.error('❌ Critical Database Exception in Auth Callback:', dbErr);
             return res.redirect(`/?error=SyncException&details=${encodeURIComponent(dbErr.message || 'Unknown error')}`);
           }
         }
@@ -311,6 +334,7 @@ async function createServer() {
       
     })(req, res, next);
   });
+
 
   app.get('/api/auth/discord/url', (req, res) => {
     const clientId = process.env.DISCORD_CLIENT_ID;
