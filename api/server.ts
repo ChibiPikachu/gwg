@@ -199,8 +199,10 @@ async function createServer() {
 
   // Auth Strategies
   const steamApiKey = process.env.STEAM_API_KEY;
+  const steamCallbackPath = '/api/auth/steam/callback';
+
   passport.use(new SteamStrategy({
-    returnURL: `${initialAppUrl}/auth/steam/return`,
+    returnURL: `${initialAppUrl}${steamCallbackPath}`,
     realm: initialAppUrl,
     apiKey: steamApiKey || 'DUMMY_KEY'
   }, (identifier: string, profile: any, done: (err: any, user?: any) => void) => {
@@ -221,8 +223,7 @@ async function createServer() {
   // Auth Routes
   app.get('/api/auth/steam/url', (req, res) => {
     const appUrl = getAppBaseUrl(req);
-    // Explicitly use /api/auth/steam/callback to match the user's reported callback URL
-    const returnTo = `${appUrl}/api/auth/steam/callback`;
+    const returnTo = `${appUrl}${steamCallbackPath}`;
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
@@ -238,8 +239,7 @@ async function createServer() {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
-      // Align both potential return paths
-      strategy._returnURL = `${appUrl}/api/auth/steam/callback`;
+      strategy._returnURL = `${appUrl}${steamCallbackPath}`;
       strategy._realm = appUrl;
     }
     passport.authenticate('steam')(req, res, next);
@@ -249,8 +249,7 @@ async function createServer() {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
-      // This is dynamic strategy modification - critical for Vercel/proxies
-      strategy._returnURL = `${appUrl}/api/auth/steam/callback`;
+      strategy._returnURL = `${appUrl}${steamCallbackPath}`;
       strategy._realm = appUrl;
     }
 
@@ -289,7 +288,7 @@ async function createServer() {
               last_login: new Date().toISOString()
             };
 
-            // Check if user already exists to avoid PK 'id' collision if no default exists
+            // Check if user already exists to avoid PK 'id' collision
             const { data: existingProfile } = await supabase
               .from('profiles')
               .select('id')
@@ -299,8 +298,7 @@ async function createServer() {
             if (existingProfile) {
               profileData.id = existingProfile.id;
             } else {
-              // If it is a new user and Supabase doesn't have a default for 'id', generate one
-              // Using Node's crypto for UUID generation
+              // For new users, we MUST provide a UUID if Supabase doesn't auto-generate it
               const { randomUUID } = await import('crypto');
               profileData.id = randomUUID();
               console.log('Generated new UUID for new user:', profileData.id);
@@ -313,7 +311,6 @@ async function createServer() {
             if (syncError) {
               console.error('❌ Supabase Sync Error:', syncError.message);
               console.error('Error Code:', syncError.code);
-              console.error('Details:', syncError.details);
               
               let hint = syncError.hint || 'Check table schema';
               if (syncError.code === '23502' && syncError.message.includes('column "id"')) {
