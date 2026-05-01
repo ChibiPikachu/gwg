@@ -2,8 +2,9 @@
   "version": 2,
   "functions": {
     "api/server.ts": {
-      "runtime": "vercel-node@latest",
-      "includeFiles": "api/**"
+      "memory": 1024,
+      "maxDuration": 10,
+      "includeFiles": "api/hltb_bridge.py"
     }
   },
   "routes": [
