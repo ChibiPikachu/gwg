@@ -398,7 +398,6 @@ async function createServer() {
               const steamId = String(user.id || user._json?.steamid || user.identifier?.split('/').pop());
               if (!steamId || steamId === 'undefined') {
                 console.error('❌ Failed to resolve SteamID from profile:', user);
-                // Still redirect though
               } else {
                 console.log('--- SYNC START ---');
                 const profileData: any = {
@@ -408,40 +407,13 @@ async function createServer() {
                   last_login: new Date().toISOString()
                 };
 
-                // Check if user already exists
-                let existingProfile: any = null;
-                try {
-                  const { data } = await supabase
-                    .from('profiles')
-                    .select('id, role, points, steamid')
-                    .eq('steamid', steamId)
-                    .maybeSingle();
-                  existingProfile = data;
-                } catch (selErr) {
-                  console.warn('[Sync] Profile fetch exception:', selErr);
-                }
-
-                if (existingProfile) {
-                  profileData.id = existingProfile.id;
-                } else {
-                  try {
-                    const { randomUUID } = await import('crypto');
-                    profileData.id = randomUUID();
-                  } catch (e) {}
-                  profileData.role = 'member';
-                  profileData.points = 0;
-                  profileData.created_at = new Date().toISOString();
-                }
-
-                console.log('[Sync] Upserting profile...');
+                console.log('[Sync] Upserting profile for:', steamId);
                 const { error: syncError } = await supabase
                   .from('profiles')
                   .upsert(profileData, { onConflict: 'steamid' });
                 
                 if (syncError) {
                   console.error('❌ Supabase Sync Error:', syncError.message);
-                  // We continue even if sync fails, but we could redirect with error
-                  // return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}`);
                 } else {
                   console.log('✅ Supabase Sync Success!');
                 }
