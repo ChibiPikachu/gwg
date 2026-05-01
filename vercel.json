@@ -2,20 +2,13 @@
   "version": 2,
   "functions": {
     "api/server.ts": {
-      "includeFiles": "hltb_bridge.py"
+      "runtime": "vercel-node@latest",
+      "includeFiles": ["hltb_bridge.py", "requirements.txt"]
     }
   },
   "routes": [
-    {
-      "src": "/(api|auth)(.*)",
-      "dest": "/api/server.ts"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+    { "src": "/(api|auth)(.*)", "dest": "/api/server.ts" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
