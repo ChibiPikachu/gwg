@@ -1,14 +1,15 @@
 {
   "version": 2,
   "functions": {
-    "server.ts": {
+    "api/server.ts": {
       "includeFiles": "hltb_bridge.py"
     }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/server.ts" },
-    { "source": "/auth/:path*", "destination": "/server.ts" },
-    { "source": "/((?!api|auth|assets|favicon.ico).*)", "destination": "/index.html" }
+    { "source": "/api/:path*", "destination": "/api/server.ts" },
+    { "source": "/auth/:path*", "destination": "/api/server.ts" },
+    { "source": "/assets/:path*", "destination": "/assets/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "cleanUrls": true
 }
