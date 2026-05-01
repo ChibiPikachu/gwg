@@ -11,7 +11,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const { user: currentUser, theme } = useAuth();
   const [activeTab, setActiveTab] = React.useState<AdminTab>(activeAdminTab || 'users');
 
-  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'admins')) {
+  if (!currentUser || !currentUser.isAdmin) {
     return (
       <div className="p-12 text-center flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
@@ -19,7 +19,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         </div>
         <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
         <p className="opacity-60 max-w-sm">
-          You do not have the required permissions to access the Administration Panel.
+          You do not have the required permissions to access the Administration Panel. Current User: {currentUser?.steamName} ({currentUser?.role})
         </p>
       </div>
     );
@@ -74,7 +74,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             body: JSON.stringify({ titles: uniqueTitles })
           })
           .then(r => r.json())
-          .then(hltb => setHltbData(prev => ({ ...prev, ...hltb })))
+          .then(hltb => {
+             console.log('[Admin] HLTB Data received:', hltb);
+             setHltbData(prev => ({ ...prev, ...hltb }));
+          })
           .catch(err => console.error('HLTB batch fetch failed:', err));
         }
       }
@@ -596,25 +599,31 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                          </a>
                          <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
                          
-                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                           <div className="flex flex-col gap-1 items-end min-w-[120px]">
-                             <div className="flex items-center gap-4 text-[10px] font-bold">
-                               <span className="text-amber-500">M: {hltbData[sub.game_name].hastily}h</span>
-                               <span className="text-purple-400">C: {hltbData[sub.game_name].completionist}h</span>
-                             </div>
-                             {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 4 ? (
-                               <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
-                                 <div className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
-                                 <span className="text-[8px] font-black text-red-500 uppercase tracking-tight">Review Required!</span>
-                               </div>
-                             ) : (
-                               <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                                 <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                                 <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-tight text-emerald-500/70">Normal</span>
+                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/5 shadow-inner">
+                                 <span className="text-amber-500 font-black">M: {hltbData[sub.game_name].hastily}h</span>
+                                 <div className="w-px h-2 bg-white/10" />
+                                 <span className="text-purple-400 font-black">C: {hltbData[sub.game_name].completionist}h</span>
                                </div>
                              )}
-                           </div>
-                         )}
+                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                               <>
+                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 4 ? (
+                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]">
+                                     <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse ring-2 ring-red-500/20" />
+                                     <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">Review Required!</span>
+                                   </div>
+                                 ) : (
+                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
+                                     <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest">Normal</span>
+                                   </div>
+                                 )}
+                               </>
+                             )}
+                             {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading) && (
+                               <div className="text-[8px] opacity-20 uppercase font-black animate-pulse tracking-widest">Searching HLTB...</div>
+                             )}
 
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
                           <div className="flex flex-col">
