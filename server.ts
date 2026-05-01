@@ -1577,12 +1577,6 @@ async function createServer() {
     }
   });
 
-
-
-
-  // Removed duplicate leaderboard route
-
-
   // Vite middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const { createServer: createViteServer } = await import('vite');
