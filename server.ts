@@ -684,23 +684,38 @@ async function createServer() {
       .eq('id', String(gameId))
       .maybeSingle();
 
-    if (existingGame && (existingGame.hltb_main > 0 || existingGame.hltb_extra > 0)) return existingGame.id;
+    // If it exists and already has valid HLTB data, skip the lookup
+    if (existingGame && (existingGame.hltb_main > 0 || (existingGame.hltb_id && existingGame.hltb_id !== '0'))) {
+      return existingGame.id;
+    }
 
-    // 2. If not found or has 0s, fetch HLTB data
+    // 2. If not found or has missing data, fetch HLTB data
     console.log(`[Sync] Fetching HLTB for: ${cleanedTitle} (found in DB: ${!!existingGame})`);
     const hltb = await fetchHLTBData(cleanedTitle);
     
-    // 3. Upsert into the 'games' table
-    const gameData = {
+    // If lookup failed and we already have a record, just return it
+    if (!hltb && existingGame) return existingGame.id;
+
+    // 3. Prepare data for upsert
+    const gameData: any = {
       id: String(gameId),
       title: cleanedTitle,
       image_url: image,
-      hltb_id: hltb?.id || (existingGame?.hltb_id) || null,
-      hltb_main: hltb?.main || 0,
-      hltb_extra: hltb?.mainExtra || 0,
-      hltb_completionist: hltb?.completionist || 0,
       updated_at: new Date().toISOString()
     };
+
+    if (hltb) {
+      gameData.hltb_id = hltb.id || existingGame?.hltb_id || null;
+      gameData.hltb_main = hltb.main || 0;
+      gameData.hltb_extra = hltb.mainExtra || 0;
+      gameData.hltb_completionist = hltb.completionist || 0;
+    } else {
+      // If we got here, it means we don't have existing valid data and the new lookup failed
+      // Fallback to zeros only if it's a completely new game
+      gameData.hltb_main = existingGame?.hltb_main || 0;
+      gameData.hltb_extra = existingGame?.hltb_extra || 0;
+      gameData.hltb_completionist = existingGame?.hltb_completionist || 0;
+    }
 
     const { data: newGame, error } = await supabase
       .from('games')
@@ -710,7 +725,6 @@ async function createServer() {
 
     if (error) {
       console.error('[Sync] Error upserting game:', error);
-      // If we can't upsert, we still want to return the ID so the submission doesn't fail
       return String(gameId);
     }
 
@@ -1902,12 +1916,12 @@ async function createServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    // On Vercel or in production, serve from dist
+  } else if (!process.env.VERCEL) {
+    // ONLY serve static files if NOT on Vercel (e.g. running in a Docker container)
+    // On Vercel, assets are served by the Vercel CDN using vercel.json routes
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      // In a serverless environment, we might need to be careful with paths
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
