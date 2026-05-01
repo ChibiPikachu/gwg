@@ -57,11 +57,22 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
 
     if (existingGame) return existingGame.id;
 
-    // 2. If not, upsert into the 'games' table (simplified without HLTB)
+    // 2. Fetch HLTB data
+    let hltb: any = null;
+    try {
+      hltb = await getHLTBData(title);
+    } catch (e) {
+      console.warn('HLTB fetch failed during sync:', e);
+    }
+
+    // 3. Upsert into the 'games' table
     const gameData = {
       id: String(gameId),
       title: title,
       image_url: image,
+      hltb_main: hltb?.hastily || 0,
+      hltb_extra: hltb?.normally || 0,
+      hltb_completionist: hltb?.completionist || 0,
       updated_at: new Date().toISOString()
     };
 
@@ -78,6 +89,10 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
 
     return newGame?.id;
   };
+
+import { getHLTBData } from './hltb.js';
+
+const hltbCache = new Map<string, any>();
 
 async function createServer() {
   const app = express();
@@ -443,6 +458,65 @@ async function createServer() {
     user.displayName = displayName;
     user.status = status;
     res.json({ success: true, user });
+  });
+
+
+  app.get('/api/admin/hltb/:title', async (req, res) => {
+    const { title } = req.params;
+    if (hltbCache.has(title)) {
+      return res.json(hltbCache.get(title));
+    }
+
+    try {
+      const data = await getHLTBData(title);
+      if (data) {
+        hltbCache.set(title, data);
+        return res.json(data);
+      }
+      const notFoundData = { hastily: 0, normally: 0, completionist: 0, notFound: true };
+      hltbCache.set(title, notFoundData);
+      res.json(notFoundData);
+    } catch (err) {
+      console.error('HLTB search failed:', err);
+      res.status(500).json({ error: true });
+    }
+  });
+
+  app.post('/api/admin/hltb-batch', async (req, res) => {
+    const { titles } = req.body;
+    if (!Array.isArray(titles)) return res.status(400).json({ error: 'Invalid input' });
+
+    const results: Record<string, any> = {};
+    const toFetch = titles.filter(t => !hltbCache.has(t));
+
+    // Fetch in small batches to avoid rate limits/spamming
+    for (let i = 0; i < toFetch.length; i += 3) {
+      const batch = toFetch.slice(i, i + 3);
+      await Promise.all(batch.map(async (title) => {
+        try {
+          const data = await getHLTBData(title);
+          if (data) {
+            hltbCache.set(title, data);
+            results[title] = data;
+          } else {
+            const notFoundData = { hastily: 0, normally: 0, completionist: 0, notFound: true };
+            hltbCache.set(title, notFoundData);
+            results[title] = notFoundData;
+          }
+        } catch (e) {
+          console.warn(`HLTB fetch failed for ${title}`, e);
+        }
+      }));
+    }
+
+    // Include cached ones
+    titles.forEach(title => {
+      if (hltbCache.has(title)) {
+        results[title] = hltbCache.get(title);
+      }
+    });
+
+    res.json(results);
   });
 
   app.get('/api/me', async (req, res) => {

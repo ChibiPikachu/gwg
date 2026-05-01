@@ -40,6 +40,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
+  const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [rejectionReason, setRejectionReason] = React.useState('');
   const [editHours, setEditHours] = React.useState('0');
   const [editAchievements, setEditAchievements] = React.useState('0');
@@ -63,6 +64,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       if (res.ok) {
         const data = await res.json();
         setSubmissions(Array.isArray(data) ? data : []);
+        
+        // Batch fetch HLTB data for these submissions
+        const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name)));
+        if (uniqueTitles.length > 0) {
+          fetch('/api/admin/hltb-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titles: uniqueTitles })
+          })
+          .then(r => r.json())
+          .then(hltb => setHltbData(prev => ({ ...prev, ...hltb })))
+          .catch(err => console.error('HLTB batch fetch failed:', err));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch submissions:', err);
@@ -581,6 +595,27 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-5 h-5", !sub.steam_appid && "grayscale opacity-30")} alt="" />
                          </a>
                          <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
+                         
+                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                           <div className="flex flex-col gap-1 items-end min-w-[120px]">
+                             <div className="flex items-center gap-4 text-[10px] font-bold">
+                               <span className="text-amber-500">M: {hltbData[sub.game_name].hastily}h</span>
+                               <span className="text-purple-400">C: {hltbData[sub.game_name].completionist}h</span>
+                             </div>
+                             {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 4 ? (
+                               <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
+                                 <div className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+                                 <span className="text-[8px] font-black text-red-500 uppercase tracking-tight">Review Required!</span>
+                               </div>
+                             ) : (
+                               <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                                 <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                 <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-tight text-emerald-500/70">Normal</span>
+                               </div>
+                             )}
+                           </div>
+                         )}
+
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
                           <div className="flex flex-col">
                             <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>

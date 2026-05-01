@@ -19,6 +19,8 @@ def search_game(game_name):
                 "hastily": format_time(best.main_story),
                 "normally": format_time(best.main_extra),
                 "completionist": format_time(best.completionist),
+                "id": best.game_id,
+                "name": best.game_name
             }
             print(json.dumps(out))
         else:

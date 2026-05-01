@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 // 1. Advanced Cleaner (Removes trademarks, punctuation, and trailing years)
 function cleanGameTitle(title) {
+    if (!title) return '';
     let clean = title.replace(/[®™©]/g, '');
     clean = clean.replace(/\s*\(\d{4}\)\s*$/g, '');
     clean = clean.replace(/[^\w\s]/g, ' ');
@@ -31,7 +32,23 @@ async function callPythonBridge(gameName) {
 
         // execFile passes arguments as an array, completely neutralizing shell injection risks.
         // We no longer need to manually escape quotes!
-        const { stdout } = await execFilePromise('python', [pythonScript, gameName]);
+        // Try both python3 and python
+        const cmds = ['python3', 'python'];
+        let stdout = '';
+        let lastError = null;
+
+        for (const cmd of cmds) {
+            try {
+                const result = await execFilePromise(cmd, [pythonScript, gameName]);
+                stdout = result.stdout;
+                lastError = null;
+                break;
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        if (lastError && !stdout) return null;
 
         // Find the JSON object in the output, ignoring any Python warnings
         const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
