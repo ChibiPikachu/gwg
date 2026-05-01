@@ -3,7 +3,7 @@
   "functions": {
     "api/server.ts": {
       "runtime": "vercel-node@latest",
-      "includeFiles": ["hltb_bridge.py", "requirements.txt"]
+      "includeFiles": "api/**"
     }
   },
   "routes": [
