@@ -6,8 +6,9 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/server.ts" },
-    { "source": "/auth/(.*)", "destination": "/api/server.ts" },
+    { "source": "/api", "destination": "/api/server" },
+    { "source": "/api/(.*)", "destination": "/api/server" },
+    { "source": "/auth/(.*)", "destination": "/api/server" },
     { "source": "/assets/(.*)", "destination": "/assets/$1" },
     { "source": "/((?!api|auth|assets|.*\\.).*)", "destination": "/index.html" }
   ],

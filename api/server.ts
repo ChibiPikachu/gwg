@@ -65,12 +65,15 @@ async function createServer() {
 
   // Health check for Vercel
   app.get('/api/health', (req, res) => {
+    console.log('[Health] Request received');
     res.json({ 
       status: 'ok', 
       isCloud, 
-      hasSupabase: !!process.env.SUPABASE_URL,
+      hasSupabase: !!(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL),
       hasSteam: !!process.env.STEAM_API_KEY,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      url: req.url,
+      baseUrl: req.baseUrl
     });
   });
 
@@ -178,6 +181,9 @@ async function createServer() {
     next();
   });
 
+  // favicon.ico 404 fix
+  app.get('/favicon.ico', (req, res) => res.status(204).end());
+
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -187,7 +193,8 @@ async function createServer() {
   // --- CRITICAL API ROUTES (Moved to Top for Matching) ---
   
   // Me route - used for auth state
-  app.get('/api/me', async (req, res) => {
+  app.get(['/api/me', '/me'], async (req, res) => {
+    console.log('[API/Me] Request path:', req.path);
     if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
       const user = (req as any).user;
       const supabase = getSupabase();
@@ -200,13 +207,13 @@ async function createServer() {
             .from('profiles')
             .select('*')
             .eq('steamid', steamId)
-            .single();
+            .maybeSingle();
             
           if (data && !error) {
             return res.json({
               ...user,
               ...data,
-              isAdmin: data.role === 'admin' || data.role === 'admins'
+              isAdmin: (data.role === 'admin' || data.role === 'admins')
             });
           }
         } catch (err) {
@@ -240,7 +247,8 @@ async function createServer() {
   });
 
   // Events route - high priority
-  app.get('/api/events', async (req, res) => {
+  app.get(['/api/events', '/events'], async (req, res) => {
+    console.log('[API/Events] Request path:', req.path);
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
 
@@ -259,7 +267,8 @@ async function createServer() {
   });
 
   // Leaderboard route
-  app.get('/api/leaderboard/users', async (req, res) => {
+  app.get(['/api/leaderboard/users', '/leaderboard/users'], async (req, res) => {
+    console.log('[API/Leaderboard] Request path:', req.path);
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
@@ -277,14 +286,19 @@ async function createServer() {
   // ----------------------------------------------------
 
   const getAppBaseUrl = (req: any) => {
+    // Priority 1: Environment variable
     if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-    const host = req.headers['x-forwarded-host'] || req.get('host');
-    let url = `${protocol}://${host}`;
-    if (url.includes('.run.app') || url.includes('.ais.') || url.includes('.vercel.app') || protocol === 'https') {
-      url = url.replace('http://', 'https://');
+    
+    // Priority 2: Vercel headers
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers['host'];
+    
+    if (host) {
+      return `${protocol}://${host}`.replace(/\/$/, '');
     }
-    return url.replace(/\/$/, '');
+    
+    // Fallback
+    return (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000').replace(/\/$/, '');
   };
 
   const initialAppUrl = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')).replace(/\/$/, '');
@@ -340,21 +354,27 @@ async function createServer() {
   app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback', '/api/auth/steam/return', '/api/auth/steam/callback/'], (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
+    
+    console.log('[Steam Callback] App URL:', appUrl);
+    
     if (strategy) {
       strategy._returnURL = `${appUrl}${steamCallbackPath}`;
       strategy._realm = appUrl;
+      console.log('[Steam Callback] Strategy updated with returnURL:', strategy._returnURL);
     }
 
-    passport.authenticate('steam', { failureRedirect: '/?error=AuthFailed' }, (err: any, user: any) => {
+    passport.authenticate('steam', { session: true }, (err: any, user: any, info: any) => {
       if (err) {
-        console.error('Steam Auth Internal Error:', err);
+        console.error('❌ Steam Auth Error:', err);
         return res.redirect('/?error=' + encodeURIComponent(err.message || 'Steam Authentication Failed'));
       }
       if (!user) {
-        console.warn('Steam Auth: No user object returned');
-        return res.redirect('/?error=NoUserFound');
+        console.warn('⚠️ Steam Auth: No user returned. Info:', info);
+        return res.redirect('/?error=NoUserFound&details=' + encodeURIComponent(info?.message || 'Check Steam API Key and Callback URL'));
       }
       
+      console.log('✅ Steam Auth Success. User ID:', user.id || user.steamid);
+
       (req as any).logIn(user, async (loginErr: any) => {
         if (loginErr) {
           console.error('❌ Passport Login Error:', loginErr);
@@ -381,53 +401,58 @@ async function createServer() {
             };
 
             // Check if user already exists to avoid PK 'id' collision
-            let existingProfile = null;
+            let existingProfile: any = null;
             try {
-              const { data } = await supabase
+              const { data, error: selErr } = await supabase
                 .from('profiles')
-                .select('id, role, points')
+                .select('id, role, points, steamid')
                 .eq('steamid', steamId)
                 .maybeSingle();
+              
+              if (selErr) {
+                console.warn('[Sync] Profile fetch error (may be column mismatch):', selErr.message);
+              }
               existingProfile = data;
             } catch (selErr) {
-              console.warn('Profile select failed (likely missing columns):', selErr);
-              // Try basic select if complex one fails
-              const { data } = await supabase.from('profiles').select('id').eq('steamid', steamId).maybeSingle();
-              existingProfile = data;
+              console.warn('[Sync] Profile fetch exception:', selErr);
             }
 
             if (existingProfile) {
               profileData.id = existingProfile.id;
-              // Preserve existing critical fields if needed
+              console.log('[Sync] Found existing user:', existingProfile.id);
             } else {
-              // For new users, we MUST provide a UUID if Supabase doesn't auto-generate it
-              const { randomUUID } = await import('crypto');
-              profileData.id = randomUUID();
-              console.log('Generated new UUID for new user:', profileData.id);
+              // Try to generate a UUID if id is required
+              try {
+                const { randomUUID } = await import('crypto');
+                if (!profileData.id) profileData.id = randomUUID();
+                console.log('[Sync] Created new UUID:', profileData.id);
+              } catch (e) {
+                console.warn('[Sync] Could not generate UUID locally');
+              }
               
-              // Add mandatory defaults for a successful NEW profile creation
               profileData.role = 'member';
               profileData.points = 0;
               profileData.created_at = new Date().toISOString();
             }
 
-            console.log('Upserting profile data:', profileData);
+            console.log('[Sync] Upserting profile for steamid:', steamId);
 
-            const { data, error: syncError } = await supabase.from('profiles').upsert(profileData, { onConflict: 'steamid' }).select();
+            const { error: syncError } = await supabase
+              .from('profiles')
+              .upsert(profileData, { onConflict: 'steamid' });
             
             if (syncError) {
               console.error('❌ Supabase Sync Error:', syncError.message);
-              console.error('Error Code:', syncError.code);
+              console.error('Full Error Object:', JSON.stringify(syncError));
               
-              let hint = syncError.hint || 'Check table schema';
-              if (syncError.code === '23502' && syncError.message.includes('column "id"')) {
-                hint = 'The "id" column in "profiles" table needs a default value or must be provided.';
+              // If it's a column mismatch, tell the user exactly what's wrong
+              if (syncError.message.includes('column') && syncError.message.includes('does not exist')) {
+                console.error('SCHEMA MISMATCH DETECTED');
               }
 
-              return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}&hint=${encodeURIComponent(hint)}`);
-            } else {
-              console.log('✅ Supabase Sync Success! User:', steamId);
+              return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}`);
             }
+            console.log('✅ Supabase Sync Success!');
             console.log('--- SYNC END ---');
           } catch (dbErr: any) {
             console.error('❌ Critical Database Exception in Auth Callback:', dbErr);
