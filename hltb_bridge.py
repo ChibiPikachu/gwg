@@ -1,25 +1,19 @@
 import sys
 import json
-import asyncio
 from howlongtobeatpy import HowLongToBeat
 
-async def search_game(game_name):
+def search_game(game_name):
     try:
-        # Initialize and search
-        # If your version of the library is synchronous, remove 'await'
-        results = await HowLongToBeat().search(game_name)
+        # 0.0 threshold returns all results
+        results = HowLongToBeat(0.0).search(game_name, similarity_case_sensitive=False)
         
-        if results:
-            # Find the best match
+        if results and len(results) > 0:
+            # Grab the best match based on similarity
             best = max(results, key=lambda element: element.similarity)
             
             def format_time(t):
-    try:
-        # Return 0 instead of "--" so parseInt doesn't fail
-        if t is None or float(t) <= 0: return 0 
-        return int(round(float(t))) 
-    except (ValueError, TypeError):
-        return 0
+                if t is None or t <= 0: return "0"
+                return str(int(round(t)))
                 
             out = {
                 "hastily": format_time(best.main_story),
@@ -29,10 +23,9 @@ async def search_game(game_name):
             print(json.dumps(out))
         else:
             print(json.dumps(None))
-    except Exception:
+    except Exception as e:
         print(json.dumps(None))
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
-        game_query = " ".join(sys.argv[1:])
-        asyncio.run(search_game(game_query))
+        search_game(sys.argv[1])
