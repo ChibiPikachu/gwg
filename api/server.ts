@@ -194,61 +194,65 @@ async function createServer() {
   
   // Me route - used for auth state
   app.get(['/api/me', '/me'], async (req, res) => {
-    console.log('[API/Me] Request path:', req.path);
-    if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
-      const user = (req as any).user;
-      const supabase = getSupabase();
-      
-      const steamId = user.id || user.steamid || user.steam_id || user.steamId;
-      
-      if (supabase && steamId) {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('steamid', steamId)
-            .maybeSingle();
-            
-          if (data && !error) {
-            return res.json({
-              ...user,
-              ...data,
-              isAdmin: (data.role === 'admin' || data.role === 'admins')
-            });
+    try {
+      if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
+        const user = (req as any).user;
+        const supabase = getSupabase();
+        
+        const steamId = String(user.id || user.steamid || user.steam_id || user.steamId);
+        
+        if (supabase && steamId && steamId !== 'undefined') {
+          try {
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('steamid', steamId)
+              .maybeSingle();
+              
+            if (data && !error) {
+              return res.json({
+                ...user,
+                ...data,
+                isAdmin: (data.role === 'admin' || data.role === 'admins')
+              });
+            }
+          } catch (err) {
+            console.error('Error fetching profile from Supabase:', err);
           }
-        } catch (err) {
-          console.error('Error fetching profile from Supabase:', err);
         }
+        
+        return res.json(user);
       }
       
-      return res.json(user);
+      // Check if demo query param is set
+      if (req.query.demo === 'true') {
+        const demoUser = {
+          id: '76561198117650232',
+          displayName: 'Demo User',
+          photos: [{ value: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg' }],
+          team: 'blue',
+          isAdmin: true,
+          points: 420,
+          status: 'Exploring the platform!'
+        };
+        return (req as any).logIn(demoUser, (err: any) => {
+          if (err) return res.json(null);
+          if ((req as any).session) {
+            (req as any).session.save(() => res.json(demoUser));
+          } else {
+            res.json(demoUser);
+          }
+        });
+      }
+      res.json(null);
+    } catch (err) {
+      console.error('[API/Me] Critical error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-    // Check if demo query param is set
-    if (req.query.demo === 'true') {
-      const demoUser = {
-        id: '76561198117650232',
-        displayName: 'Demo User',
-        photos: [{ value: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg' }],
-        team: 'blue',
-        isAdmin: true,
-        points: 420,
-        status: 'Exploring the platform!'
-      };
-      return (req as any).logIn(demoUser, (err: any) => {
-        if (err) return res.json(null);
-        if ((req as any).session) {
-          (req as any).session.save(() => res.json(demoUser));
-        } else {
-          res.json(demoUser);
-        }
-      });
-    }
-    res.json(null);
   });
 
   // Events route - high priority
   app.get(['/api/events', '/events'], async (req, res) => {
-    console.log('[API/Events] Request path:', req.path);
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
 
@@ -268,19 +272,23 @@ async function createServer() {
 
   // Leaderboard route
   app.get(['/api/leaderboard/users', '/leaderboard/users'], async (req, res) => {
-    console.log('[API/Leaderboard] Request path:', req.path);
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    const { data: users, error } = await supabase
-      .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
-      .not('team', 'is', null)
-      .neq('team', 'none')
-      .order('points', { ascending: false });
+    try {
+      const { data: users, error } = await supabase
+        .from('profiles')
+        .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
+        .not('team', 'is', null)
+        .neq('team', 'none')
+        .order('points', { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(users);
+      if (error) throw error;
+      res.json(users);
+    } catch (err) {
+      console.error('Failed to fetch leaderboard:', err);
+      res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
   });
 
   // ----------------------------------------------------
@@ -355,118 +363,107 @@ async function createServer() {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     
-    console.log('[Steam Callback] App URL:', appUrl);
+    console.log(`[Steam Callback] Path: ${req.path} | App URL: ${appUrl}`);
     
     if (strategy) {
       strategy._returnURL = `${appUrl}${steamCallbackPath}`;
       strategy._realm = appUrl;
-      console.log('[Steam Callback] Strategy updated with returnURL:', strategy._returnURL);
     }
 
-    passport.authenticate('steam', { session: true }, (err: any, user: any, info: any) => {
-      if (err) {
-        console.error('❌ Steam Auth Error:', err);
-        return res.redirect('/?error=' + encodeURIComponent(err.message || 'Steam Authentication Failed'));
-      }
-      if (!user) {
-        console.warn('⚠️ Steam Auth: No user returned. Info:', info);
-        return res.redirect('/?error=NoUserFound&details=' + encodeURIComponent(info?.message || 'Check Steam API Key and Callback URL'));
-      }
-      
-      console.log('✅ Steam Auth Success. User ID:', user.id || user.steamid);
-
-      (req as any).logIn(user, async (loginErr: any) => {
-        if (loginErr) {
-          console.error('❌ Passport Login Error:', loginErr);
-          return res.redirect('/?error=LoginFailed&details=' + encodeURIComponent(loginErr.message || 'Session creation failed'));
+    passport.authenticate('steam', { 
+      session: true,
+      failureRedirect: '/?error=AuthFailed'
+    }, async (err: any, user: any, info: any) => {
+      try {
+        if (err) {
+          console.error('❌ Steam Auth Error:', err);
+          return res.redirect('/?error=' + encodeURIComponent(err.message || 'Steam Authentication Failed'));
+        }
+        if (!user) {
+          console.warn('⚠️ Steam Auth: No user returned. Info:', info);
+          return res.redirect('/?error=NoUserFound&details=' + encodeURIComponent(info?.message || 'Check Steam API Key and Callback URL'));
         }
         
-        const supabase = getSupabase();
-        if (supabase) {
-          try {
-            const steamId = String(user.id || user._json?.steamid || user.identifier?.split('/').pop());
-            if (!steamId || steamId === 'undefined') {
-              console.error('❌ Failed to resolve SteamID from profile:', user);
-              return res.redirect('/?error=InvalidSteamID');
-            }
+        console.log('✅ Steam Auth Success. User ID:', user.id || user.steamid);
 
-            console.log('--- SYNC START ---');
-            console.log('Syncing User:', steamId, user.displayName);
-
-            const profileData: any = {
-              steamid: steamId,
-              steam_name: user.displayName || user.personaname || 'Steam User',
-              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
-              last_login: new Date().toISOString()
-            };
-
-            // Check if user already exists to avoid PK 'id' collision
-            let existingProfile: any = null;
-            try {
-              const { data, error: selErr } = await supabase
-                .from('profiles')
-                .select('id, role, points, steamid')
-                .eq('steamid', steamId)
-                .maybeSingle();
-              
-              if (selErr) {
-                console.warn('[Sync] Profile fetch error (may be column mismatch):', selErr.message);
-              }
-              existingProfile = data;
-            } catch (selErr) {
-              console.warn('[Sync] Profile fetch exception:', selErr);
-            }
-
-            if (existingProfile) {
-              profileData.id = existingProfile.id;
-              console.log('[Sync] Found existing user:', existingProfile.id);
-            } else {
-              // Try to generate a UUID if id is required
-              try {
-                const { randomUUID } = await import('crypto');
-                if (!profileData.id) profileData.id = randomUUID();
-                console.log('[Sync] Created new UUID:', profileData.id);
-              } catch (e) {
-                console.warn('[Sync] Could not generate UUID locally');
-              }
-              
-              profileData.role = 'member';
-              profileData.points = 0;
-              profileData.created_at = new Date().toISOString();
-            }
-
-            console.log('[Sync] Upserting profile for steamid:', steamId);
-
-            const { error: syncError } = await supabase
-              .from('profiles')
-              .upsert(profileData, { onConflict: 'steamid' });
-            
-            if (syncError) {
-              console.error('❌ Supabase Sync Error:', syncError.message);
-              console.error('Full Error Object:', JSON.stringify(syncError));
-              
-              // If it's a column mismatch, tell the user exactly what's wrong
-              if (syncError.message.includes('column') && syncError.message.includes('does not exist')) {
-                console.error('SCHEMA MISMATCH DETECTED');
-              }
-
-              return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}`);
-            }
-            console.log('✅ Supabase Sync Success!');
-            console.log('--- SYNC END ---');
-          } catch (dbErr: any) {
-            console.error('❌ Critical Database Exception in Auth Callback:', dbErr);
-            return res.redirect(`/?error=SyncException&details=${encodeURIComponent(dbErr.message || 'Unknown error')}`);
+        (req as any).logIn(user, async (loginErr: any) => {
+          if (loginErr) {
+            console.error('❌ Passport Login Error:', loginErr);
+            return res.redirect('/?error=LoginFailed&details=' + encodeURIComponent(loginErr.message || 'Session creation failed'));
           }
-        }
+          
+          const supabase = getSupabase();
+          if (supabase) {
+            try {
+              const steamId = String(user.id || user._json?.steamid || user.identifier?.split('/').pop());
+              if (!steamId || steamId === 'undefined') {
+                console.error('❌ Failed to resolve SteamID from profile:', user);
+                // Still redirect though
+              } else {
+                console.log('--- SYNC START ---');
+                const profileData: any = {
+                  steamid: steamId,
+                  steam_name: user.displayName || user.personaname || 'Steam User',
+                  steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
+                  last_login: new Date().toISOString()
+                };
 
-        if ((req as any).session) {
-          (req as any).session.save(() => res.redirect('/'));
-        } else {
-          res.redirect('/');
+                // Check if user already exists
+                let existingProfile: any = null;
+                try {
+                  const { data } = await supabase
+                    .from('profiles')
+                    .select('id, role, points, steamid')
+                    .eq('steamid', steamId)
+                    .maybeSingle();
+                  existingProfile = data;
+                } catch (selErr) {
+                  console.warn('[Sync] Profile fetch exception:', selErr);
+                }
+
+                if (existingProfile) {
+                  profileData.id = existingProfile.id;
+                } else {
+                  try {
+                    const { randomUUID } = await import('crypto');
+                    profileData.id = randomUUID();
+                  } catch (e) {}
+                  profileData.role = 'member';
+                  profileData.points = 0;
+                  profileData.created_at = new Date().toISOString();
+                }
+
+                console.log('[Sync] Upserting profile...');
+                const { error: syncError } = await supabase
+                  .from('profiles')
+                  .upsert(profileData, { onConflict: 'steamid' });
+                
+                if (syncError) {
+                  console.error('❌ Supabase Sync Error:', syncError.message);
+                  // We continue even if sync fails, but we could redirect with error
+                  // return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}`);
+                } else {
+                  console.log('✅ Supabase Sync Success!');
+                }
+              }
+            } catch (dbErr: any) {
+              console.error('❌ Critical Database Exception in Auth Callback:', dbErr);
+            }
+          }
+
+          // Final response
+          if ((req as any).session) {
+            (req as any).session.save(() => res.redirect('/'));
+          } else {
+            res.redirect('/');
+          }
+        });
+      } catch (fatalErr: any) {
+        console.error('❌ Fatal Error in Auth Callback handler:', fatalErr);
+        if (!res.headersSent) {
+          res.redirect('/?error=FatalCallbackError');
         }
-      });
-      
+      }
     })(req, res, next);
   });
 
