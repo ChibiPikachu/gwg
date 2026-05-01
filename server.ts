@@ -538,6 +538,13 @@ async function createServer() {
       const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
       if (jsonMatch && jsonMatch[0] !== 'null') {
         const data = JSON.parse(jsonMatch[0]);
+        
+        if (data.error) {
+          console.error(`[HLTB Bridge] Python Error: ${data.error}`);
+          return { error: data.error };
+        }
+
+        console.log(`[HLTB Bridge] Python Success: ${data.name || gameName} (${data.hastily}h)`);
         return {
           main: parseInt(data.hastily) || 0,
           mainExtra: parseInt(data.normally) || 0,
@@ -630,15 +637,38 @@ async function createServer() {
   // 3. Updated fetchHLTBData used by routes
   const fetchHLTBData = async (title: string) => {
     const searchName = cleanNameForHLTB(title);
-    console.log(`[HLTB] Searching for: "${searchName}"`);
+    console.log(`[HLTB] Starting search process for: "${title}" (Cleaned: "${searchName}")`);
     
-    // Try Python bridge first (requested by user)
-    let results = await callPythonBridge(searchName);
+    // Try Python bridge first with original title (more reliable for HLTB fuzzy search)
+    let results: any = await callPythonBridge(title);
     
-    // Fallback to Node scraper if Python fails
-    if (!results) {
-      console.log(`[HLTB] Python bridge failed or missing, falling back to Node scraper for: "${searchName}"`);
-      results = await fetchHLTBDataNode(searchName);
+    // If original fails, try cleaned
+    if (!results || results.error) {
+      if (title !== searchName) {
+        console.log(`[HLTB] Retrying Python bridge with cleaned name: "${searchName}"`);
+        results = await callPythonBridge(searchName);
+      }
+    }
+
+    // Fallback to Node scraper if Python fails or is missing dependency
+    if (!results || results.error || (results.main === 0 && results.mainExtra === 0)) {
+        console.log(`[HLTB] Python bridge failed or returned 0s, falling back to Node scraper for: "${title}"`);
+        const nodeResults = await fetchHLTBDataNode(title);
+        if (nodeResults) results = nodeResults;
+    }
+
+    // One more try with colon-split if still nothing
+    if ((!results || results.main === 0) && title.includes(':')) {
+        const splitTitle = title.split(':')[0].trim();
+        console.log(`[HLTB] Trying colon-split fallback: "${splitTitle}"`);
+        const splitResults = await fetchHLTBDataNode(splitTitle);
+        if (splitResults) results = splitResults;
+    }
+
+    if (results) {
+        console.log(`[HLTB] Final match found: ${results.name || title} - Main: ${results.main}h (Source: ${results.source})`);
+    } else {
+        console.log(`[HLTB] No match found for "${title}" after all attempts.`);
     }
 
     return results;
@@ -654,10 +684,10 @@ async function createServer() {
       .eq('id', String(gameId))
       .maybeSingle();
 
-    if (existingGame) return existingGame.id;
+    if (existingGame && (existingGame.hltb_main > 0 || existingGame.hltb_extra > 0)) return existingGame.id;
 
-    // 2. If not, fetch HLTB data
-    console.log(`[Sync] Fetching HLTB for new game: ${cleanedTitle}`);
+    // 2. If not found or has 0s, fetch HLTB data
+    console.log(`[Sync] Fetching HLTB for: ${cleanedTitle} (found in DB: ${!!existingGame})`);
     const hltb = await fetchHLTBData(cleanedTitle);
     
     // 3. Upsert into the 'games' table
@@ -665,6 +695,7 @@ async function createServer() {
       id: String(gameId),
       title: cleanedTitle,
       image_url: image,
+      hltb_id: hltb?.id || (existingGame?.hltb_id) || null,
       hltb_main: hltb?.main || 0,
       hltb_extra: hltb?.mainExtra || 0,
       hltb_completionist: hltb?.completionist || 0,

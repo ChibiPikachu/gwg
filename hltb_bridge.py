@@ -1,6 +1,11 @@
 import sys
 import json
-from howlongtobeatpy import HowLongToBeat
+
+try:
+    from howlongtobeatpy import HowLongToBeat
+except ImportError:
+    print(json.dumps({"error": "howlongtobeatpy dependency missing"}))
+    sys.exit(0) # Exit with 0 so stdout is captured normally
 
 def search_game(game_name):
     try:
