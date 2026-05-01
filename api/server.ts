@@ -292,13 +292,21 @@ async function createServer() {
             // Check if user already exists to avoid PK 'id' collision if no default exists
             const { data: existingProfile } = await supabase
               .from('profiles')
-              .select('id, steamid')
+              .select('id')
               .eq('steamid', steamId)
               .maybeSingle();
 
             if (existingProfile) {
               profileData.id = existingProfile.id;
+            } else {
+              // If it is a new user and Supabase doesn't have a default for 'id', generate one
+              // Using Node's crypto for UUID generation
+              const { randomUUID } = await import('crypto');
+              profileData.id = randomUUID();
+              console.log('Generated new UUID for new user:', profileData.id);
             }
+
+            console.log('Upserting profile data:', profileData);
 
             const { data, error: syncError } = await supabase.from('profiles').upsert(profileData, { onConflict: 'steamid' }).select();
             
@@ -307,11 +315,9 @@ async function createServer() {
               console.error('Error Code:', syncError.code);
               console.error('Details:', syncError.details);
               
-              // If we see "null value in column 'id' violates not-null constraint", 
-              // it means the Supabase 'profiles' table doesn't have a default for 'id'
               let hint = syncError.hint || 'Check table schema';
               if (syncError.code === '23502' && syncError.message.includes('column "id"')) {
-                hint = 'The "id" column in "profiles" table needs a default value like gen_random_uuid() or you must provide it manually.';
+                hint = 'The "id" column in "profiles" table needs a default value or must be provided.';
               }
 
               return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}&hint=${encodeURIComponent(hint)}`);
