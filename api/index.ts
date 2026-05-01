@@ -291,17 +291,23 @@ async function createServer() {
             // Check if user already exists to avoid PK 'id' collision
             const { data: existingProfile } = await supabase
               .from('profiles')
-              .select('id')
+              .select('id, role, points')
               .eq('steamid', steamId)
               .maybeSingle();
 
             if (existingProfile) {
               profileData.id = existingProfile.id;
+              // Preserve existing critical fields if needed
             } else {
               // For new users, we MUST provide a UUID if Supabase doesn't auto-generate it
               const { randomUUID } = await import('crypto');
               profileData.id = randomUUID();
               console.log('Generated new UUID for new user:', profileData.id);
+              
+              // Add mandatory defaults for a successful NEW profile creation
+              profileData.role = 'member';
+              profileData.points = 0;
+              profileData.created_at = new Date().toISOString();
             }
 
             console.log('Upserting profile data:', profileData);
@@ -769,6 +775,16 @@ async function createServer() {
 
     return newGame?.id;
   };
+
+  // Catch-all for API to debug routes
+  app.all('/api/*', (req, res, next) => {
+    // If we've reached here and no route matched, log it
+    // But we need to check if a route was already handled
+    if (!res.headersSent) {
+      console.log(`[404 Debug] No matched API route for: ${req.method} ${req.url}`);
+    }
+    next();
+  });
 
   const hltbCache = new Map<string, any>();
 
