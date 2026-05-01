@@ -400,6 +400,17 @@ async function createServer() {
                 console.error('❌ Failed to resolve SteamID from profile:', user);
               } else {
                 console.log('--- SYNC START ---');
+                // First, check if a profile already exists to get its ID and preserve data
+                const { data: existingProfile, error: fetchErr } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('steamid', steamId)
+                  .maybeSingle();
+
+                if (fetchErr) {
+                  console.warn('[Sync] Note: Error fetching existing profile:', fetchErr.message);
+                }
+
                 const profileData: any = {
                   steamid: steamId,
                   steam_name: user.displayName || user.personaname || 'Steam User',
@@ -407,13 +418,32 @@ async function createServer() {
                   last_login: new Date().toISOString()
                 };
 
-                console.log('[Sync] Upserting profile for:', steamId);
-                const { error: syncError } = await supabase
+                if (existingProfile) {
+                  // User exists, updating
+                  console.log('[Sync] Updating existing profile:', existingProfile.id);
+                  profileData.id = existingProfile.id;
+                } else {
+                  // New user, creating
+                  console.log('[Sync] Creating new profile for:', steamId);
+                  try {
+                    const { randomUUID } = await import('crypto');
+                    profileData.id = randomUUID();
+                  } catch (e) {
+                    console.warn('[Sync] Could not generate UUID locally');
+                  }
+                  profileData.role = 'member';
+                  profileData.points = 0;
+                  profileData.created_at = new Date().toISOString();
+                }
+
+                const { error: upsertErr } = await supabase
                   .from('profiles')
                   .upsert(profileData, { onConflict: 'steamid' });
                 
-                if (syncError) {
-                  console.error('❌ Supabase Sync Error:', syncError.message);
+                if (upsertErr) {
+                  console.error('❌ Supabase Sync (Upsert) Failed:', upsertErr.message);
+                  console.error('Data attempted:', JSON.stringify(profileData));
+                  // We don't block the login if sync fails, but we log the hell out of it
                 } else {
                   console.log('✅ Supabase Sync Success!');
                 }
