@@ -518,7 +518,7 @@ function cleanNameForHLTB(name: string) {
 async function callPythonBridge(gameName: string) {
     try {
         // Use path.resolve to ensure we find the file in the Vercel lambda environment
-        const pythonScript = path.resolve(process.cwd(), 'api', 'hltb_bridge.py'); 
+        const pythonScript = path.join(process.cwd(), 'api', 'hltb_bridge.py');
         
         // Vercel usually uses 'python3' for its runtime
         const { stdout } = await execFilePromise('python3', [pythonScript, gameName]);

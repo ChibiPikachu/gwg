@@ -1,16 +1,12 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "package.json", "use": "@vercel/static-build" },
-    { "src": "api/server.ts", "use": "@vercel/node" }
-  ],
   "functions": {
     "api/server.ts": {
       "includeFiles": "api/hltb_bridge.py"
     }
   },
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/server.ts" },
+    { "src": "/api/(.*)", "dest": "/api/server.ts" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
