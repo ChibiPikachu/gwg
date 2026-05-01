@@ -243,7 +243,7 @@ async function createServer() {
     passport.authenticate('steam')(req, res, next);
   });
 
-  app.get(['/auth/steam/return', '/auth/steam/return/'], (req, res, next) => {
+  app.get(['/auth/steam/return', '/auth/steam/return/', '/api/auth/steam/callback'], (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
     const strategy = (passport as any)._strategies.steam;
     if (strategy) {
@@ -272,22 +272,33 @@ async function createServer() {
             console.log('--- SYNC START ---');
             console.log('Syncing Steam ID:', steamId);
 
-            const { data, error: syncError } = await supabase.from('profiles').upsert({
+            const profileData = {
               steamid: steamId,
               steam_name: user.displayName || user.personaname || 'Steam User',
               steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
               last_login: new Date().toISOString()
-            }, { onConflict: 'steamid' }).select(); // .select() lets us see the result
+            };
+
+            console.log('Upserting profile data:', profileData);
+
+            const { data, error: syncError } = await supabase.from('profiles').upsert(profileData, { onConflict: 'steamid' }).select();
             
             if (syncError) {
               console.error('❌ Supabase Sync Error:', syncError.message);
+              console.error('Error Code:', syncError.code);
               console.error('Error Details:', syncError.details);
+              console.error('Hint:', syncError.hint);
+              
+              // If it's a conflict on ID, we might need to fetch the ID first, but onConflict should handle it.
+              // Most common error is missing columns or type mismatch.
+              return res.redirect(`/?error=SyncFailed&details=${encodeURIComponent(syncError.message)}&hint=${encodeURIComponent(syncError.hint || 'Check table schema')}`);
             } else {
-              console.log('✅ Supabase Sync Success! Data in DB:', data);
+              console.log('✅ Supabase Sync Success! User:', steamId);
             }
             console.log('--- SYNC END ---');
-          } catch (dbErr) {
+          } catch (dbErr: any) {
             console.error('❌ Critical Database Exception:', dbErr);
+            return res.redirect(`/?error=SyncException&details=${encodeURIComponent(dbErr.message || 'Unknown error')}`);
           }
         }
 
@@ -517,7 +528,8 @@ async function createServer() {
   // 2. The Bridge Caller
   const callPythonBridge = async (gameName: string) => {
     try {
-      const pythonScript = path.join(process.cwd(), 'hltb_bridge.py');
+      // On Vercel, server.ts is in /api, so we look one level up for the root-level bridge file
+      const pythonScript = path.join(__dirname, '..', 'hltb_bridge.py');
       const cmds = ['python3', 'python'];
       let stdout = '';
       let lastError = null;
@@ -706,15 +718,15 @@ async function createServer() {
 
     if (hltb) {
       gameData.hltb_id = hltb.id || existingGame?.hltb_id || null;
-      gameData.hltb_main = hltb.main || 0;
-      gameData.hltb_extra = hltb.mainExtra || 0;
-      gameData.hltb_completionist = hltb.completionist || 0;
+      // Convert to string to match TEXT columns in Supabase and avoid operator errors
+      gameData.hltb_main = String(hltb.main || 0);
+      gameData.hltb_extra = String(hltb.mainExtra || 0);
+      gameData.hltb_completionist = String(hltb.completionist || 0);
     } else {
-      // If we got here, it means we don't have existing valid data and the new lookup failed
-      // Fallback to zeros only if it's a completely new game
-      gameData.hltb_main = existingGame?.hltb_main || 0;
-      gameData.hltb_extra = existingGame?.hltb_extra || 0;
-      gameData.hltb_completionist = existingGame?.hltb_completionist || 0;
+      // Fallback to existing or zeros, converted to strings
+      gameData.hltb_main = String(existingGame?.hltb_main || 0);
+      gameData.hltb_extra = String(existingGame?.hltb_extra || 0);
+      gameData.hltb_completionist = String(existingGame?.hltb_completionist || 0);
     }
 
     const { data: newGame, error } = await supabase
