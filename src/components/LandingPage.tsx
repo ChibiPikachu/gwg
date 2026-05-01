@@ -14,9 +14,9 @@ export default function LandingPage() {
         
         <div className="flex flex-col gap-6 text-base opacity-80 leading-relaxed max-w-3xl">
           <p>
-            We're a group of girls and enbys who enjoy playing and talking about videogames. Genre and platform don't matter in our community, you could be a Marvel's Rivals enthusiast, or enjoy metroidvanians, or play horror games or even on mobile. It also doesn't matter if you're a seasoned veteran or are just starting out, if you enjoy playing videogames, you have a place here with us!
+            We're a group of girls and enbys who enjoy playing and talking about videogames. Genre and platform don't matter in our community, you could be a Marvel's Rivals enthusiast, or enjoy metroidvanias, or even play on mobile. It also doesn't matter if you're a seasoned veteran or are just starting out, if you enjoy playing videogames, you have a place here with us!
           </p>
-          <p className="opacity-60 text-sm">
+          <p className="opacity-60 text-base">
             Our only requirement is that you identify with any of the following pronouns: <span className="text-blue-400">she/her - she/they - they/them</span>
           </p>
           <p>
@@ -31,13 +31,13 @@ export default function LandingPage() {
         <div className="flex flex-col gap-8 mt-4">
           <div className="flex flex-col gap-2">
             <h3 className="text-xl font-bold dark:text-white text-slate-800">SteamGifts Thread:</h3>
-            <a href="#" className="text-blue-400 hover:underline">Read here.</a>
+            <a href="https://www.steamgifts.com/discussion/vxh1g/" className="text-blue-400 hover:underline">Read here.</a>
           </div>
 
           <div className="flex flex-col gap-2">
             <h3 className="text-xl font-bold dark:text-white text-slate-800">Steam Group:</h3>
             <p className="text-sm">
-              <a href="#" className="text-blue-400 hover:underline">Apply here</a>. If you're rejected, please add Chibi on Steam and explain your situation.
+              <a href="https://steamcommunity.com/groups/girlswhogame" className="text-blue-400 hover:underline">Apply here</a>. If you're rejected, please add Chibi on Steam and explain your situation.
             </p>
           </div>
 
