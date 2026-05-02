@@ -56,6 +56,18 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         params = parse_qs(urlparse(self.path).query)
         game_name = params.get('name', [None])[0]
+        
+        # Call the fetching function
+        if game_name:
+            result = fetch_hltb_data(game_name)
+        else:
+            result = None
+            
+        # Send the HTTP response back
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode('utf-8'))
 
 def fetch_hltb_data(name, threshold=75):
     """
