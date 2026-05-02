@@ -70,9 +70,9 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       id: String(gameId),
       title: title,
       image_url: image,
-      main_story: hltb?.main_story || 0,
-      main_extra: hltb?.main_extra || 0,
-      completionist: hltb?.completionist || 0,
+      hltb_main: hltb?.hltb_main || 0,
+      hltb_extras: hltb?.hltb_extras || 0,
+      hltb_completionist: hltb?.hltb_completionist || 0,
       updated_at: new Date().toISOString()
     };
 
@@ -487,7 +487,7 @@ async function createServer() {
         hltbCache.set(title, data);
         return res.json(data);
       }
-      const notFoundData = { main_story: 0, main_extra: 0, completionist: 0, notFound: true };
+      const notFoundData = { hltb_main: 0, hltb_extras: 0, hltb_completionist: 0, notFound: true };
       hltbCache.set(title, notFoundData);
       res.json(notFoundData);
     } catch (err) {
@@ -516,7 +516,7 @@ async function createServer() {
             hltbCache.set(title, data);
             results[title] = data;
           } else {
-            const notFoundData = { main_story: 0, main_extra: 0, completionist: 0, notFound: true };
+            const notFoundData = { hltb_main: 0, hltb_extras: 0, hltb_completionist: 0, notFound: true };
             hltbCache.set(title, notFoundData);
             results[title] = notFoundData;
           }
