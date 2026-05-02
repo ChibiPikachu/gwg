@@ -2,13 +2,21 @@
   "version": 2,
   "builds": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "src": "api/hltb.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/hltb-batch.py",
+      "use": "@vercel/python"
     },
     {
       "src": "server.ts",
       "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
     }
   ],
   "routes": [
