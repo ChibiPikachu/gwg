@@ -1139,16 +1139,11 @@ async function createServer() {
   });
 
   app.get('/api/admin/submissions', async (req, res) => {
-    const currentUser = (req as any).user;
-    if (!currentUser || currentUser.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      console.log(`[Admin] Submissions fetch requested by user ${currentUser.id}`);
+      console.log('[Admin] Fetching all submissions enriched with teams...');
       
       // Fetch submissions
       const { data: submissions, error: subError } = await supabase

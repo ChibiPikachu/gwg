@@ -25,13 +25,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     );
   }
   
-  React.useEffect(() => {
-    if (activeAdminTab) {
-      setActiveTab(activeAdminTab);
-      // Re-fetch when switching tabs to ensure data is fresh
-      fetchData();
-    }
-  }, [activeAdminTab, fetchData]);
   const [filterTeam, setFilterTeam] = React.useState<Team | 'all'>('all');
   const [users, setUsers] = React.useState<any[]>([]);
   const [submissions, setSubmissions] = React.useState<any[]>([]);
@@ -93,6 +86,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     await Promise.all([fetchUsers(), fetchSubmissions()]);
     setLoading(false);
   }, [fetchUsers, fetchSubmissions]);
+
+  React.useEffect(() => {
+    if (activeAdminTab) {
+      setActiveTab(activeAdminTab);
+      // Re-fetch when switching tabs to ensure data is fresh
+      fetchData();
+    }
+  }, [activeAdminTab, fetchData]);
 
   React.useEffect(() => {
     fetchData();
@@ -281,9 +282,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const filteredUsers = safeUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
-    const matchesSearch = u.steam_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = (u.steam_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                          (u.discord_name || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTeam && matchesSearch;
+  });
+
+  const filteredSubmissions = submissions.filter(sub => {
+    const matchesTeam = filterTeam === 'all' || (sub.userTeam || 'none') === filterTeam;
+    const matchesStatus = subStatusFilter === 'all' || sub.status === subStatusFilter;
+    const matchesSearch = (sub.game_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         (sub.user_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesTeam && matchesStatus && matchesSearch;
   });
 
   if (!isAdmin) {
@@ -330,54 +339,54 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         </button>
       </div>
 
-      {activeTab === 'users' ? (
-        <>
-          <section className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
-            <div className="flex-1 w-full flex flex-col gap-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                <div className="w-full sm:max-w-md">
-                  <h2 className="text-xl font-bold mb-4 dark:text-white text-slate-900">Search & Filters</h2>
-                  <div className="relative group">
-                    <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 dark:text-white/20 text-slate-300 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
-                    <input 
-                      type="text"
-                      placeholder="Search users..."
-                      className={cn("w-full dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap gap-2 md:gap-3">
-                <button 
-                  onClick={() => setFilterTeam('all')}
-                  className={cn(
-                      "px-6 py-2 rounded-lg text-sm font-bold transition-all dark:bg-white/5 bg-black/5 dark:border-transparent border-black/5 hover:dark:bg-white/10 hover:bg-black/10 dark:text-white text-slate-700",
-                      filterTeam === 'all' && "dark:bg-white/10 bg-black/10 ring-1 dark:ring-white/20 ring-black/10 border-white/10"
-                  )}
-                >
-                  All
-                </button>
-                {teamsFilter.map(team => (
-                  <button
-                    key={team}
-                    onClick={() => setFilterTeam(team)}
-                    className={cn(
-                        "px-6 py-2 rounded-lg text-sm font-bold transition-all",
-                        filterTeam === team 
-                          ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
-                          : "dark:bg-white/5 bg-black/5 dark:text-white text-slate-700 opacity-50 border border-transparent hover:opacity-100"
-                    )}
-                  >
-                    {team.charAt(0).toUpperCase() + team.slice(1)}
-                  </button>
-                ))}
+      <section className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
+        <div className="flex-1 w-full flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+            <div className="w-full sm:max-w-md">
+              <h2 className="text-xl font-bold mb-4 dark:text-white text-slate-900">Search & Filters</h2>
+              <div className="relative group">
+                <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 dark:text-white/20 text-slate-300 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
+                <input 
+                  type="text"
+                  placeholder={activeTab === 'users' ? "Search users by name..." : "Search by game or user name..."}
+                  className={cn("w-full dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
             </div>
-            
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+          </div>
+          
+          <div className="flex flex-wrap gap-2 md:gap-3">
+            <button 
+              onClick={() => setFilterTeam('all')}
+              className={cn(
+                  "px-6 py-2 rounded-lg text-sm font-bold transition-all dark:bg-white/5 bg-black/5 dark:border-transparent border-black/5 hover:dark:bg-white/10 hover:bg-black/10 dark:text-white text-slate-700",
+                  filterTeam === 'all' && "dark:bg-white/10 bg-black/10 ring-1 dark:ring-white/20 ring-black/10 border-white/10"
+              )}
+            >
+              All Teams
+            </button>
+            {teamsFilter.map(team => (
+              <button
+                key={team}
+                onClick={() => setFilterTeam(team)}
+                className={cn(
+                    "px-6 py-2 rounded-lg text-sm font-bold transition-all",
+                    filterTeam === team 
+                      ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
+                      : "dark:bg-white/5 bg-black/5 dark:text-white text-slate-700 opacity-50 border border-transparent hover:opacity-100"
+                )}
+              >
+                {team.charAt(0).toUpperCase() + team.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+          {activeTab === 'users' && (
+            <>
               <button 
                 onClick={async () => {
                   if (!window.confirm('This will search IGDB for every submission missing hltb_id or steam_appid and attempt to repair them. Continue?')) return;
@@ -433,12 +442,21 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <Clock size={14} />
                 Recalculate All Points
               </button>
-              <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto">
-                <span className={cn("text-2xl font-mono font-bold", theme.text)}>{filteredUsers.length}</span>
-                <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">Users Found</span>
-              </div>
-            </div>
-          </section>
+            </>
+          )}
+          <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto">
+            <span className={cn("text-2xl font-mono font-bold", theme.text)}>
+              {activeTab === 'users' ? filteredUsers.length : filteredSubmissions.length}
+            </span>
+            <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">
+              {activeTab === 'users' ? 'Users' : 'Submissions'} Found
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {activeTab === 'users' ? (
+        <>
 
           <section>
             <h2 className="text-xl font-bold mb-8">User Directory</h2>
@@ -555,12 +573,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           </div>
 
           <div className="grid grid-cols-1 gap-6">
-            {submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).length === 0 ? (
+            {filteredSubmissions.length === 0 ? (
               <div className="p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
                 <p className="opacity-30 dark:text-white text-slate-500">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
-              submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).map(sub => (
+              filteredSubmissions.map(sub => (
                 <div key={sub.id} className={cn(
                   "p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md",
                   (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
