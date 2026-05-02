@@ -28,46 +28,37 @@ function stripEditionForHLTB(name) {
 // Silently calls our Python bridge script in the background
 async function callPythonBridge(gameName) {
     try {
-        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
-        const response = await fetch(`${baseUrl}/api/hltb?name=${encodeURIComponent(gameName)}`);
+        const pythonScript = path.join(__dirname, 'hltb_bridge.py');
 
-        if (!response.ok) return null;
-        return await response.json();
+        // execFile passes arguments as an array, completely neutralizing shell injection risks.
+        // We no longer need to manually escape quotes!
+        // Try both python3 and python
+        const cmds = ['python3', 'python'];
+        let stdout = '';
+        let lastError = null;
+
+        for (const cmd of cmds) {
+            try {
+                const result = await execFilePromise(cmd, [pythonScript, gameName]);
+                stdout = result.stdout;
+                lastError = null;
+                break;
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        if (lastError && !stdout) return null;
+
+        // Find the JSON object in the output, ignoring any Python warnings
+        const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
+        if (jsonMatch && jsonMatch[0] !== 'null') {
+            return JSON.parse(jsonMatch[0]);
+        }
+        return null;
     } catch (error) {
-        console.error("Bridge fetch failed:", error);
         return null;
     }
-    const pythonScript = path.join(__dirname, 'hltb.py');
-
-    // execFile passes arguments as an array, completely neutralizing shell injection risks.
-    // We no longer need to manually escape quotes!
-    // Try both python3 and python
-    const cmds = ['python3', 'python'];
-    let stdout = '';
-    let lastError = null;
-
-    for (const cmd of cmds) {
-        try {
-            const result = await execFilePromise(cmd, [pythonScript, gameName]);
-            stdout = result.stdout;
-            lastError = null;
-            break;
-        } catch (err) {
-            lastError = err;
-        }
-    }
-
-    if (lastError && !stdout) return null;
-
-    // Find the JSON object in the output, ignoring any Python warnings
-    const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
-    if (jsonMatch && jsonMatch[0] !== 'null') {
-        return JSON.parse(jsonMatch[0]);
-    }
-    return null;
-} catch (error) {
-    return null;
-}
 }
 
 export async function getHLTBData(title) {
