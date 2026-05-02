@@ -1,23 +1,30 @@
 // lib/hltb.js
-export async function getHLTBData(gameName, threshold = 75) {
+export async function getHLTBData(title) {
     try {
-        // Determine the base URL (Vercel provides VERCEL_URL in production)
-        const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
-        const host = process.env.VERCEL_URL || 'localhost:3000';
+        // Vercel provides the VERCEL_URL environment variable automatically
+        const baseUrl = process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : 'http://localhost:3000';
 
-        const url = `${protocol}://${host}/api/hltb_bridge?name=${encodeURIComponent(gameName)}&threshold=${threshold}`;
+        console.log(`[HLTB] Requesting data for: "${title}"`);
 
-        const response = await fetch(url);
+        const response = await fetch(`${baseUrl}/api/hltb_bridge?name=${encodeURIComponent(title)}`);
 
         if (!response.ok) {
-            console.error(`HLTB Bridge error: ${response.statusText}`);
+            console.error(`[HLTB] Bridge responded with status: ${response.status}`);
             return null;
         }
 
         const data = await response.json();
-        return data;
+
+        if (data) {
+            console.log(`[HLTB] Success for "${title}"`);
+            return data;
+        }
+
+        return null;
     } catch (error) {
-        console.error("Failed to fetch from HLTB Python Bridge:", error);
+        console.error(`[HLTB] Fetch failed for ${title}:`, error.message);
         return null;
     }
 }
