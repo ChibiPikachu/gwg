@@ -32,10 +32,28 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [updating, setUpdating] = React.useState<string | null>(null);
   const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
-  const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('pending');
   const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
+  const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
+
+  const fetchHLTBForGame = async (title: string) => {
+    if (hltbData[title] && !hltbData[title].notFound) return;
+    
+    setFetchingHLTB(title);
+    try {
+      const res = await fetch(`/api/hltb/${encodeURIComponent(title)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setHltbData(prev => ({ ...prev, [title]: data }));
+      }
+    } catch (err) {
+      console.error(`Failed to fetch HLTB for ${title}:`, err);
+    } finally {
+      setFetchingHLTB(null);
+    }
+  };
   const [rejectionReason, setRejectionReason] = React.useState('');
   const [editHours, setEditHours] = React.useState('0');
   const [editAchievements, setEditAchievements] = React.useState('0');
@@ -734,6 +752,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <button 
                           onClick={() => {
                             setReviewingId(sub.id);
+                            fetchHLTBForGame(sub.game_name);
                             
                             // Load existing values for editing
                             const hours = Number(sub.hours_during || 0);
@@ -775,10 +794,36 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   {reviewingId === sub.id && (
                     <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/60 p-6 flex flex-col gap-6 justify-center animate-in fade-in zoom-in duration-200">
                       <div className="flex justify-between items-center">
-                        <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Modifying {sub.user_name}</h4>
-                        <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors">
-                          <Plus className="rotate-45" size={24} />
-                        </button>
+                        <div className="flex flex-col">
+                          <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Modifying {sub.user_name}</h4>
+                          <p className="text-[10px] opacity-40 uppercase font-black tracking-tighter dark:text-white">Reviewing: {sub.game_name}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                            <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
+                               <div className="flex flex-col items-center">
+                                 <span className="text-[8px] uppercase font-bold text-amber-500/50">Story</span>
+                                 <span className="text-xs font-black text-amber-500">{hltbData[sub.game_name].hastily}h</span>
+                               </div>
+                               <div className="w-px h-6 bg-white/10" />
+                               <div className="flex flex-col items-center">
+                                 <span className="text-[8px] uppercase font-bold text-blue-400/50">Extra</span>
+                                 <span className="text-xs font-black text-blue-400">{hltbData[sub.game_name].normally}h</span>
+                               </div>
+                               <div className="w-px h-6 bg-white/10" />
+                               <div className="flex flex-col items-center">
+                                 <span className="text-[8px] uppercase font-bold text-purple-400/50">Complete</span>
+                                 <span className="text-xs font-black text-purple-400">{hltbData[sub.game_name].completionist}h</span>
+                               </div>
+                            </div>
+                          )}
+                          {fetchingHLTB === sub.game_name && (
+                            <div className="text-[10px] font-bold uppercase animate-pulse text-amber-500">Fetching HLTB...</div>
+                          )}
+                          <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors">
+                            <Plus className="rotate-45" size={24} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
