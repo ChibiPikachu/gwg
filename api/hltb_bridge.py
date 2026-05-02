@@ -8,10 +8,11 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 # Extracting exactly from scrapers.py logic
-def _hours_to_minutes(val):
+def _format_hours(val):
     if val is None or val < 0:
         return None
-    return int(round(val * 60))
+    # If it's a whole number, return as an integer (e.g., 5). Otherwise, 1 decimal (e.g., 5.5)
+    return int(val) if val % 1 == 0 else round(val, 1)
 
 def _hltb_clean_name(name):
     """
@@ -135,9 +136,9 @@ def fetch_hltb_data(name, threshold=75):
         return {
             'hltb_id':            best.game_id,
             'hltb_matched_name':  best.game_name,
-            'hltb_main':          _hours_to_minutes(best.main_story),
-            'hltb_extras':        _hours_to_minutes(best.main_extra),
-            'hltb_completionist': _hours_to_minutes(best.completionist),
+            'hltb_main':          _format_hours(best.main_story),
+            'hltb_extras':        _format_hours(best.main_extra),
+            'hltb_completionist': _format_hours(best.completionist),
             'hltb_match_score':   score,
             'hltb_fetched':       today,
         }
