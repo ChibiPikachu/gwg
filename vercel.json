@@ -2,10 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/hltb_bridge.py",
-      "use": "@vercel/python"
-    },
-    {
       "src": "api/hltb.py",
       "use": "@vercel/python"
     },
@@ -38,6 +34,7 @@
       "dest": "/index.html"
     }
   ],
+
   "rewrites": [
     { "source": "/api/hltb_bridge", "destination": "/api/hltb_bridge.py" },
     { "source": "/(.*)", "destination": "/api/index.ts" }

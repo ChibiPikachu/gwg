@@ -1,15 +1,10 @@
 // lib/hltb.js
 export async function getHLTBData(title) {
     try {
-        // Node.js fetch MUST have the full absolute URL
-        const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
-        const host = process.env.VERCEL_URL || 'localhost:3000';
-
-        const url = `${protocol}://${host}/api/hltb_bridge?name=${encodeURIComponent(title)}`;
-
         console.log(`[HLTB] Requesting data for: "${title}"`);
 
-        const response = await fetch(url);
+        // Use a relative path! The browser will automatically prepend the correct domain.
+        const response = await fetch(`/api/hltb_bridge?name=${encodeURIComponent(title)}`);
 
         if (!response.ok) {
             console.error(`[HLTB] Bridge responded with status: ${response.status}`);
@@ -29,5 +24,3 @@ export async function getHLTBData(title) {
         return null;
     }
 }
-
-hltb.js
