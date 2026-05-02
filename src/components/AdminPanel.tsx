@@ -625,11 +625,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           <div className="flex items-center gap-2">
                             <img src={sub.user_avatar} className="w-6 h-6 rounded-full" alt="" referrerPolicy="no-referrer" />
                             <h3 className="font-bold truncate max-w-[150px]">{sub.user_name}</h3>
-                            {sub.platform && (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/5 font-black uppercase opacity-40 shrink-0">
-                                {sub.platform}
-                              </span>
-                            )}
                           </div>
                           <a 
                             href={`https://steamcommunity.com/profiles/${sub.user_id}`}
@@ -644,45 +639,59 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                       <div className="flex items-center gap-3">
                          {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-sm" title="HLTB Times: Main Story / Main + Extra / Completionist">
-                             <div className="flex flex-col items-center">
-                               <span className="text-[8px] uppercase font-bold opacity-40 text-amber-500">Main</span>
-                               <span className="text-sm font-black text-amber-500">{hltbData[sub.game_name].hastily}h</span>
+                           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-lg shadow-amber-500/5" title="HLTB Times: Main Story / Main + Extra / Completionist">
+                             <div className="flex flex-col items-center min-w-[30px]">
+                               <span className="text-[7px] uppercase font-bold opacity-50 text-amber-500">Main</span>
+                               <span className="text-sm font-black text-amber-500 leading-none">{hltbData[sub.game_name].hastily}h</span>
                              </div>
                              <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
-                             <div className="flex flex-col items-center">
-                               <span className="text-[8px] uppercase font-bold opacity-40 text-blue-400">Extra</span>
-                               <span className="text-sm font-black text-blue-400">{hltbData[sub.game_name].normally}h</span>
+                             <div className="flex flex-col items-center min-w-[30px]">
+                               <span className="text-[7px] uppercase font-bold opacity-50 text-blue-400">Extra</span>
+                               <span className="text-sm font-black text-blue-400 leading-none">{hltbData[sub.game_name].normally}h</span>
                              </div>
                              <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
-                             <div className="flex flex-col items-center">
-                               <span className="text-[8px] uppercase font-bold opacity-40 text-purple-400">Complete</span>
-                               <span className="text-sm font-black text-purple-400">{hltbData[sub.game_name].completionist}h</span>
+                             <div className="flex flex-col items-center min-w-[30px]">
+                               <span className="text-[7px] uppercase font-bold opacity-50 text-purple-400">Comp</span>
+                               <span className="text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].completionist}h</span>
                              </div>
                            </div>
                          )}
+
+                         {hltbData[sub.game_name]?.notFound && (
+                            <div className="flex flex-col items-center px-3 py-1.5 rounded-xl bg-slate-500/10 border border-slate-500/20 opacity-40">
+                              <span className="text-[8px] uppercase font-black tracking-widest text-slate-500">HLTB NA</span>
+                              <span className="text-[10px] font-bold text-slate-500">Not Found</span>
+                            </div>
+                         )}
                          
-                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                         {hltbData[sub.game_name] && (
                            <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
                          )}
 
                          {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                                <>
                                  {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 5 ? (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                                   <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
                                      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ring-4 ring-red-500/20" />
                                      <span className="text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review Required!</span>
                                    </div>
                                  ) : (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                   <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
                                      <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
                                    </div>
                                  )}
                                </>
                              )}
-                             {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading) && (
-                               <div className="text-[8px] opacity-20 uppercase font-black animate-pulse tracking-widest">Searching HLTB...</div>
+                             {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading || fetchingHLTB === sub.game_name) && (
+                               <div className="flex flex-col items-center px-4 py-2 border border-blue-500/20 rounded-xl bg-blue-500/5 animate-pulse">
+                                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Searching...</span>
+                                  <div className="flex gap-1 mt-1">
+                                    <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-75" />
+                                    <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-150" />
+                                    <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-225" />
+                                  </div>
+                               </div>
                              )}
 
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">

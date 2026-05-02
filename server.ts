@@ -110,12 +110,22 @@ async function createServer() {
   console.log('[Server] Starting initialization. Cloud Mode:', isCloud);
 
   // Health check for Vercel
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', async (req, res) => {
+    let bridgeWorking = false;
+    try {
+      // Quick test with a known game
+      const test = await getHLTBData('Undertale');
+      bridgeWorking = !!test;
+    } catch (e) {
+      console.warn('HLTB Bridge status check failed:', e);
+    }
+
     res.json({ 
       status: 'ok', 
       isCloud, 
       hasSupabase: !!process.env.SUPABASE_URL,
       hasSteam: !!process.env.STEAM_API_KEY,
+      hltbBridge: bridgeWorking ? 'connected' : 'error/not_installed',
       timestamp: new Date().toISOString()
     });
   });

@@ -669,30 +669,15 @@ export default function MySubmissions() {
                      referrerPolicy="no-referrer"
                    />
                    
-                   {/* Link Overlays */}
+                    {/* Link Overlays */}
                    <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10">
-                      <a 
-                        href={sub.steam_appid ? `https://store.steampowered.com/app/${sub.steam_appid}` : undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(
-                          "w-9 h-9 rounded-xl flex items-center justify-center border shadow-xl transition-all hover:scale-110",
-                          sub.steam_appid 
-                            ? "bg-[#171a21] border-[#2a475e]" 
-                            : "bg-slate-800/40 border-white/5 opacity-50 cursor-not-allowed pointer-events-none"
-                        )}
-                        title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-5 h-5", !sub.steam_appid && "grayscale opacity-30")} alt="" />
-                      </a>
-
                       {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                         <div 
-                          className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
+                          className="w-10 h-10 rounded-xl bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
                           title={`HLTB Main: ${hltbData[sub.game_name].hastily}h | Extra: ${hltbData[sub.game_name].normally}h | Completionist: ${hltbData[sub.game_name].completionist}h`}
                         >
-                          <span className="text-[10px] font-black text-amber-500 leading-none">HLTB</span>
+                          <span className="text-[10px] font-black text-white leading-none">HLTB</span>
+                          <span className="text-[8px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hastily}h</span>
                           
                           {/* Hover Details Popover */}
                           <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
@@ -754,12 +739,13 @@ export default function MySubmissions() {
                 <div className="flex flex-col gap-2 px-1">
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize flex-1">{sub.game_name}</h4>
-                    {sub.platform && (
-                      <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/5 font-black uppercase opacity-40">
-                        {sub.platform}
-                      </span>
-                    )}
                   </div>
+                  {hltbData[sub.game_name]?.notFound && (
+                     <div className="text-[9px] font-bold text-slate-400 opacity-40 uppercase">HLTB Stats Not Found</div>
+                  )}
+                  {(!hltbData[sub.game_name]) && (
+                     <div className="text-[9px] font-bold text-blue-400 animate-pulse uppercase">Fetching HLTB data...</div>
+                  )}
                   <div className="flex items-center gap-2">
                     {sub.status === 'verified' ? (
                       <>
