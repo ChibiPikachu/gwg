@@ -641,31 +641,35 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                          </a>
                          <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
                          
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/5 shadow-inner">
-                                 <span className="text-amber-500 font-black">M: {hltbData[sub.game_name].hastily}h</span>
-                                 <div className="w-px h-2 bg-white/10" />
-                                 <span className="text-purple-400 font-black">C: {hltbData[sub.game_name].completionist}h</span>
+                         {/* HLTB Information */}
+                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound ? (
+                           <div className="flex flex-wrap items-center gap-2">
+                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 dark:bg-black/40 border dark:border-white/10 border-black/5 shadow-inner">
+                               <span className="text-amber-500 font-bold text-[10px]">M: {hltbData[sub.game_name].hastily}h</span>
+                               <div className="w-px h-2 dark:bg-white/10 bg-black/10" />
+                               <span className="text-purple-400 font-bold text-[10px]">C: {hltbData[sub.game_name].completionist}h</span>
+                             </div>
+                             
+                             {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 5 ? (
+                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ring-4 ring-red-500/20" />
+                                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review Required!</span>
+                               </div>
+                             ) : (
+                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
+                                 <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
                                </div>
                              )}
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <>
-                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 5 ? (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
-                                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ring-4 ring-red-500/20" />
-                                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review Required!</span>
-                                   </div>
-                                 ) : (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
-                                     <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
-                                   </div>
-                                 )}
-                               </>
-                             )}
-                             {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading) && (
-                               <div className="text-[8px] opacity-20 uppercase font-black animate-pulse tracking-widest">Searching HLTB...</div>
-                             )}
+                           </div>
+                         ) : (hltbData[sub.game_name] && hltbData[sub.game_name].notFound) ? (
+                           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/5">
+                             <div className="w-1.5 h-1.5 rounded-full dark:bg-white/20 bg-black/20" />
+                             <span className="text-[9px] font-bold dark:text-white/30 text-slate-400 uppercase tracking-widest leading-none">HLTB Not Found</span>
+                           </div>
+                         ) : (
+                           <div className="text-[8px] opacity-20 uppercase font-black animate-pulse tracking-widest">Searching HLTB...</div>
+                         )}
 
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
                           <div className="flex flex-col">
@@ -864,4 +868,3 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     </div>
   );
 }
-
