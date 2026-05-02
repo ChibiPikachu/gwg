@@ -929,7 +929,7 @@ async function createServer() {
       else if (numHours < 25) serverMultiplier = 3.0;
       else serverMultiplier = 4.0;
 
-      let serverPoints = Math.round(numHours * serverMultiplier);
+      let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
       
       // Completion Bonus: +20 for 'completed'
       if (completionStatus === 'completed') {
@@ -1056,7 +1056,7 @@ async function createServer() {
       else if (numHours < 25) serverMultiplier = 3.0;
       else serverMultiplier = 4.0;
 
-      let serverPoints = Math.round(numHours * serverMultiplier);
+      let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
       if (completionStatus === 'completed') {
         serverPoints += 20;
       }
@@ -1243,9 +1243,9 @@ async function createServer() {
         else if (hours < 25) multiplier = 3.0;
         else multiplier = 4.0;
 
-        const correctPoints = Math.round(hours * multiplier) + (sub.completion_status === 'completed' ? 20 : 0);
+        const correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier) + (sub.completion_status === 'completed' ? 20 : 0);
         
-        console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours} -> multiplier=${multiplier}, points=${correctPoints}`);
+        console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours}, achievements=${sub.achievements_during} -> multiplier=${multiplier}, points=${correctPoints}`);
 
         // Update the submission with corrected fields
         await supabase.from('submissions').update({ 

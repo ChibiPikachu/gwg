@@ -57,10 +57,10 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed]);
 
   const scorePreview = React.useMemo(() => {
-    const hours = parseFloat(formData.hoursPlayed) || 0;
+    const earned = parseInt(formData.achievementsEarned) || 0;
     const bonus = formData.completionStatus === 'completed' ? 20 : 0;
-    return Math.round(hours * multiplierPreview) + bonus;
-  }, [formData.hoursPlayed, multiplierPreview, formData.completionStatus]);
+    return Math.round(earned * multiplierPreview) + bonus;
+  }, [formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {

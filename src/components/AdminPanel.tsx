@@ -715,7 +715,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
  
                             setEditMultiplier(m);
                             
-                            const calculated = Math.round(hours * m) + (sub.completion_status === 'completed' ? 20 : 0);
+                            const calculated = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
                             setPointsAwarded(String(calculated));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
@@ -757,8 +757,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             onChange={(e) => {
                               const val = e.target.value;
                               setEditAchievements(val);
-                              // Points are now based on hours * multiplier
-                              setPointsAwarded(String(Math.round((parseFloat(editHours) || 0) * editMultiplier) + (sub.completion_status === 'completed' ? 20 : 0)));
+                              // Points are now based on achievements * multiplier
+                              setPointsAwarded(String(Math.round((parseInt(val) || 0) * editMultiplier) + (sub.completion_status === 'completed' ? 20 : 0)));
                             }}
                           />
                         </div>
@@ -779,7 +779,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               else if (val >= 8) m = 2.0;
                               
                               setEditMultiplier(m);
-                              setPointsAwarded(String(Math.round(val * m) + (sub.completion_status === 'completed' ? 20 : 0)));
+                              setPointsAwarded(String(Math.round((parseInt(editAchievements) || 0) * m) + (sub.completion_status === 'completed' ? 20 : 0)));
                             }}
                           />
                         </div>
