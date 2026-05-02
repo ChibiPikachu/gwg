@@ -1,6 +1,12 @@
-import { HowLongToBeatService } from 'howlongtobeat';
+import { execFile } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import util from 'util';
 
-const hltbService = new HowLongToBeatService();
+// Change from exec to execFile
+const execFilePromise = util.promisify(execFile);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // 1. Advanced Cleaner (Removes trademarks, punctuation, and trailing years)
 function cleanGameTitle(title) {
@@ -19,23 +25,38 @@ function stripEditionForHLTB(name) {
     return name.replace(editionRegex, '').trim();
 }
 
-async function searchHLTB(gameName) {
+// Silently calls our Python bridge script in the background
+async function callPythonBridge(gameName) {
     try {
-        const results = await hltbService.search(gameName);
-        if (results && results.length > 0) {
-            // Find the best match (howlongtobeat package already sorts by relevance usually, but we take the first)
-            const best = results[0];
-            return {
-                hastily: String(best.gameplayMain || 0),
-                normally: String(best.gameplayMainExtra || 0),
-                completionist: String(best.gameplayCompletionist || 0),
-                id: best.id,
-                name: best.name
-            };
+        const pythonScript = path.join(__dirname, 'hltb_bridge.py');
+
+        // execFile passes arguments as an array, completely neutralizing shell injection risks.
+        // We no longer need to manually escape quotes!
+        // Try both python3 and python
+        const cmds = ['python3', 'python'];
+        let stdout = '';
+        let lastError = null;
+
+        for (const cmd of cmds) {
+            try {
+                const result = await execFilePromise(cmd, [pythonScript, gameName]);
+                stdout = result.stdout;
+                lastError = null;
+                break;
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        if (lastError && !stdout) return null;
+
+        // Find the JSON object in the output, ignoring any Python warnings
+        const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
+        if (jsonMatch && jsonMatch[0] !== 'null') {
+            return JSON.parse(jsonMatch[0]);
         }
         return null;
     } catch (error) {
-        console.error(`HLTB Search Error for ${gameName}:`, error);
         return null;
     }
 }
@@ -43,35 +64,35 @@ async function searchHLTB(gameName) {
 export async function getHLTBData(title) {
     try {
         const searchName = cleanGameTitle(title);
-        console.log(`[HLTB] Searching for: "${searchName}"`);
+        console.log(`[HLTB Bridge] Searching for: "${searchName}"`);
 
-        let results = await searchHLTB(searchName);
+        let results = await callPythonBridge(searchName);
 
         // Fallback 1: Strip the "Edition" and try again
         if (!results) {
             const noEditionName = stripEditionForHLTB(searchName);
             if (noEditionName !== searchName) {
-                console.log(`[HLTB] Attempting Edition-Stripped search for: "${noEditionName}"`);
-                results = await searchHLTB(noEditionName);
+                console.log(`[HLTB Bridge] Attempting Edition-Stripped search for: "${noEditionName}"`);
+                results = await callPythonBridge(noEditionName);
             }
         }
 
-        // Fallback 2: Colon-Splitter
+        // Fallback 2: Your original Colon-Splitter
         if (!results && title.includes(':')) {
             const splitTitle = cleanGameTitle(title.split(':')[0]);
-            console.log(`[HLTB] Attempting Colon-Split search for: "${splitTitle}"`);
-            results = await searchHLTB(splitTitle);
+            console.log(`[HLTB Bridge] Attempting Colon-Split search for: "${splitTitle}"`);
+            results = await callPythonBridge(splitTitle);
         }
 
         if (results) {
-            console.log(`[HLTB] Success! Found data for "${results.name}": Main=${results.hastily}h, Comp=${results.completionist}h`);
+            console.log(`[HLTB Bridge] Success! Scraped accurate times via Python!`);
             return results;
         }
 
-        console.log(`[HLTB] No match found for "${title}".`);
+        console.log(`[HLTB Bridge] No match found for "${title}".`);
         return null;
     } catch (error) {
-        console.error(`[HLTB] Search failed for ${title}: ${error.message}`);
+        console.error(`[HLTB Bridge] Search failed for ${title}: ${error.message}`);
         return null;
     }
 }
