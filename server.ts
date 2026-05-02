@@ -461,7 +461,11 @@ async function createServer() {
   });
 
 
-  app.get('/api/admin/hltb/:title', async (req, res) => {
+  // HLTB APIs (Accessible by all users)
+  app.get('/api/hltb/:title', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const { title } = req.params;
     if (hltbCache.has(title)) {
       return res.json(hltbCache.get(title));
@@ -482,7 +486,10 @@ async function createServer() {
     }
   });
 
-  app.post('/api/admin/hltb-batch', async (req, res) => {
+  app.post('/api/hltb-batch', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const { titles } = req.body;
     if (!Array.isArray(titles)) return res.status(400).json({ error: 'Invalid input' });
 
@@ -1138,15 +1145,16 @@ async function createServer() {
     try {
       const { data, error } = await supabase
         .from('submissions')
-        .select('*, profiles!submissions_user_id_fkey(team)')
+        .select('*, profiles!submissions_user_id_fkey(team), games!submissions_game_id_fkey(*)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       
-      // Flatten the profile team into the submission object for easier use
+      // Flatten the profile team and game info into the submission object for easier use
       const flattenedData = data.map(sub => ({
         ...sub,
-        userTeam: (sub as any).profiles?.team || 'none'
+        userTeam: (sub as any).profiles?.team || 'none',
+        gameDetails: (sub as any).games || null
       }));
 
       res.json(flattenedData);

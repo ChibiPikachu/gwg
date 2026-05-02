@@ -160,6 +160,19 @@ export default function MySubmissions() {
     // This is now handled by the useEffect above
   };
 
+  const [hltbInfo, setHltbInfo] = React.useState<any>(null);
+
+  // Fetch HLTB when game is selected
+  React.useEffect(() => {
+    if (selectedGame) {
+      setHltbInfo(null);
+      fetch(`/api/hltb/${encodeURIComponent(selectedGame.title)}`)
+        .then(r => r.json())
+        .then(data => setHltbInfo(data))
+        .catch(() => {});
+    }
+  }, [selectedGame]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGame) return;
@@ -412,7 +425,7 @@ export default function MySubmissions() {
                     <img src={selectedGame.image} className="w-24 h-14 object-cover rounded-lg" alt="" />
                     <div className="flex-1">
                       <h3 className="font-bold dark:text-white text-slate-900">{selectedGame.title}</h3>
-                      <div className="flex items-center gap-3 mt-1">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-1">
                         <button 
                           type="button"
                           onClick={() => setSelectedGame(null)}
@@ -428,8 +441,15 @@ export default function MySubmissions() {
                              className="flex items-center gap-1.5 text-[10px] font-bold dark:text-white/40 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                            >
                              <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-3 h-3" alt="" />
-                             Steam Page
+                             Steam
                            </a>
+                        )}
+                        {hltbInfo && !hltbInfo.notFound && (
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                             <span className="text-amber-500/80">Main: {hltbInfo.hastily}h</span>
+                             <span className="opacity-20">|</span>
+                             <span className="text-purple-400/80">Comp: {hltbInfo.completionist}h</span>
+                          </div>
                         )}
                       </div>
                     </div>

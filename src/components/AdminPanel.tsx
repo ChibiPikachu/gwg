@@ -68,7 +68,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         // Batch fetch HLTB data for these submissions
         const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name)));
         if (uniqueTitles.length > 0) {
-          fetch('/api/admin/hltb-batch', {
+          fetch('/api/hltb-batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ titles: uniqueTitles })
@@ -630,15 +630,15 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                              )}
                              {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                                <>
-                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 4 ? (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]">
-                                     <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse ring-2 ring-red-500/20" />
-                                     <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">Review Required!</span>
+                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 5 ? (
+                                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ring-4 ring-red-500/20" />
+                                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review Required!</span>
                                    </div>
                                  ) : (
                                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
-                                     <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest">Normal</span>
+                                     <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
                                    </div>
                                  )}
                                </>
