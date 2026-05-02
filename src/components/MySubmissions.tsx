@@ -57,10 +57,10 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed]);
 
   const scorePreview = React.useMemo(() => {
-    const earned = parseInt(formData.achievementsEarned) || 0;
+    const hours = parseFloat(formData.hoursPlayed) || 0;
     const bonus = formData.completionStatus === 'completed' ? 20 : 0;
-    return (earned * multiplierPreview) + bonus;
-  }, [formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
+    return Math.round(hours * multiplierPreview) + bonus;
+  }, [formData.hoursPlayed, multiplierPreview, formData.completionStatus]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
@@ -190,18 +190,7 @@ export default function MySubmissions() {
       });
 
       if (res.ok) {
-        setShowForm(false);
-        setSelectedGame(null);
-        setEditingId(null);
-        setFormData({ 
-          achievementsEarned: '', 
-          hoursPlayed: '', 
-          achievementsBefore: '0', 
-          hoursBefore: '0', 
-          notes: '' 
-        });
-        setGameSearch('');
-        setSearchResults([]);
+        handleResetForm();
         fetchSubmissions();
       } else {
         const data = await res.json().catch(() => ({}));

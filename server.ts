@@ -923,11 +923,13 @@ async function createServer() {
       // Server-side point calculation
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
-      if (numHours >= 25) serverMultiplier = 4.0;
-      else if (numHours >= 15) serverMultiplier = 3.0;
-      else if (numHours >= 8) serverMultiplier = 2.0;
+      // New Math Logic: Short (1x), Medium (2x), Long (3x), Very Long (4x)
+      if (numHours < 8) serverMultiplier = 1.0;
+      else if (numHours < 15) serverMultiplier = 2.0;
+      else if (numHours < 25) serverMultiplier = 3.0;
+      else serverMultiplier = 4.0;
 
-      let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+      let serverPoints = Math.round(numHours * serverMultiplier);
       
       // Completion Bonus: +20 for 'completed'
       if (completionStatus === 'completed') {
@@ -1048,11 +1050,13 @@ async function createServer() {
       // 2. Recalculate points
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
-      if (numHours >= 25) serverMultiplier = 4.0;
-      else if (numHours >= 15) serverMultiplier = 3.0;
-      else if (numHours >= 8) serverMultiplier = 2.0;
+      // Match multiplier logic: <8=1x, <15=2x, <25=3x, >=25=4x
+      if (numHours < 8) serverMultiplier = 1.0;
+      else if (numHours < 15) serverMultiplier = 2.0;
+      else if (numHours < 25) serverMultiplier = 3.0;
+      else serverMultiplier = 4.0;
 
-      let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
+      let serverPoints = Math.round(numHours * serverMultiplier);
       if (completionStatus === 'completed') {
         serverPoints += 20;
       }
@@ -1234,14 +1238,14 @@ async function createServer() {
         // Redetermine multiplier based on CORRECTED math (1x, 2x, 3x, 4x)
         let multiplier = 1.0;
         const hours = Number(sub.hours_during || 0);
-        if (hours >= 25) multiplier = 4.0;
-        else if (hours >= 15) multiplier = 3.0;
-        else if (hours >= 8) multiplier = 2.0;
-        else multiplier = 1.0;
+        if (hours < 8) multiplier = 1.0;
+        else if (hours < 15) multiplier = 2.0;
+        else if (hours < 25) multiplier = 3.0;
+        else multiplier = 4.0;
 
-        const correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier);
+        const correctPoints = Math.round(hours * multiplier) + (sub.completion_status === 'completed' ? 20 : 0);
         
-        console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, achievements=${sub.achievements_during}, hours=${sub.hours_during} -> multiplier=${multiplier}, points=${correctPoints}`);
+        console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours} -> multiplier=${multiplier}, points=${correctPoints}`);
 
         // Update the submission with corrected fields
         await supabase.from('submissions').update({ 
