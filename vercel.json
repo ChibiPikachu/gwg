@@ -1,42 +1,14 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "api/hltb.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "api/hltb-batch.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "server.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
-    }
+    { "src": "api/hltb_bridge.py", "use": "@vercel/python" },
+    { "src": "server.ts", "use": "@vercel/node" },
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
   "routes": [
-    {
-      "src": "/(api|auth)(.*)",
-      "dest": "server.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1",
-      "check": true
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
-
-  "rewrites": [
-    { "source": "/api/hltb_bridge", "destination": "/api/hltb_bridge.py" },
-    { "source": "/(.*)", "destination": "/api/index.ts" }
+    { "src": "/api/hltb_bridge", "dest": "api/hltb_bridge.py" },
+    { "src": "/(api|auth)(.*)", "dest": "server.ts" },
+    { "src": "/(.*)", "dest": "/$1", "check": true },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
