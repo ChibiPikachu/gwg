@@ -33,6 +33,10 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
+  ],
+
+  "rewrites": [
+    { "source": "/api/hltb_bridge", "destination": "/api/hltb_bridge.py" },
+    { "source": "/(.*)", "destination": "/api/index.ts" }
   ]
-  
 }
