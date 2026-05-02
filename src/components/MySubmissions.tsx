@@ -28,6 +28,24 @@ export default function MySubmissions() {
   const [verifyingSteam, setVerifyingSteam] = React.useState(false);
   const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [steamTotalStats, setSteamTotalStats] = React.useState<{hours: number, achievements: number} | null>(null);
+
+  // Auto-calculate 'during event' stats
+  React.useEffect(() => {
+    if (formData.platform === 'Steam' && steamTotalStats) {
+      const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
+      const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+      
+      const duringAchievements = Math.max(0, steamTotalStats.achievements - achievementsBefore);
+      const duringHours = Math.max(0, steamTotalStats.hours - hoursBefore);
+      
+      setFormData(prev => ({
+        ...prev,
+        achievementsEarned: String(duringAchievements),
+        hoursPlayed: duringHours.toFixed(1)
+      }));
+    }
+  }, [formData.achievementsBefore, formData.hoursBefore, steamTotalStats, formData.platform]);
 
   const multiplierPreview = React.useMemo(() => {
     const hours = parseFloat(formData.hoursPlayed) || 0;
@@ -199,18 +217,14 @@ export default function MySubmissions() {
   };
 
   const handleEdit = (sub: any) => {
-    // If it's a verified unfinished game, we want to create a NEW submission
-    // instead of editing the old one, as per requirements.
-    if (sub.status === 'verified' && sub.completion_status === 'unfinished') {
-      setEditingId(null); 
-    } else {
-      setEditingId(sub.id);
-    }
+    // We always want to edit existing entries as per requirements
+    setEditingId(sub.id);
     
     setSelectedGame({
       id: sub.game_id,
       title: sub.game_name,
-      image: sub.game_image
+      image: sub.game_image,
+      steam_appid: sub.steam_appid || null
     });
     setFormData({
       achievementsEarned: String(sub.achievements_during),
@@ -221,6 +235,8 @@ export default function MySubmissions() {
       platform: sub.platform || 'Steam',
       notes: sub.notes || ''
     });
+    setSteamVerifyMsg(null);
+    setSteamTotalStats(null);
     setShowForm(true);
   };
 
@@ -259,12 +275,14 @@ export default function MySubmissions() {
     setSearchResults([]);
     setGameSearch('');
     setSteamVerifyMsg(null);
+    setSteamTotalStats(null);
   };
 
   const handleVerifySteam = async () => {
     if (!selectedGame) return;
     setVerifyingSteam(true);
     setSteamVerifyMsg({ type: 'info', text: 'Verifying ownership...' });
+    setSteamTotalStats(null);
 
     try {
       let appId = selectedGame.steam_appid;
@@ -278,14 +296,17 @@ export default function MySubmissions() {
       const data = await res.json();
 
       if (data.owned) {
-        const hours = (data.playtime_forever / 60).toFixed(1);
-        setFormData(prev => ({
-          ...prev,
-          hoursPlayed: hours
-        }));
+        const totalHours = data.playtime_forever / 60;
+        const totalAchievements = data.achievements || 0;
+        
+        setSteamTotalStats({
+          hours: totalHours,
+          achievements: totalAchievements
+        });
+        
         setSteamVerifyMsg({ 
           type: 'success', 
-          text: `Verified! Found ${hours}h on Steam.` 
+          text: `Verified! Found game on Steam.` 
         });
       } else {
         setSteamVerifyMsg({ 
@@ -371,7 +392,11 @@ export default function MySubmissions() {
                         {searchResults.map((game) => (
                           <button
                             key={game.id}
-                            onClick={() => setSelectedGame(game)}
+                            onClick={() => {
+                              setSelectedGame(game);
+                              setSteamVerifyMsg(null);
+                              setSteamTotalStats(null);
+                            }}
                             type="button"
                             className="w-full flex gap-4 p-3 dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 border dark:border-white/5 border-slate-200 rounded-xl transition-all text-left items-center group"
                           >
@@ -506,7 +531,7 @@ export default function MySubmissions() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Achievements (Event))</label>
+                      <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Achievements Earned</label>
                       <input 
                         required
                         type="number"
@@ -530,7 +555,7 @@ export default function MySubmissions() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40 tracking-tighter dark:text-white text-slate-500">Achievements (Before)</label>
+                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter dark:text-white text-slate-500">Achievements (Before)</label>
                       <input 
                         required
                         type="number"
@@ -541,7 +566,7 @@ export default function MySubmissions() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold opacity-40 tracking-tighter dark:text-white text-slate-500">Hours (Before)</label>
+                      <label className="text-xs font-bold opacity-40 uppercase tracking-tighter dark:text-white text-slate-500">Hours (Before)</label>
                       <input 
                         required
                         type="number"
@@ -568,7 +593,7 @@ export default function MySubmissions() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Proof Link / Notes (Optional)</label>
                     <textarea 
-                      placeholder="Any links to screenshots or other notes such as HLTB links, etc."
+                      placeholder="Any links to screenshots or other notes such as 'played on Epic' or 'will update later'..."
                       className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-4 focus:outline-none min-h-[100px] resize-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                       value={formData.notes}
                       onChange={(e) => setFormData({...formData, notes: e.target.value})}
@@ -648,7 +673,7 @@ export default function MySubmissions() {
                       </div>
                       
                       <div className="flex flex-col gap-2 w-full max-w-[120px]">
-                        {(sub.status === 'pending' || sub.status === 'rejected' || (sub.status === 'verified' && sub.completion_status === 'unfinished')) && (
+                        {(sub.status === 'pending' || sub.status === 'rejected' || (sub.status === 'verified' && ['unfinished', 'abandoned', 'beaten'].includes(sub.completion_status))) && (
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();

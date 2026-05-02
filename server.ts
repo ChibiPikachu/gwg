@@ -579,11 +579,31 @@ async function createServer() {
     if (!query) return res.json([]);
 
     try {
-      console.log(`[IGDB Search] Querying for: ${query}`);
+      const queryStr = String(query).trim();
+      const isSteamAppId = /^\d+$/.test(queryStr) && queryStr.length < 10; // App IDs are usually < 10 digits
+
+      if (isSteamAppId) {
+        console.log(`[Steam Search] Querying for App ID: ${queryStr}`);
+        const steamRes = await fetch(`https://store.steampowered.com/api/appdetails?appids=${queryStr}`);
+        const steamData = await steamRes.json();
+        
+        if (steamData[queryStr] && steamData[queryStr].success) {
+          const game = steamData[queryStr].data;
+          return res.json([{
+            id: queryStr, // Use App ID as ID if found on Steam directly
+            title: game.name,
+            image: game.header_image || `https://cdn.cloudflare.steamstatic.com/steam/apps/${queryStr}/header.jpg`,
+            summary: game.short_description,
+            steam_appid: parseInt(queryStr)
+          }]);
+        }
+      }
+
+      console.log(`[IGDB Search] Querying for: ${queryStr}`);
       const token = await getIGDBToken();
       
       // Escape for IGDB query
-      const safeQuery = String(query).replace(/"/g, '\\"');
+      const safeQuery = queryStr.replace(/"/g, '\\"');
       
       const response = await fetch('https://api.igdb.com/v4/games', {
         method: 'POST',
@@ -1017,8 +1037,12 @@ async function createServer() {
         return res.status(404).json({ error: 'Submission not found or unauthorized' });
       }
 
-      if (sub.status !== 'pending') {
-        return res.status(400).json({ error: 'Cannot edit a submission that has already been reviewed' });
+      if (sub.status === 'verified' || sub.status === 'rejected') {
+        // Only allow editing if the status is one of the allowed ones
+        const allowedForRevision = ['unfinished', 'abandoned', 'beaten'].includes(sub.completion_status);
+        if (!allowedForRevision && sub.status === 'verified') {
+          return res.status(400).json({ error: 'Cannot edit an approved submission with this status' });
+        }
       }
 
       // 2. Recalculate points
@@ -1045,6 +1069,8 @@ async function createServer() {
           completion_status: completionStatus || sub.completion_status || 'beaten',
           points: serverPoints,
           notes: notes || '',
+          status: 'pending', // Reset to pending for admin re-review
+          rejection_reason: null // Clear old rejection
         })
         .eq('id', id)
         .select()
@@ -1576,6 +1602,12 @@ async function createServer() {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+
+
+
+  // Removed duplicate leaderboard route
+
 
   // Vite middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {

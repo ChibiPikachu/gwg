@@ -83,7 +83,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
               <p className="opacity-60 text-lg mt-2 dark:text-white text-slate-600">Game like there's no tomorrow!</p>
            </div>
            <div className="md:ml-auto flex flex-col items-center md:items-end">
-              <span className="text-5xl font-mono font-bold dark:text-white text-slate-800">{members.reduce((acc, m) => acc + (m.points || 0), 0)}</span>
+              <span className="text-5xl font-mono font-bold dark:text-white text-slate-800">{members.reduce((acc, m) => acc + (Number(m.points) || 0), 0)}</span>
               <span className="text-[10px] uppercase font-bold opacity-30 tracking-widest mt-1 dark:text-white text-slate-500">Team Total Points</span>
            </div>
         </div>

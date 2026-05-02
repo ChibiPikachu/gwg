@@ -58,19 +58,10 @@ function AppContent() {
             </button>
             <div className="flex items-center gap-2 md:gap-4">
               <button 
-                onClick={() => {
-                  window.location.href = '/?demo=true';
-                }}
-                className="text-[10px] text-slate-400 dark:text-white/20 hover:text-slate-600 dark:hover:text-white/40 transition-colors uppercase tracking-widest font-bold hidden sm:block"
-              >
-                Demo Mode
-              </button>
-              <button 
                 onClick={loginWithSteam}
-                className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 transition-all rounded-xl pl-3 pr-4 md:pl-4 md:pr-6 py-2 md:py-2.5 flex items-center gap-2 md:gap-4 font-bold text-sm shadow-xl active:scale-95 group"
+                className="bg-[#1a1a1a] border border-white/10 hover:border-white/20 transition-all rounded-xl pl-4 pr-6 py-3 flex items-center gap-4 font-bold text-sm shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] active:scale-95 group"
               >
-                <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Steam" className="h-5 md:h-6 opacity-80 group-hover:opacity-100 transition-opacity" />
-                <span className="text-slate-600 dark:text-white/70 group-hover:text-slate-900 dark:group-hover:text-white transition-colors uppercase tracking-tight text-[8px] md:text-[10px]">Sign in through STEAM</span>
+                <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Steam" className="h-6 opacity-80 group-hover:opacity-100 transition-opacity" />
               </button>
             </div>
           </div>

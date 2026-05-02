@@ -189,18 +189,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
-  const handleVerify = async (id: string, status: 'verified' | 'rejected') => {
-    if (status === 'rejected' && !rejectionReason.trim()) {
-      alert('Please provide a rejection reason');
-      return;
-    }
-    setUpdating(id);
+  const handleVerify = async (status: 'verified' | 'rejected') => {
+    if (!reviewingId) return;
+    setUpdating(reviewingId);
+    
     try {
       const res = await fetch('/api/admin/verify-submission', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          submissionId: id,
+          submissionId: reviewingId,
           status,
           points: Math.round(parseFloat(pointsAwarded) || 0),
           rejectionReason: status === 'rejected' ? rejectionReason : '',
@@ -211,9 +209,18 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
 
       if (res.ok) {
+        // UI Live Update: Update local state immediately
+        setSubmissions(prev => prev.map(s => s.id === reviewingId ? { 
+          ...s, 
+          status, 
+          points: Math.round(parseFloat(pointsAwarded) || 0),
+          rejection_reason: status === 'rejected' ? rejectionReason : '',
+          hours_during: parseFloat(editHours),
+          achievements_during: parseInt(editAchievements),
+          multiplier: editMultiplier
+        } : s));
         setReviewingId(null);
         setRejectionReason('');
-        fetchData();
       } else {
         const data = await res.json();
         alert(`Verification failed: ${data.error}`);
@@ -576,10 +583,25 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            </div>
                            <span className="text-[10px] opacity-30 font-bold uppercase tracking-widest dark:text-white text-slate-500">Submission</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <img src={sub.user_avatar} className="w-6 h-6 rounded-full" alt="" referrerPolicy="no-referrer" />
-                          <h3 className="font-bold truncate max-w-[150px]">{sub.user_name}</h3>
-                          <span className="text-[10px] opacity-30 font-mono hidden sm:inline">({sub.user_id})</span>
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <img src={sub.user_avatar} className="w-6 h-6 rounded-full" alt="" referrerPolicy="no-referrer" />
+                            <h3 className="font-bold truncate max-w-[150px]">{sub.user_name}</h3>
+                            {sub.platform && (
+                              <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/5 font-black uppercase opacity-40 shrink-0">
+                                {sub.platform}
+                              </span>
+                            )}
+                          </div>
+                          <a 
+                            href={`https://steamcommunity.com/profiles/${sub.user_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-400 hover:underline flex items-center gap-1 mt-1 shrink-0"
+                          >
+                            <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-3 h-3 grayscale" alt="" />
+                            Steam Profile
+                          </a>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -652,7 +674,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     {sub.notes && (
                       <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">
-                        "{sub.notes}"
+                        <div className="break-all whitespace-pre-wrap">
+                          {sub.notes.split(/(\s+)/).map((part: string, i: number) => {
+                            if (part.match(/^https?:\/\//)) {
+                               return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{part}</a>;
+                            }
+                            return part;
+                          })}
+                        </div>
                       </div>
                     )}
 
@@ -776,14 +805,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       <div className="flex gap-4">
                         <button 
                           disabled={updating === sub.id}
-                          onClick={() => handleVerify(sub.id, 'verified')}
+                          onClick={() => handleVerify('verified')}
                           className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                         >
                           Verify & Award Points
                         </button>
                         <button 
                           disabled={updating === sub.id}
-                          onClick={() => handleVerify(sub.id, 'rejected')}
+                          onClick={() => handleVerify('rejected')}
                           className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 disabled:opacity-50"
                         >
                           Reject Submission
