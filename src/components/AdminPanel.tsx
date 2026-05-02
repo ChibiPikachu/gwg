@@ -642,17 +642,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-lg shadow-amber-500/5" title="HLTB Times: Main Story / Main + Extra / Completionist">
                              <div className="flex flex-col items-center min-w-[30px]">
                                <span className="text-[7px] uppercase font-bold opacity-50 text-amber-500">Main</span>
-                               <span className="text-sm font-black text-amber-500 leading-none">{hltbData[sub.game_name].hastily}h</span>
+                               <span className="text-sm font-black text-amber-500 leading-none">{hltbData[sub.game_name].hltb_main}h</span>
                              </div>
                              <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
                              <div className="flex flex-col items-center min-w-[30px]">
                                <span className="text-[7px] uppercase font-bold opacity-50 text-blue-400">Extra</span>
-                               <span className="text-sm font-black text-blue-400 leading-none">{hltbData[sub.game_name].normally}h</span>
+                               <span className="text-sm font-black text-blue-400 leading-none">{hltbData[sub.game_name].hltb_extras}h</span>
                              </div>
                              <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
                              <div className="flex flex-col items-center min-w-[30px]">
                                <span className="text-[7px] uppercase font-bold opacity-50 text-purple-400">Comp</span>
-                               <span className="text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].completionist}h</span>
+                               <span className="text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].hltb_completionist}h</span>
                              </div>
                            </div>
                          )}
@@ -670,7 +670,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                          {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                                <>
-                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 5 ? (
+                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hltb_main) || 1) * 5 ? (
                                    <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
                                      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ring-4 ring-red-500/20" />
                                      <span className="text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review Required!</span>
@@ -812,17 +812,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
                                <div className="flex flex-col items-center">
                                  <span className="text-[8px] uppercase font-bold text-amber-500/50">Story</span>
-                                 <span className="text-xs font-black text-amber-500">{hltbData[sub.game_name].hastily}h</span>
+                                 <span className="text-xs font-black text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
                                </div>
                                <div className="w-px h-6 bg-white/10" />
                                <div className="flex flex-col items-center">
                                  <span className="text-[8px] uppercase font-bold text-blue-400/50">Extra</span>
-                                 <span className="text-xs font-black text-blue-400">{hltbData[sub.game_name].normally}h</span>
+                                 <span className="text-xs font-black text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
                                </div>
                                <div className="w-px h-6 bg-white/10" />
                                <div className="flex flex-col items-center">
                                  <span className="text-[8px] uppercase font-bold text-purple-400/50">Complete</span>
-                                 <span className="text-xs font-black text-purple-400">{hltbData[sub.game_name].completionist}h</span>
+                                 <span className="text-xs font-black text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
                                </div>
                             </div>
                           )}

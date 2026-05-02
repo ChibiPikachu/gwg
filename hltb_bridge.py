@@ -16,9 +16,9 @@ def search_game(game_name):
                 return str(int(round(t)))
                 
             out = {
-                "hastily": format_time(best.main_story),
-                "normally": format_time(best.main_extra),
-                "completionist": format_time(best.completionist),
+                "hltb_main": format_time(best.main_story),
+                "hltb_extras": format_time(best.main_extra),
+                "hltb_completionist": format_time(best.completionist),
                 "id": best.game_id,
                 "name": best.game_name
             }
