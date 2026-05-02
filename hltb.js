@@ -8,23 +8,24 @@ export async function getHLTBData(title) {
 
         console.log(`[HLTB] Requesting data for: "${title}"`);
 
-        const response = await fetch(`${baseUrl}/api/hltb_bridge?name=${encodeURIComponent(title)}`);
-
-        if (!response.ok) {
-            console.error(`[HLTB] Bridge responded with status: ${response.status}`);
-            return null;
-        }
-
-        const data = await response.json();
-
-        if (data) {
-            console.log(`[HLTB] Success for "${title}"`);
-            return data;
-        }
-
-        return null;
+        const response = await fetch(`https://${process.env.VERCEL_URL}/api/hltb?name=${encodeURIComponent(title)}`);
+        if (!response.ok) return null;
+        return await response.json();
     } catch (error) {
-        console.error(`[HLTB] Fetch failed for ${title}:`, error.message);
+        console.error("HLTB Fetch Error:", error);
         return null;
     }
+
+    const data = await response.json();
+
+    if (data) {
+        console.log(`[HLTB] Success for "${title}"`);
+        return data;
+    }
+
+    return null;
+} catch (error) {
+    console.error(`[HLTB] Fetch failed for ${title}:`, error.message);
+    return null;
+}
 }
