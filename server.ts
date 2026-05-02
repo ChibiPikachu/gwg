@@ -29,10 +29,6 @@ function getSupabase() {
   return supabaseClient;
 }
 
-import util from 'util';
-import { execFile } from 'child_process';
-const execFilePromise = util.promisify(execFile);
-
 // Helper for Steam API calls
 async function fetchSteamOwnedGames(steamId: string) {
   const apiKey = process.env.STEAM_API_KEY;

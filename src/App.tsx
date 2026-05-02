@@ -59,7 +59,7 @@ function AppContent() {
             <div className="flex items-center gap-2 md:gap-4">
               <button 
                 onClick={loginWithSteam}
-                className="bg-[#1a1a1a] border border-white/10 hover:border-white/20 transition-all rounded-xl pl-4 pr-6 py-3 flex items-center gap-4 font-bold text-sm shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] active:scale-95 group"
+                className="bg-[#1a1a1a] border border-white/10 hover:border-white/20 transition-all rounded-xl pl-2 pr-2 py-3 flex items-center gap-2 font-bold text-sm shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] active:scale-95 group"
               >
                 <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Steam" className="h-6 opacity-80 group-hover:opacity-100 transition-opacity" />
               </button>
