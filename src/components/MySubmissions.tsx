@@ -463,9 +463,9 @@ export default function MySubmissions() {
                         )}
                         {hltbInfo && !hltbInfo.notFound && (
                           <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                             <span className="text-amber-500/80">Main: {hltbInfo.hltb_main}h</span>
+                             <span className="text-amber-500/80">Main: {hltbInfo.main_story}h</span>
                              <span className="opacity-20">|</span>
-                             <span className="text-purple-400/80">Comp: {hltbInfo.hltb_completionist}h</span>
+                             <span className="text-purple-400/80">Comp: {hltbInfo.completionist}h</span>
                           </div>
                         )}
                       </div>
@@ -674,24 +674,24 @@ export default function MySubmissions() {
                        {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                         <div 
                           className="w-10 h-10 rounded-xl bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
-                          title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
+                          title={`HLTB Main: ${hltbData[sub.game_name].main_story}h | Extra: ${hltbData[sub.game_name].main_extra}h | Completionist: ${hltbData[sub.game_name].completionist}h`}
                         >
                           <span className="text-[10px] font-black text-white leading-none">HLTB</span>
-                          <span className="text-[8px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hltb_main}h</span>
+                          <span className="text-[8px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].main_story}h</span>
                           
                           {/* Hover Details Popover */}
                           <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
-                              <span className="text-[10px] font-bold text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
+                              <span className="text-[10px] font-bold text-amber-500">{hltbData[sub.game_name].main_story}h</span>
                             </div>
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>
-                              <span className="text-[10px] font-bold text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
+                              <span className="text-[10px] font-bold text-blue-400">{hltbData[sub.game_name].main_extra}h</span>
                             </div>
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Complete</span>
-                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
+                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].completionist}h</span>
                             </div>
                           </div>
                         </div>
