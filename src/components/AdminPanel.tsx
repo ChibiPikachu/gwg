@@ -621,18 +621,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                          </a>
                          <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
                          
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound ? (
+                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/5 shadow-inner">
                                  <span className="text-amber-500 font-black">M: {hltbData[sub.game_name].hastily}h</span>
                                  <div className="w-px h-2 bg-white/10" />
                                  <span className="text-purple-400 font-black">C: {hltbData[sub.game_name].completionist}h</span>
                                </div>
-                             ) : hltbData[sub.game_name]?.notFound ? (
-                               <div className="text-[8px] opacity-20 uppercase font-black tracking-widest border border-white/5 px-2 py-1 rounded-lg shrink-0">No HLTB Match</div>
-                             ) : (!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading) ? (
-                               <div className="text-[8px] opacity-20 uppercase font-black animate-pulse tracking-widest">Searching...</div>
-                             ) : null}
-                             
+                             )}
                              {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                                <>
                                  {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 4 ? (
@@ -648,6 +643,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                  )}
                                </>
                              )}
+                             {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading) && (
+                               <div className="text-[8px] opacity-20 uppercase font-black animate-pulse tracking-widest">Searching HLTB...</div>
+                             )}
+
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
                           <div className="flex flex-col">
                             <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
