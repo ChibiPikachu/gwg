@@ -9,6 +9,7 @@ export default function MySubmissions() {
   const { user, theme } = useAuth();
   const [submissions, setSubmissions] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [showForm, setShowForm] = React.useState(false);
   const [gameSearch, setGameSearch] = React.useState('');
   const [searching, setSearching] = React.useState(false);
@@ -67,7 +68,23 @@ export default function MySubmissions() {
       const res = await fetch('/api/submissions');
       if (res.ok) {
         const data = await res.json();
-        setSubmissions(Array.isArray(data) ? data : []);
+        const subArray = Array.isArray(data) ? data : [];
+        setSubmissions(subArray);
+
+        // Batch fetch HLTB data for these submissions
+        const uniqueTitles = Array.from(new Set(subArray.map((s: any) => s.game_name)));
+        if (uniqueTitles.length > 0) {
+          fetch('/api/hltb-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titles: uniqueTitles })
+          })
+          .then(r => r.json())
+          .then(hltb => {
+             setHltbData(prev => ({ ...prev, ...hltb }));
+          })
+          .catch(err => console.error('HLTB batch fetch failed:', err));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch submissions:', err);
@@ -669,6 +686,31 @@ export default function MySubmissions() {
                       >
                         <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-5 h-5", !sub.steam_appid && "grayscale opacity-30")} alt="" />
                       </a>
+
+                      {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                        <div 
+                          className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
+                          title={`HLTB Main: ${hltbData[sub.game_name].hastily}h | Extra: ${hltbData[sub.game_name].normally}h | Completionist: ${hltbData[sub.game_name].completionist}h`}
+                        >
+                          <span className="text-[10px] font-black text-amber-500 leading-none">HLTB</span>
+                          
+                          {/* Hover Details Popover */}
+                          <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
+                              <span className="text-[10px] font-bold text-amber-500">{hltbData[sub.game_name].hastily}h</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>
+                              <span className="text-[10px] font-bold text-blue-400">{hltbData[sub.game_name].normally}h</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-[8px] uppercase font-bold text-white/40">Complete</span>
+                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].completionist}h</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                    </div>
                    
                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-4">

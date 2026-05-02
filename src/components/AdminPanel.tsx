@@ -642,10 +642,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                          <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
                          
                              {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/5 shadow-inner">
-                                 <span className="text-amber-500 font-black">M: {hltbData[sub.game_name].hastily}h</span>
+                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/5 shadow-inner" title="HLTB Times: Main Story / Main + Extra / Completionist">
+                                 <span className="text-amber-500 font-black text-[10px]" title="Main Story">M: {hltbData[sub.game_name].hastily}h</span>
                                  <div className="w-px h-2 bg-white/10" />
-                                 <span className="text-purple-400 font-black">C: {hltbData[sub.game_name].completionist}h</span>
+                                 <span className="text-blue-400 font-black text-[10px]" title="Main + Extra">E: {hltbData[sub.game_name].normally}h</span>
+                                 <div className="w-px h-2 bg-white/10" />
+                                 <span className="text-purple-400 font-black text-[10px]" title="Completionist">C: {hltbData[sub.game_name].completionist}h</span>
                                </div>
                              )}
                              {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
