@@ -625,32 +625,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                         <a 
-                           href={sub.steam_appid ? `https://store.steampowered.com/app/${sub.steam_appid}` : undefined}
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           className={cn(
-                             "w-10 h-10 flex items-center justify-center rounded-xl border transition-all shadow-sm",
-                             sub.steam_appid 
-                               ? "dark:bg-[#171a21] bg-slate-100 dark:border-[#2a475e] border-black/10 hover:brightness-110" 
-                               : "dark:bg-white/5 bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/10 text-slate-300/30 cursor-not-allowed pointer-events-none"
-                           )}
-                           title={sub.steam_appid ? "View on Steam" : "Steam ID not found"}
-                         >
-                           <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=32" className={cn("w-5 h-5", !sub.steam_appid && "grayscale opacity-30")} alt="" />
-                         </a>
-                         <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
+                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-sm" title="HLTB Times: Main Story / Main + Extra / Completionist">
+                             <div className="flex flex-col items-center">
+                               <span className="text-[8px] uppercase font-bold opacity-40 text-amber-500">Main</span>
+                               <span className="text-sm font-black text-amber-500">{hltbData[sub.game_name].hastily}h</span>
+                             </div>
+                             <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
+                             <div className="flex flex-col items-center">
+                               <span className="text-[8px] uppercase font-bold opacity-40 text-blue-400">Extra</span>
+                               <span className="text-sm font-black text-blue-400">{hltbData[sub.game_name].normally}h</span>
+                             </div>
+                             <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
+                             <div className="flex flex-col items-center">
+                               <span className="text-[8px] uppercase font-bold opacity-40 text-purple-400">Complete</span>
+                               <span className="text-sm font-black text-purple-400">{hltbData[sub.game_name].completionist}h</span>
+                             </div>
+                           </div>
+                         )}
                          
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/5 shadow-inner" title="HLTB Times: Main Story / Main + Extra / Completionist">
-                                 <span className="text-amber-500 font-black text-[10px]" title="Main Story">M: {hltbData[sub.game_name].hastily}h</span>
-                                 <div className="w-px h-2 bg-white/10" />
-                                 <span className="text-blue-400 font-black text-[10px]" title="Main + Extra">E: {hltbData[sub.game_name].normally}h</span>
-                                 <div className="w-px h-2 bg-white/10" />
-                                 <span className="text-purple-400 font-black text-[10px]" title="Completionist">C: {hltbData[sub.game_name].completionist}h</span>
-                               </div>
-                             )}
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                           <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
+                         )}
+
+                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                                <>
                                  {sub.hours_during >= (parseInt(hltbData[sub.game_name].hastily) || 1) * 5 ? (
                                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
