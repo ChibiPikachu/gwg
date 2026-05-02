@@ -8,7 +8,7 @@ export async function getHLTBData(title) {
 
         console.log(`[HLTB] Requesting data for: "${title}"`);
 
-        const response = await fetch(`https://${process.env.VERCEL_URL}/api/hltb?name=${encodeURIComponent(title)}`);
+        const response = await fetch(`{baseUrl}/api/hltb?name=${encodeURIComponent(title)}`);
         if (!response.ok) return null;
         return await response.json();
     } catch (error) {
