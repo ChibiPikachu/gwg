@@ -1,14 +1,10 @@
 // lib/hltb.js
 export async function getHLTBData(title) {
     try {
-        // Vercel provides the VERCEL_URL environment variable automatically
-        const baseUrl = process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : 'http://localhost:3000';
-
         console.log(`[HLTB] Requesting data for: "${title}"`);
 
-        const response = await fetch(`${baseUrl}/api/hltb_bridge?name=${encodeURIComponent(title)}`);
+        // Use a relative path! The browser will automatically prepend the correct domain.
+        const response = await fetch(`/api/hltb_bridge?name=${encodeURIComponent(title)}`);
 
         if (!response.ok) {
             console.error(`[HLTB] Bridge responded with status: ${response.status}`);
