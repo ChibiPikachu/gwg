@@ -685,16 +685,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between mt-4">
-                      <div className={cn(
-                        "text-[10px] font-bold uppercase py-1 px-3 rounded-full flex items-center gap-2",
-                        sub.status === 'pending' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
-                        sub.status === 'verified' ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
-                        "bg-red-500/10 text-red-500 border border-red-500/20"
-                      )}>
-                        {sub.status === 'pending' ? <Clock size={10} /> : sub.status === 'verified' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
-                        {sub.status}
-                      </div>
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "text-[10px] font-bold uppercase py-1 px-3 rounded-full flex items-center gap-2",
+                            sub.status === 'pending' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
+                            sub.status === 'verified' ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                            "bg-red-500/10 text-red-500 border border-red-500/20"
+                          )}>
+                            {sub.status === 'pending' ? <Clock size={10} /> : sub.status === 'verified' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                            {sub.status}
+                          </div>
+
+                          {sub.completion_status && (
+                            <div className={cn(
+                              "text-[10px] font-bold uppercase py-1 px-3 rounded-full border",
+                              sub.completion_status === 'completed' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                              sub.completion_status === 'beaten' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                              sub.completion_status === 'abandoned' ? "bg-slate-500/10 text-slate-400 border-slate-500/20" :
+                              "bg-white/5 text-white/40 border-white/10"
+                            )}>
+                              {sub.completion_status}
+                            </div>
+                          )}
+                        </div>
 
                       <div className="flex gap-2">
                         <button 

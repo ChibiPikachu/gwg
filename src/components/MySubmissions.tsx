@@ -21,7 +21,7 @@ export default function MySubmissions() {
     hoursPlayed: '',
     achievementsBefore: '0',
     hoursBefore: '0',
-    completionStatus: 'beaten' as any,
+    completionStatus: 'unfinished' as any,
     platform: 'Steam' as string,
     notes: ''
   });
@@ -252,15 +252,15 @@ export default function MySubmissions() {
     setShowForm(false);
     setSelectedGame(null);
     setEditingId(null);
-    setFormData({ 
-      achievementsEarned: '', 
-      hoursPlayed: '', 
-      achievementsBefore: '0', 
-      hoursBefore: '0', 
-      completionStatus: 'beaten',
-      platform: 'Steam',
-      notes: '' 
-    });
+      setFormData({ 
+        achievementsEarned: '', 
+        hoursPlayed: '', 
+        achievementsBefore: '0', 
+        hoursBefore: '0', 
+        completionStatus: 'unfinished',
+        platform: 'Steam',
+        notes: '' 
+      });
     setSearchResults([]);
     setGameSearch('');
     setSteamVerifyMsg(null);
