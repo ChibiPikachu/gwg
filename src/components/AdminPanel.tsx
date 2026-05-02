@@ -28,8 +28,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   React.useEffect(() => {
     if (activeAdminTab) {
       setActiveTab(activeAdminTab);
+      // Re-fetch when switching tabs to ensure data is fresh
+      fetchData();
     }
-  }, [activeAdminTab]);
+  }, [activeAdminTab, fetchData]);
   const [filterTeam, setFilterTeam] = React.useState<Team | 'all'>('all');
   const [users, setUsers] = React.useState<any[]>([]);
   const [submissions, setSubmissions] = React.useState<any[]>([]);
@@ -561,7 +563,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               submissions.filter(s => subStatusFilter === 'all' || s.status === subStatusFilter).map(sub => (
                 <div key={sub.id} className={cn(
                   "p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md",
-                  TEAM_COLORS[sub.userTeam as Team || 'none'].glow
+                  (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
                 )}>
                   <div className="flex flex-col gap-4 w-full md:w-32 shrink-0">
                     <div className="w-full aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group bg-black/20">
@@ -575,9 +577,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <div className="flex items-center gap-2 mb-2">
                            <div className={cn(
                              "px-2 py-0.5 rounded text-[8px] uppercase font-bold tracking-widest border",
-                             TEAM_COLORS[sub.userTeam as Team || 'none'].primary,
-                             TEAM_COLORS[sub.userTeam as Team || 'none'].border,
-                             TEAM_COLORS[sub.userTeam as Team || 'none'].secondary
+                             (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].primary : TEAM_COLORS.none.primary,
+                             (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].border : TEAM_COLORS.none.border,
+                             (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].secondary : TEAM_COLORS.none.secondary
                            )}>
                              Team {sub.userTeam || 'none'}
                            </div>

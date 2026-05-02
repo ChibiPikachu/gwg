@@ -1139,27 +1139,59 @@ async function createServer() {
   });
 
   app.get('/api/admin/submissions', async (req, res) => {
+    const currentUser = (req as any).user;
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const { data, error } = await supabase
+      console.log(`[Admin] Submissions fetch requested by user ${currentUser.id}`);
+      
+      // Fetch submissions
+      const { data: submissions, error: subError } = await supabase
         .from('submissions')
-        .select('*, profiles!submissions_user_id_fkey(team), games!submissions_game_id_fkey(*)')
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      
-      // Flatten the profile team and game info into the submission object for easier use
-      const flattenedData = data.map(sub => ({
-        ...sub,
-        userTeam: (sub as any).profiles?.team || 'none',
-        gameDetails: (sub as any).games || null
+      if (subError) {
+        console.error('[Admin] submissions fetch error:', subError);
+        return res.status(500).json({ error: subError.message });
+      }
+
+      if (!submissions || submissions.length === 0) {
+        console.log('[Admin] No submissions found.');
+        return res.json([]);
+      }
+
+      // Separately fetch profiles to avoid complex join failures
+      const userIds = Array.from(new Set(submissions.map((s: any) => s.user_id)));
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('steamid, team')
+        .in('steamid', userIds);
+
+      if (profileError) {
+        console.warn('[Admin] Profiles fetch error (ignoring):', profileError);
+      }
+
+      const teamMap: Record<string, string> = {};
+      (profiles || []).forEach((p: any) => {
+        teamMap[p.steamid] = p.team || 'none';
+      });
+
+      const enriched = submissions.map((s: any) => ({
+        ...s,
+        userTeam: teamMap[s.user_id] || 'none'
       }));
 
-      res.json(flattenedData);
+      console.log(`[Admin] Successfully returning ${enriched.length} submissions.`);
+      res.json(enriched);
     } catch (err) {
-      res.status(500).json({ error: 'Failed to fetch' });
+      console.error('[Admin] Internal error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
