@@ -537,6 +537,21 @@ async function createServer() {
       const data = await getHLTBData(title);
       if (data) {
         hltbCache.set(title, data);
+        
+        // Save to Supabase for persistence
+        const supabase = getSupabase();
+        if (supabase) {
+          supabase.from('games').upsert({
+            title: title,
+            hltb_main: data.hltb_main || 0,
+            hltb_extras: data.hltb_extras || 0,
+            hltb_completionist: data.hltb_completionist || 0,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'title' }).then(({error}: any) => {
+             if (error) console.error('[Supabase Cache Save] Error:', error);
+          });
+        }
+        
         return res.json(data);
       }
       const notFoundData = { hltb_main: 0, hltb_extras: 0, hltb_completionist: 0, notFound: true };
@@ -592,6 +607,20 @@ async function createServer() {
           if (data) {
             hltbCache.set(title, data);
             results[title] = data;
+
+            // Save to Supabase for persistence
+            const supabase = getSupabase();
+            if (supabase) {
+              supabase.from('games').upsert({
+                title: title,
+                hltb_main: data.hltb_main || 0,
+                hltb_extras: data.hltb_extras || 0,
+                hltb_completionist: data.hltb_completionist || 0,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'title' }).then(({error}: any) => {
+                 if (error) console.error('[Supabase Batch Cache Save] Error:', error);
+              });
+            }
           } else {
             const notFoundData = { hltb_main: 0, hltb_extras: 0, hltb_completionist: 0, notFound: true };
             hltbCache.set(title, notFoundData);

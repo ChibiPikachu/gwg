@@ -678,9 +678,16 @@ export default function MySubmissions() {
       ) : (
         <div className="mb-12">
           <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Current event</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {filteredSubmissions.map((sub) => (
-              <div key={sub.id} className="flex flex-col gap-3 group">
+          
+          {filteredSubmissions.length === 0 ? (
+            <div className="text-center py-12 dark:bg-white/5 bg-black/5 rounded-2xl border border-dashed dark:border-white/10 border-slate-200">
+               <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here</p>
+               <p className="text-[10px] opacity-20 mt-1 dark:text-white text-slate-600 italic">No entries match the selected filter</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {filteredSubmissions.map((sub) => (
+                <div key={sub.id} className="flex flex-col gap-3 group">
                 <div className={cn(
                   "aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border relative shadow-xl transition-all duration-300",
                   "dark:border-white/5 border-slate-200",
@@ -804,8 +811,9 @@ export default function MySubmissions() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )}
 
       <div className="mt-12">
         <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Past events</h3>
