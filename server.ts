@@ -85,9 +85,12 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       .eq('id', String(gameId))
       .maybeSingle();
 
-    if (existingGame && existingGame.hltb_main > 0) return existingGame.id;
+    // If game exists and has HLTB data (> 0) or was definitively not found (-1), return existing ID
+    if (existingGame && (existingGame.hltb_main > 0 || existingGame.hltb_main === -1)) {
+        return existingGame.id;
+    }
 
-    // 2. Fetch HLTB data (if game is new OR has 0 hours in DB)
+    // 2. Fetch HLTB data (if game is new OR has 0 hours/null in DB)
     let hltb: any = null;
     try {
       console.log(`[Sync] Fetching HLTB for: ${title}`);
@@ -101,7 +104,7 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       id: String(gameId),
       title: title,
       image_url: image,
-      hltb_main: hltb?.hltb_main || existingGame?.hltb_main || 0,
+      hltb_main: hltb?.notFound ? -1 : (hltb?.hltb_main || existingGame?.hltb_main || 0),
       hltb_extras: hltb?.hltb_extras || existingGame?.hltb_extras || 0,
       hltb_completionist: hltb?.hltb_completionist || existingGame?.hltb_completionist || 0,
       updated_at: new Date().toISOString()
@@ -1476,34 +1479,50 @@ async function createServer() {
   });
 
   // Admin Backfill Route
-  app.post('/api/admin/backfill-hltb', async (req: Request, res: Response) => {
+  app.post('/api/admin/backfill-hltb', async (req: express.Request, res: express.Response) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Supabase unavailable' });
 
     try {
-      // Find games with missing HLTB data, ordered by oldest update first
+      // 1. Get unique game IDs from SUBMISSIONS first (as requested: "only read the games that have been submitted")
+      const { data: submittedGames, error: subError } = await supabase
+        .from('submissions')
+        .select('game_id');
+      
+      if (subError) throw subError;
+      
+      const gameIds = [...new Set(submittedGames.map((s: any) => s.game_id))];
+      
+      if (gameIds.length === 0) {
+        return res.json({ message: 'No games submitted yet.', count: 0, updated: 0, remaining: 0, totalRemaining: 0 });
+      }
+
+      // 2. Find games from that list that are missing HLTB data (hltb_main is 0 or null)
+      // We exclude -1 because that means "tried and failed"
       const { data: gamesToBackfill, error: fetchError, count } = await supabase
         .from('games')
         .select('*', { count: 'exact' })
+        .in('id', gameIds)
         .or('hltb_main.eq.0,hltb_main.is.null')
         .order('updated_at', { ascending: true });
 
       if (fetchError) throw fetchError;
       if (!gamesToBackfill || gamesToBackfill.length === 0) {
-        return res.json({ message: 'All games already have HLTB data', count: 0, updated: 0, remaining: 0, total: 0 });
+        return res.json({ message: 'All submitted games already have HLTB data', count: 0, updated: 0, remaining: 0, totalRemaining: 0 });
       }
 
-      console.log(`[Admin] Backfilling HLTB for batch. Total remaining matching: ${count}`);
+      console.log(`[Admin] Backfilling HLTB for batch. Games identified for backfill: ${count}`);
       
-      const batchSize = 10;
+      const batchSize = 5; // Reduced batch size for stability
       const batch = gamesToBackfill.slice(0, batchSize);
-      let successCount = 0;
+      let processedCount = 0;
+      let updatedCount = 0;
 
       for (const game of batch) {
         try {
+          processedCount++;
           const data = await getHLTBData(game.title);
           
-          // Even if not found, we update the timestamp to move it to the back of the queue
           const updateData: any = {
             updated_at: new Date().toISOString()
           };
@@ -1513,26 +1532,26 @@ async function createServer() {
             updateData.hltb_extras = data.hltb_extras || 0;
             updateData.hltb_completionist = data.hltb_completionist || 0;
             hltbCache.set(game.title, data);
-            successCount++;
+            updatedCount++;
           } else {
-             // Mark as checked (0) so it doesn't stay 'null' if it was null, 
-             // and update timestamp so 'order by' pushes it to the end
-             updateData.hltb_main = game.hltb_main || 0; 
+             // Mark as checked (-1) so we don't try again during syncs or backfills
+             updateData.hltb_main = -1; 
           }
 
           await supabase.from('games').update(updateData).eq('id', game.id);
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Small delay to be polite to HLTB/Bridge
+          await new Promise(resolve => setTimeout(resolve, 800));
         } catch (err) {
           console.error(`[HLTB Backfill] Error for ${game.title}:`, err);
         }
       }
 
       res.json({ 
-        message: `Processed ${batch.length} games.`,
-        updated: successCount,
-        batchSize: batch.length,
-        remaining: (count || 0) - batch.length,
-        total: count || 0
+        message: `Processed ${processedCount} games.`,
+        updated: updatedCount,
+        processedCount: processedCount,
+        remaining: Math.max(0, (count || 0) - processedCount),
+        totalRemaining: (count || 0) - processedCount
       });
     } catch (err) {
       console.error('HLTB Backfill failed:', err);
