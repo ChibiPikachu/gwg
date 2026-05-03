@@ -434,6 +434,47 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <Settings size={14} />
                 Repair Missing IDs
               </button>
+
+              <button 
+                onClick={async () => {
+                  if (!window.confirm('This will iterate through your database and fetch HLTB times for games currently showing zero. This processes in batches of 10. Continue?')) return;
+                  setLoading(true);
+                  
+                  let remaining = 1;
+                  let totalUpdated = 0;
+
+                  try {
+                    while (remaining > 0) {
+                      const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
+                      const data = await res.json();
+                      if (data.error) throw new Error(data.error);
+                      
+                      remaining = data.remaining || 0;
+                      totalUpdated += (data.updated || 0);
+                      
+                      console.log(`[Batch Progress] Updated ${totalUpdated}, ${remaining} left...`);
+                      if (remaining > 0) {
+                        // Allow UI to breathe
+                        await new Promise(r => setTimeout(r, 1000));
+                      }
+                    }
+                    alert(`HLTB Backfill Complete! Total updated: ${totalUpdated}`);
+                  } catch (err: any) {
+                    alert(`Backfill stopped: ${err.message}`);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className={cn(
+                  "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2 h-12 md:h-14",
+                  "dark:bg-blue-500/10 bg-blue-50 hover:dark:bg-blue-500/20 hover:bg-blue-100",
+                  "dark:text-blue-400 text-blue-700 dark:border-blue-500/20 border-blue-200",
+                  loading && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <Search size={14} className={loading ? "animate-pulse" : ""} />
+                Backfill HLTB Cache
+              </button>
               <button 
                 onClick={async () => {
                   if (!window.confirm('This will recalculate EVERY verified submission and sync user points. Continue?')) return;

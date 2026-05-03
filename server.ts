@@ -1421,6 +1421,64 @@ async function createServer() {
     }
   });
 
+  // Admin Backfill Route
+  app.post('/api/admin/backfill-hltb', async (req: Request, res: Response) => {
+    if (!(req as any).isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Supabase unavailable' });
+
+    try {
+      // Find games with missing HLTB data
+      const { data: gamesToBackfill, error: fetchError } = await supabase
+        .from('games')
+        .select('*')
+        .or('hltb_main.eq.0,hltb_main.is.null');
+
+      if (fetchError) throw fetchError;
+      if (!gamesToBackfill || gamesToBackfill.length === 0) {
+        return res.json({ message: 'All games already have HLTB data', count: 0 });
+      }
+
+      console.log(`[Admin] Backfilling HLTB for ${gamesToBackfill.length} games...`);
+      
+      // Process a maximum of 10 games per request to avoid Vercel timeout (10s limit)
+      const batchSize = 10;
+      const batch = gamesToBackfill.slice(0, batchSize);
+      let successCount = 0;
+
+      for (const game of batch) {
+        try {
+          const data = await getHLTBData(game.title);
+          if (data && !data.notFound) {
+            await supabase.from('games').update({
+              hltb_main: data.hltb_main || 0,
+              hltb_extras: data.hltb_extras || 0,
+              hltb_completionist: data.hltb_completionist || 0,
+              updated_at: new Date().toISOString()
+            }).eq('id', game.id);
+            
+            hltbCache.set(game.title, data);
+            successCount++;
+          }
+          // Small delay between requests to be polite
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (err) {
+          console.error(`[HLTB Backfill] Error for ${game.title}:`, err);
+        }
+      }
+
+      res.json({ 
+        message: `Processed ${batch.length} games. Successfully updated ${successCount}.`,
+        updated: successCount,
+        remaining: gamesToBackfill.length - batch.length
+      });
+    } catch (err) {
+      console.error('HLTB Backfill failed:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.post('/api/admin/repair-submissions', async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -1773,8 +1831,11 @@ async function createServer() {
       const games = await fetchSteamOwnedGames(steamId, supabase);
       if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
 
+      const normalize = (str: string) => str.toLowerCase().replace(/[®™©]/g, '').replace(/[^a-z0-9]/g, '');
+      const searchName = normalize(name as string);
+
       // Fuzzy match or exact match
-      const game = games.find((g: any) => g.name.toLowerCase() === (name as string).toLowerCase());
+      const game = games.find((g: any) => normalize(g.name) === searchName);
       if (game) {
         return res.json({ 
           owned: true, 
