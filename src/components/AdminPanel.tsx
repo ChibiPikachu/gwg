@@ -38,6 +38,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = React.useState(false);
+  const [backfillProgress, setBackfillProgress] = React.useState<{ updated: number, remaining: number, total: number } | null>(null);
 
   const fetchHLTBForGame = async (title: string) => {
     if (hltbData[title] && !hltbData[title].notFound) return;
@@ -330,6 +331,31 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-8 md:gap-12">
+      {backfillProgress && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4 animate-in slide-in-from-top-4 duration-300">
+           <div className="dark:bg-[#1a1a1a] bg-white border dark:border-blue-500/30 border-blue-200 rounded-2xl shadow-2xl p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-widest dark:text-blue-400 text-blue-600">HLTB Library Backfill in Progress</span>
+                </div>
+                <span className="text-[10px] font-mono font-bold opacity-40 dark:text-white text-slate-900">
+                  {Math.round((backfillProgress.updated / (backfillProgress.total || 1)) * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-black/10 dark:bg-white/5 rounded-full overflow-hidden">
+                 <div 
+                   className="h-full bg-blue-500 transition-all duration-500 ease-out"
+                   style={{ width: `${(backfillProgress.updated / (backfillProgress.total || 1)) * 100}%` }}
+                 />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-bold">
+                 <span className="dark:text-white/40 text-slate-500 uppercase">Updated: {backfillProgress.updated}</span>
+                 <span className="dark:text-white/40 text-slate-500 uppercase">Remaining: {backfillProgress.remaining}</span>
+              </div>
+           </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row border-b border-white/5">
         <button 
           onClick={() => setActiveTab('users')}
@@ -455,22 +481,40 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     <button 
                       onClick={async () => {
-                        if (!window.confirm('Backfill HLTB times in batches?')) return;
-                        setIsAdminMenuOpen(false);
-                        setLoading(true);
-                        let remaining = 1; let totalUpdated = 0;
-                        try {
-                          while (remaining > 0) {
-                            const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
-                            const data = await res.json();
-                            if (data.error) throw new Error(data.error);
-                            remaining = data.remaining || 0;
-                            totalUpdated += (data.updated || 0);
-                            if (remaining > 0) await new Promise(r => setTimeout(r, 1000));
-                          }
-                          alert(`HLTB Backfill Complete! Total updated: ${totalUpdated}`);
-                        } catch (err: any) { alert(`Backfill stopped: ${err.message}`); } finally { setLoading(false); }
-                      }}
+                    if (!window.confirm('Backfill HLTB times in batches?')) return;
+                    setIsAdminMenuOpen(false);
+                    setBackfillProgress({ updated: 0, remaining: 1, total: 0 });
+                    
+                    let remaining = 1; 
+                    let totalUpdated = 0;
+                    let isFirst = true;
+
+                    try {
+                      while (remaining > 0) {
+                        const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.error) throw new Error(data.error);
+                        
+                        if (isFirst) {
+                          // On first batch, we know the true total
+                          setBackfillProgress({ updated: data.updated || 0, remaining: data.remaining || 0, total: (data.updated || 0) + (data.remaining || 0) });
+                          isFirst = false;
+                        }
+
+                        remaining = data.remaining || 0;
+                        totalUpdated += (data.updated || 0);
+                        
+                        setBackfillProgress(prev => prev ? ({ ...prev, updated: totalUpdated, remaining }) : null);
+
+                        if (remaining > 0) await new Promise(r => setTimeout(r, 1000));
+                      }
+                      alert(`HLTB Backfill Complete! Total updated: ${totalUpdated}`);
+                    } catch (err: any) { 
+                      alert(`Backfill stopped: ${err.message}`); 
+                    } finally { 
+                      setBackfillProgress(null);
+                    }
+                  }}
                       className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-blue-400 text-blue-600 hover:dark:bg-blue-500/10 hover:bg-blue-50 rounded-xl transition-colors text-left"
                     >
                       <Search size={14} />
