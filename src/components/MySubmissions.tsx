@@ -200,6 +200,18 @@ export default function MySubmissions() {
     e.preventDefault();
     if (!selectedGame) return;
 
+    const earned = parseInt(formData.achievementsEarned) || 0;
+    const hours = parseFloat(formData.hoursPlayed) || 0;
+
+    if (earned <= 0) {
+      alert("You must submit at least 1 achievement.");
+      return;
+    }
+    if (hours <= 0) {
+      alert("Hours can't be 0.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';

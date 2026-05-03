@@ -21,11 +21,12 @@ export async function getHLTBData(title) {
             return null;
         }
 
+        if (!rawText || rawText === 'null') return { notFound: true };
         const data = JSON.parse(rawText);
 
-        if (data.error) {
-            console.error(`[HLTB DEBUG] Python Error:`, data.error);
-            return null;
+        if (!data || data.error) {
+            if (data?.error) console.error(`[HLTB DEBUG] Python Error:`, data.error);
+            return { notFound: true };
         }
 
         return data;
