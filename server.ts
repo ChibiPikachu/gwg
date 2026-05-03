@@ -85,11 +85,12 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       .eq('id', String(gameId))
       .maybeSingle();
 
-    if (existingGame) return existingGame.id;
+    if (existingGame && existingGame.hltb_main > 0) return existingGame.id;
 
-    // 2. Fetch HLTB data
+    // 2. Fetch HLTB data (if game is new OR has 0 hours in DB)
     let hltb: any = null;
     try {
+      console.log(`[Sync] Fetching HLTB for: ${title}`);
       hltb = await getHLTBData(title);
     } catch (e) {
       console.warn('HLTB fetch failed during sync:', e);
@@ -100,9 +101,9 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       id: String(gameId),
       title: title,
       image_url: image,
-      hltb_main: hltb?.hltb_main || 0,
-      hltb_extras: hltb?.hltb_extras || 0,
-      hltb_completionist: hltb?.hltb_completionist || 0,
+      hltb_main: hltb?.hltb_main || existingGame?.hltb_main || 0,
+      hltb_extras: hltb?.hltb_extras || existingGame?.hltb_extras || 0,
+      hltb_completionist: hltb?.hltb_completionist || existingGame?.hltb_completionist || 0,
       updated_at: new Date().toISOString()
     };
 
@@ -500,6 +501,39 @@ async function createServer() {
     res.json({ success: true, user });
   });
 
+
+  app.get('/api/hltb_bridge', async (req, res) => {
+    const { name } = req.query;
+    if (!name) return res.status(400).json({ error: 'Name required' });
+
+    try {
+      const pythonScript = path.join(process.cwd(), 'api', 'hltb_bridge.py');
+      const cmds = ['python3', 'python'];
+      let stdout = '';
+      let lastError = null;
+
+      for (const cmd of cmds) {
+        try {
+          const result = await execFilePromise(cmd, [pythonScript, String(name)]);
+          stdout = result.stdout;
+          lastError = null;
+          break;
+        } catch (err) { lastError = err; }
+      }
+
+      if (lastError && !stdout) throw lastError;
+
+      const jsonMatch = stdout.match(/\{.*\}/s) || stdout.match(/null/);
+      if (jsonMatch && jsonMatch[0] !== 'null') {
+        const data = JSON.parse(jsonMatch[0]);
+        return res.json(data);
+      }
+      res.json({ hltb_main: 0, hltb_extras: 0, hltb_completionist: 0, notFound: true });
+    } catch (err) {
+      console.error('[Bridge Error]:', err);
+      res.status(500).json({ error: String(err) });
+    }
+  });
 
   app.get('/api/hltb/:title', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
