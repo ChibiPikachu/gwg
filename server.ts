@@ -1481,20 +1481,20 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Supabase unavailable' });
 
     try {
-      // Find games with missing HLTB data
-      const { data: gamesToBackfill, error: fetchError } = await supabase
+      // Find games with missing HLTB data, ordered by oldest update first
+      const { data: gamesToBackfill, error: fetchError, count } = await supabase
         .from('games')
-        .select('*')
-        .or('hltb_main.eq.0,hltb_main.is.null');
+        .select('*', { count: 'exact' })
+        .or('hltb_main.eq.0,hltb_main.is.null')
+        .order('updated_at', { ascending: true });
 
       if (fetchError) throw fetchError;
       if (!gamesToBackfill || gamesToBackfill.length === 0) {
-        return res.json({ message: 'All games already have HLTB data', count: 0 });
+        return res.json({ message: 'All games already have HLTB data', count: 0, updated: 0, remaining: 0, total: 0 });
       }
 
-      console.log(`[Admin] Backfilling HLTB for ${gamesToBackfill.length} games...`);
+      console.log(`[Admin] Backfilling HLTB for batch. Total remaining matching: ${count}`);
       
-      // Process a maximum of 10 games per request to avoid Vercel timeout (10s limit)
       const batchSize = 10;
       const batch = gamesToBackfill.slice(0, batchSize);
       let successCount = 0;
@@ -1502,18 +1502,25 @@ async function createServer() {
       for (const game of batch) {
         try {
           const data = await getHLTBData(game.title);
+          
+          // Even if not found, we update the timestamp to move it to the back of the queue
+          const updateData: any = {
+            updated_at: new Date().toISOString()
+          };
+
           if (data && !data.notFound) {
-            await supabase.from('games').update({
-              hltb_main: data.hltb_main || 0,
-              hltb_extras: data.hltb_extras || 0,
-              hltb_completionist: data.hltb_completionist || 0,
-              updated_at: new Date().toISOString()
-            }).eq('id', game.id);
-            
+            updateData.hltb_main = data.hltb_main || 0;
+            updateData.hltb_extras = data.hltb_extras || 0;
+            updateData.hltb_completionist = data.hltb_completionist || 0;
             hltbCache.set(game.title, data);
             successCount++;
+          } else {
+             // Mark as checked (0) so it doesn't stay 'null' if it was null, 
+             // and update timestamp so 'order by' pushes it to the end
+             updateData.hltb_main = game.hltb_main || 0; 
           }
-          // Small delay between requests to be polite
+
+          await supabase.from('games').update(updateData).eq('id', game.id);
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (err) {
           console.error(`[HLTB Backfill] Error for ${game.title}:`, err);
@@ -1521,9 +1528,11 @@ async function createServer() {
       }
 
       res.json({ 
-        message: `Processed ${batch.length} games. Successfully updated ${successCount}.`,
+        message: `Processed ${batch.length} games.`,
         updated: successCount,
-        remaining: gamesToBackfill.length - batch.length
+        batchSize: batch.length,
+        remaining: (count || 0) - batch.length,
+        total: count || 0
       });
     } catch (err) {
       console.error('HLTB Backfill failed:', err);
