@@ -30,6 +30,7 @@ export default function MySubmissions() {
   const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [steamTotalStats, setSteamTotalStats] = React.useState<{hours: number, achievements: number} | null>(null);
+  const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned'>('all');
 
   // Auto-calculate 'during event' stats
   React.useEffect(() => {
@@ -56,6 +57,11 @@ export default function MySubmissions() {
     if (hours < 25) return 3.0;
     return 4.0;
   }, [formData.hoursPlayed]);
+
+  const filteredSubmissions = React.useMemo(() => {
+    if (completionFilter === 'all') return submissions;
+    return submissions.filter(s => s.completion_status === completionFilter);
+  }, [submissions, completionFilter]);
 
   const scorePreview = React.useMemo(() => {
     const earned = parseInt(formData.achievementsEarned) || 0;
@@ -640,7 +646,26 @@ export default function MySubmissions() {
       )}
 
       {/* Submissions List */}
-      <h2 className="text-xl font-bold mb-8">My submissions</h2>
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
+        <h2 className="text-xl font-bold">My submissions</h2>
+        
+        <div className="flex flex-wrap items-center gap-2">
+          {(['all', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((status) => (
+            <button
+              key={status}
+              onClick={() => setCompletionFilter(status)}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all border",
+                completionFilter === status 
+                  ? theme.bg + " text-white " + theme.border
+                  : "dark:bg-white/5 bg-black/5 dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900 border-transparent"
+              )}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+      </div>
       
       {loading ? (
         <div className="text-center py-24 opacity-30 animate-pulse dark:text-white text-slate-400">Loading submissions...</div>
@@ -654,7 +679,7 @@ export default function MySubmissions() {
         <div className="mb-12">
           <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Current event</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {submissions.map((sub) => (
+            {filteredSubmissions.map((sub) => (
               <div key={sub.id} className="flex flex-col gap-3 group">
                 <div className={cn(
                   "aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border relative shadow-xl transition-all duration-300",

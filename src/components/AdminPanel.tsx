@@ -493,7 +493,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </button>
                       <div className="flex flex-col overflow-hidden">
                         <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-blue-400 truncate">{u.steam_name}</span>
+                            <span className="text-sm font-black text-blue-400 truncate">{u.steam_name}</span>
+                            {u.discord_name && (
+                              <span className="text-[10px] font-bold dark:text-white/40 text-slate-400 truncate">
+                                ({u.discord_name})
+                              </span>
+                            )}
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 dark:text-white text-slate-500">Points:</span>

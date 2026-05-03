@@ -33,17 +33,47 @@ import util from 'util';
 import { execFile } from 'child_process';
 const execFilePromise = util.promisify(execFile);
 
-// Helper for Steam API calls
-async function fetchSteamOwnedGames(steamId: string) {
+// Helper for Steam API calls with database caching
+async function fetchSteamOwnedGames(steamId: string, supabase: any) {
+  if (!supabase) return null;
+  
+  // 1. Check database cache first
+  const cacheMinutes = 60; // Cache for 1 hour
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('owned_games, steam_updated_at')
+    .eq('steamid', steamId)
+    .single();
+
+  if (profile?.owned_games && profile?.steam_updated_at) {
+    const updatedAt = new Date(profile.steam_updated_at).getTime();
+    if (Date.now() - updatedAt < cacheMinutes * 60 * 1000) {
+      console.log(`[Steam Cache] Using DB cache for ${steamId}`);
+      return profile.owned_games;
+    }
+  }
+
   const apiKey = process.env.STEAM_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return profile?.owned_games || null;
+  
   try {
+    console.log(`[Steam API] Fetching owned games for ${steamId}`);
     const response = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
     const data: any = await response.json();
-    return data.response?.games || [];
+    const games = data.response?.games || [];
+    
+    // Update database cache
+    if (games.length > 0) {
+      await supabase.from('profiles').update({
+        owned_games: games,
+        steam_updated_at: new Date().toISOString()
+      }).eq('steamid', steamId);
+    }
+    
+    return games;
   } catch (err) {
     console.error('Steam Owned Games Fetch Failed:', err);
-    return null;
+    return profile?.owned_games || null;
   }
 }
 
@@ -471,7 +501,6 @@ async function createServer() {
   });
 
 
-  // HLTB APIs (Accessible by all users)
   app.get('/api/hltb/:title', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -479,6 +508,29 @@ async function createServer() {
     const { title } = req.params;
     if (hltbCache.has(title)) {
       return res.json(hltbCache.get(title));
+    }
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data: cachedGame } = await supabase
+          .from('games')
+          .select('hltb_main, hltb_extras, hltb_completionist')
+          .eq('title', title)
+          .maybeSingle();
+
+        if (cachedGame && cachedGame.hltb_main > 0) {
+           const transformed = {
+             hltb_main: cachedGame.hltb_main,
+             hltb_extras: cachedGame.hltb_extras,
+             hltb_completionist: cachedGame.hltb_completionist
+           };
+           hltbCache.set(title, transformed);
+           return res.json(transformed);
+        }
+      } catch (err) {
+        console.warn('Supabase HLTB cache check failed:', err);
+      }
     }
 
     try {
@@ -506,9 +558,34 @@ async function createServer() {
     const results: Record<string, any> = {};
     const toFetch = titles.filter(t => !hltbCache.has(t));
 
+    const supabase = getSupabase();
+    if (supabase && toFetch.length > 0) {
+      try {
+        const { data: cachedGames } = await supabase
+          .from('games')
+          .select('title, hltb_main, hltb_extras, hltb_completionist')
+          .in('title', toFetch);
+
+        if (cachedGames) {
+          cachedGames.forEach((g: any) => {
+            const transformed = {
+              hltb_main: g.hltb_main,
+              hltb_extras: g.hltb_extras,
+              hltb_completionist: g.hltb_completionist
+            };
+            hltbCache.set(g.title, transformed);
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase HLTB batch cache check failed:', err);
+      }
+    }
+
+    const stillToFetch = titles.filter(t => !hltbCache.has(t));
+
     // Fetch in small batches to avoid rate limits/spamming
-    for (let i = 0; i < toFetch.length; i += 3) {
-      const batch = toFetch.slice(i, i + 3);
+    for (let i = 0; i < stillToFetch.length; i += 3) {
+      const batch = stillToFetch.slice(i, i + 3);
       await Promise.all(batch.map(async (title) => {
         try {
           const data = await getHLTBData(title);
@@ -1593,14 +1670,28 @@ async function createServer() {
 
     const { appId } = req.params;
     const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    if (!steamId || steamId.length < 5) {
-      return res.status(400).json({ error: 'Steam ID not found in session' });
+    let steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+
+    // Resilient steamId lookup if not in session
+    if (!steamId || steamId.length < 5 || steamId === 'undefined' || steamId === 'null') {
+       const discId = currentUser.discord_id || currentUser.id;
+       if (discId) {
+          const { data: profile } = await supabase.from('profiles').select('steamid').eq('discord_id', discId).maybeSingle();
+          if (profile?.steamid) {
+            steamId = profile.steamid;
+          }
+       }
+    }
+
+    if (!steamId || steamId.length < 5 || steamId === 'undefined') {
+      return res.status(400).json({ error: 'Steam ID not found. Please ensure you have linked your Steam account.' });
     }
 
     try {
-      const games = await fetchSteamOwnedGames(steamId);
+      const games = await fetchSteamOwnedGames(steamId, supabase);
       if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
 
       const game = games.find((g: any) => String(g.appid) === String(appId));
@@ -1629,10 +1720,28 @@ async function createServer() {
     if (!name) return res.status(400).json({ error: 'Name required' });
 
     const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    let steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+
+    // Resilient steamId lookup if not in session
+    if (!steamId || steamId.length < 5 || steamId === 'undefined' || steamId === 'null') {
+       const discId = currentUser.discord_id || currentUser.id;
+       if (discId) {
+          const { data: profile } = await supabase.from('profiles').select('steamid').eq('discord_id', discId).maybeSingle();
+          if (profile?.steamid) {
+            steamId = profile.steamid;
+          }
+       }
+    }
+
+    if (!steamId || steamId.length < 5 || steamId === 'undefined') {
+      return res.status(400).json({ error: 'Steam ID not found. Please ensure you have linked your Steam account.' });
+    }
 
     try {
-      const games = await fetchSteamOwnedGames(steamId);
+      const games = await fetchSteamOwnedGames(steamId, supabase);
       if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
 
       // Fuzzy match or exact match
