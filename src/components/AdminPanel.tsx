@@ -37,6 +37,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
+  const [isAdminMenuOpen, setIsAdminMenuOpen] = React.useState(false);
 
   const fetchHLTBForGame = async (title: string) => {
     if (hltbData[title] && !hltbData[title].notFound) return;
@@ -402,108 +403,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           </div>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
-          {activeTab === 'users' && (
-            <>
-              <button 
-                onClick={async () => {
-                  if (!window.confirm('This will search IGDB for every submission missing hltb_id or steam_appid and attempt to repair them. Continue?')) return;
-                  setLoading(true);
-                  try {
-                    const res = await fetch('/api/admin/repair-submissions', { method: 'POST' });
-                    const result = await res.json();
-                    if (res.ok) {
-                      alert(`Repair complete! Updated ${result.updatedCount} submissions.`);
-                      fetchData();
-                    } else {
-                      alert(`Repair failed: ${result.error}`);
-                    }
-                  } catch (err) {
-                    alert('Failed to trigger repair');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className={cn(
-                  "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2 h-12 md:h-14",
-                  "dark:bg-emerald-500/10 bg-emerald-50 hover:dark:bg-emerald-500/20 hover:bg-emerald-100",
-                  "dark:text-emerald-400 text-emerald-700 dark:border-emerald-500/20 border-emerald-200",
-                  loading && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <Settings size={14} />
-                Repair Missing IDs
-              </button>
-
-              <button 
-                onClick={async () => {
-                  if (!window.confirm('This will iterate through your database and fetch HLTB times for games currently showing zero. This processes in batches of 10. Continue?')) return;
-                  setLoading(true);
-                  
-                  let remaining = 1;
-                  let totalUpdated = 0;
-
-                  try {
-                    while (remaining > 0) {
-                      const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
-                      const data = await res.json();
-                      if (data.error) throw new Error(data.error);
-                      
-                      remaining = data.remaining || 0;
-                      totalUpdated += (data.updated || 0);
-                      
-                      console.log(`[Batch Progress] Updated ${totalUpdated}, ${remaining} left...`);
-                      if (remaining > 0) {
-                        // Allow UI to breathe
-                        await new Promise(r => setTimeout(r, 1000));
-                      }
-                    }
-                    alert(`HLTB Backfill Complete! Total updated: ${totalUpdated}`);
-                  } catch (err: any) {
-                    alert(`Backfill stopped: ${err.message}`);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className={cn(
-                  "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2 h-12 md:h-14",
-                  "dark:bg-blue-500/10 bg-blue-50 hover:dark:bg-blue-500/20 hover:bg-blue-100",
-                  "dark:text-blue-400 text-blue-700 dark:border-blue-500/20 border-blue-200",
-                  loading && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <Search size={14} className={loading ? "animate-pulse" : ""} />
-                Backfill HLTB Cache
-              </button>
-              <button 
-                onClick={async () => {
-                  if (!window.confirm('This will recalculate EVERY verified submission and sync user points. Continue?')) return;
-                  setLoading(true);
-                  try {
-                    const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
-                    if (res.ok) {
-                      alert('Points recalculated successfully!');
-                      fetchData();
-                    }
-                  } catch (err) {
-                    alert('Failed to recalculate');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className={cn(
-                  "w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-bold text-[10px] md:text-xs transition-all border flex items-center justify-center gap-2 h-12 md:h-14",
-                  "dark:bg-purple-500/10 bg-purple-50 hover:dark:bg-purple-500/20 hover:bg-purple-100",
-                  "dark:text-purple-400 text-purple-700 dark:border-purple-500/20 border-purple-200",
-                  loading && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <Clock size={14} />
-                Recalculate All Points
-              </button>
-            </>
-          )}
-          <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto relative">
+          <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto order-last sm:order-first">
             <span className={cn("text-2xl font-mono font-bold", theme.text)}>
               {activeTab === 'users' ? filteredUsers.length : filteredSubmissions.length}
             </span>
@@ -511,6 +412,102 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               {activeTab === 'users' ? 'Users' : 'Submissions'} Found
             </span>
           </div>
+
+          {activeTab === 'users' && (
+            <div className="relative">
+              <button 
+                onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
+                className={cn(
+                  "p-3 rounded-xl transition-all border flex items-center justify-center",
+                  "dark:bg-white/5 bg-white dark:border-white/10 border-black/10 hover:dark:bg-white/10 hover:bg-slate-50",
+                  isAdminMenuOpen ? theme.text + " " + theme.border : "dark:text-white/40 text-slate-500"
+                )}
+                title="Global Admin Actions"
+              >
+                <Settings size={20} className={cn(isAdminMenuOpen && "animate-spin-slow")} />
+              </button>
+
+              {isAdminMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsAdminMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-3 w-64 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-2 flex flex-col gap-1">
+                    <div className="px-3 py-2">
+                       <span className="text-[10px] font-black uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Global Actions</span>
+                    </div>
+
+                    <button 
+                      onClick={async () => {
+                        if (!window.confirm('Search IGDB for missing IDs?')) return;
+                        setIsAdminMenuOpen(false);
+                        setLoading(true);
+                        try {
+                          const res = await fetch('/api/admin/repair-submissions', { method: 'POST' });
+                          const result = await res.json();
+                          alert(res.ok ? `Repair complete! Updated ${result.updatedCount} items.` : `Error: ${result.error}`);
+                          fetchData();
+                        } catch (err) { alert('Failed to trigger repair'); } finally { setLoading(false); }
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-emerald-400 text-emerald-600 hover:dark:bg-emerald-500/10 hover:bg-emerald-50 rounded-xl transition-colors text-left"
+                    >
+                      <Settings size={14} />
+                      Repair Missing IDs
+                    </button>
+
+                    <button 
+                      onClick={async () => {
+                        if (!window.confirm('Backfill HLTB times in batches?')) return;
+                        setIsAdminMenuOpen(false);
+                        setLoading(true);
+                        let remaining = 1; let totalUpdated = 0;
+                        try {
+                          while (remaining > 0) {
+                            const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
+                            const data = await res.json();
+                            if (data.error) throw new Error(data.error);
+                            remaining = data.remaining || 0;
+                            totalUpdated += (data.updated || 0);
+                            if (remaining > 0) await new Promise(r => setTimeout(r, 1000));
+                          }
+                          alert(`HLTB Backfill Complete! Total updated: ${totalUpdated}`);
+                        } catch (err: any) { alert(`Backfill stopped: ${err.message}`); } finally { setLoading(false); }
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-blue-400 text-blue-600 hover:dark:bg-blue-500/10 hover:bg-blue-50 rounded-xl transition-colors text-left"
+                    >
+                      <Search size={14} />
+                      Backfill HLTB Cache
+                    </button>
+
+                    <button 
+                      onClick={async () => {
+                        if (!window.confirm('Recalculate ALL points?')) return;
+                        setIsAdminMenuOpen(false);
+                        setLoading(true);
+                        try {
+                          const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
+                          if (res.ok) { alert('Recalculated successfully!'); fetchData(); }
+                          else { const d = await res.json(); alert(`Error: ${d.error}`); }
+                        } catch (err) { alert('Failed to recalculate'); } finally { setLoading(false); }
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-purple-400 text-purple-600 hover:dark:bg-purple-500/10 hover:bg-purple-50 rounded-xl transition-colors text-left"
+                    >
+                      <Clock size={14} />
+                      Recalculate All
+                    </button>
+                    
+                    <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
+                    
+                    <button 
+                      onClick={() => { setIsAdminMenuOpen(false); fetchData(); }}
+                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900 hover:dark:bg-white/5 hover:bg-black/5 rounded-xl transition-colors text-left"
+                    >
+                      <CheckCircle2 size={14} />
+                      Refresh Data
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </section>
 

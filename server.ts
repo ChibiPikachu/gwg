@@ -820,18 +820,38 @@ async function createServer() {
   // Admin APIs
   const adminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      console.log('[Admin Auth] Denied: Not authenticated');
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const currentUser = (req as any).user;
-    const supabase = getSupabase();
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+    
+    // Quick check if already marked as admin in session
+    if (currentUser.isAdmin || currentUser.role === 'admin' || currentUser.role === 'admins') {
+      console.log(`[Admin Auth] Granted via Session: User ${currentUser.displayName}`);
+      return next();
+    }
 
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
-    const { data: profile } = await supabase.from('profiles').select('role').eq('steamid', steamId).single();
+    const supabase = getSupabase();
+    if (!supabase) {
+      console.error('[Admin Auth] Error: Supabase unavailable');
+      return res.status(500).json({ error: 'Database unavailable' });
+    }
+
+    const userId = String(currentUser.id || currentUser.steam_id || currentUser.steamid);
+    
+    // Check by both steamid and discord_id as fallback
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .or(`steamid.eq.${userId},discord_id.eq.${userId}`)
+      .maybeSingle();
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
+      console.log(`[Admin Auth] Denied: User ${userId} (${currentUser.displayName}) has role "${profile?.role || 'none'}"`);
       return res.status(403).json({ error: 'Forbidden' });
     }
+    
+    console.log(`[Admin Auth] Granted via DB: User ${userId} (${currentUser.displayName})`);
     next();
   };
 
@@ -1423,8 +1443,6 @@ async function createServer() {
 
   // Admin Backfill Route
   app.post('/api/admin/backfill-hltb', async (req: Request, res: Response) => {
-    if (!(req as any).isAdmin) return res.status(403).json({ error: 'Unauthorized' });
-
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Supabase unavailable' });
 
