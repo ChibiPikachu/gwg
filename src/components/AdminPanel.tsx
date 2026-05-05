@@ -787,7 +787,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                          <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
                           <div className="flex flex-col">
                             <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
-                            <span className="text-lg font-bold dark:text-white text-slate-800">{sub.achievements_during}</span>
+                            <span className="text-lg font-bold dark:text-white text-slate-800">
+                              {sub.achievements_during}
+                              {sub.totalAchievements > 0 ? ` / ${sub.totalAchievements}` : ''}
+                            </span>
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🕒</span>
@@ -927,7 +930,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆</label>
+                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆 {sub.totalAchievements > 0 && `(Total: ${sub.totalAchievements})`}</label>
                           <input 
                             type="number"
                             className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}

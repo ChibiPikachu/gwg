@@ -77,7 +77,43 @@ async function fetchSteamOwnedGames(steamId: string, supabase: any) {
   }
 }
 
-const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string) => {
+async function fetchSteamAchievementCountForUser(steamId: string, appId: number | string) {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) return 0;
+  
+  try {
+    console.log(`[Steam API] Fetching user achievements for App ID ${appId} and user ${steamId}`);
+    const response = await fetch(`https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid=${appId}&key=${apiKey}&steamid=${steamId}`);
+    const data: any = await response.json();
+    
+    if (data.playerstats?.success) {
+      const achievements = data.playerstats.achievements || [];
+      return achievements.filter((a: any) => a.achieved === 1).length;
+    }
+    return 0;
+  } catch (err) {
+    console.error(`Failed to fetch user achievements for App ID ${appId}:`, err);
+    return 0;
+  }
+}
+
+async function fetchSteamAchievementCount(appId: number | string) {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) return 0;
+  
+  try {
+    console.log(`[Steam API] Fetching achievements for App ID ${appId}`);
+    const response = await fetch(`https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${apiKey}&appid=${appId}`);
+    const data: any = await response.json();
+    const achievements = data.game?.availableGameStats?.achievements || [];
+    return achievements.length;
+  } catch (err) {
+    console.error(`Failed to fetch achievements for App ID ${appId}:`, err);
+    return 0;
+  }
+}
+
+const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string, steamAppId?: number | string) => {
     // 1. Check if game already exists in our 'games' table
     const { data: existingGame } = await supabase
       .from('games')
@@ -85,9 +121,14 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       .eq('id', String(gameId))
       .maybeSingle();
 
-    // If game exists and has HLTB data (> 0) or was definitively not found (-1), return existing ID
+    // If game exists and has HLTB data (> 0) and total achievements (if steam), return existing ID
     if (existingGame && (existingGame.hltb_main > 0 || existingGame.hltb_main === -1)) {
-        return existingGame.id;
+        // If we have a steam app id now but didn't have total achievements before, we should update
+        if (steamAppId && !existingGame.total_achievements) {
+          // Continue to update
+        } else {
+          return existingGame.id;
+        }
     }
 
     // 2. Fetch HLTB data (if game is new OR has 0 hours/null in DB)
@@ -99,30 +140,39 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       console.warn('HLTB fetch failed during sync:', e);
     }
 
+    // 2.5 Fetch Total Achievements if Steam
+    let totalAchievements = existingGame?.total_achievements || 0;
+    if (steamAppId) {
+      const steamTotal = await fetchSteamAchievementCount(steamAppId);
+      if (steamTotal > 0) totalAchievements = steamTotal;
+    }
+
     // 3. Upsert into the 'games' table
-    const gameData = {
+    const gameData: any = {
       id: String(gameId),
       title: title,
       image_url: image,
       hltb_main: hltb?.notFound ? -1 : (hltb?.hltb_main || existingGame?.hltb_main || 0),
       hltb_extras: hltb?.hltb_extras || existingGame?.hltb_extras || 0,
       hltb_completionist: hltb?.hltb_completionist || existingGame?.hltb_completionist || 0,
+      total_achievements: totalAchievements,
       updated_at: new Date().toISOString()
     };
 
-    const { data: newGame, error } = await supabase
-      .from('games')
-      .upsert(gameData, { onConflict: 'id' })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[Sync] Error upserting game:', error);
-      return String(gameId);
+    if (steamAppId) {
+      gameData.steam_appid = parseInt(String(steamAppId));
     }
 
-    return newGame?.id;
-  };
+    const { error: upsertError } = await supabase
+      .from('games')
+      .upsert(gameData, { onConflict: 'id' });
+
+    if (upsertError) {
+      console.error('Failed to sync game record:', upsertError);
+    }
+
+    return gameId;
+};
 
 import { getHLTBData } from './hltb.js';
 
@@ -1098,7 +1148,7 @@ async function createServer() {
 
     try {
       // Sync the game to the games table first
-      const internalGameId = await getAndSyncGameData(supabase, gameTitle || game_title, gameId, gameImage);
+      const internalGameId = await getAndSyncGameData(supabase, gameTitle || game_title, gameId, gameImage, steamAppId);
 
       // Server-side point calculation
       let serverMultiplier = 1.0;
@@ -1207,7 +1257,7 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      // 1. Verify ownership and status
+      // 1. Verify ownership
       const { data: sub, error: fetchError } = await supabase
         .from('submissions')
         .select('*')
@@ -1217,14 +1267,6 @@ async function createServer() {
 
       if (fetchError || !sub) {
         return res.status(404).json({ error: 'Submission not found or unauthorized' });
-      }
-
-      if (sub.status === 'verified' || sub.status === 'rejected') {
-        // Only allow editing if the status is one of the allowed ones
-        const allowedForRevision = ['unfinished', 'abandoned', 'beaten'].includes(sub.completion_status);
-        if (!allowedForRevision && sub.status === 'verified') {
-          return res.status(400).json({ error: 'Cannot edit an approved submission with this status' });
-        }
       }
 
       // 2. Recalculate points
@@ -1334,25 +1376,29 @@ async function createServer() {
         return res.json([]);
       }
 
-      // Separately fetch profiles to avoid complex join failures
+      // Separately fetch profiles and games metadata
       const userIds = Array.from(new Set(submissions.map((s: any) => s.user_id)));
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('steamid, team')
-        .in('steamid', userIds);
-
-      if (profileError) {
-        console.warn('[Admin] Profiles fetch error (ignoring):', profileError);
-      }
+      const gameIds = Array.from(new Set(submissions.map((s: any) => s.game_id)));
+      
+      const [profileRes, gamesRes] = await Promise.all([
+        supabase.from('profiles').select('steamid, team').in('steamid', userIds),
+        supabase.from('games').select('id, total_achievements').in('id', gameIds)
+      ]);
 
       const teamMap: Record<string, string> = {};
-      (profiles || []).forEach((p: any) => {
+      (profileRes.data || []).forEach((p: any) => {
         teamMap[p.steamid] = p.team || 'none';
+      });
+
+      const totalAchMap: Record<string, number> = {};
+      (gamesRes.data || []).forEach((g: any) => {
+        totalAchMap[g.id] = g.total_achievements || 0;
       });
 
       const enriched = submissions.map((s: any) => ({
         ...s,
-        userTeam: teamMap[s.user_id] || 'none'
+        userTeam: teamMap[s.user_id] || 'none',
+        totalAchievements: totalAchMap[s.game_id] || 0
       }));
 
       console.log(`[Admin] Successfully returning ${enriched.length} submissions.`);
@@ -1863,11 +1909,13 @@ async function createServer() {
 
       const game = games.find((g: any) => String(g.appid) === String(appId));
       if (game) {
+        const achievements = await fetchSteamAchievementCountForUser(steamId, appId);
         return res.json({ 
           owned: true, 
           playtime_forever: game.playtime_forever,
           playtime_2weeks: game.playtime_2weeks || 0,
-          name: game.name
+          name: game.name,
+          achievements: achievements
         });
       }
 
@@ -1914,14 +1962,33 @@ async function createServer() {
       const normalize = (str: string) => str.toLowerCase().replace(/[®™©]/g, '').replace(/[^a-z0-9]/g, '');
       const searchName = normalize(name as string);
 
-      // Fuzzy match or exact match
-      const game = games.find((g: any) => normalize(g.name) === searchName);
+      // 1. Try exact normalized match
+      let game = games.find((g: any) => normalize(g.name) === searchName);
+      
+      // 2. Try prefix match if not found
+      if (!game) {
+        game = games.find((g: any) => {
+          const gn = normalize(g.name);
+          return gn.startsWith(searchName) || searchName.startsWith(gn);
+        });
+      }
+
+      // 3. Try fuzzy/contains match if still not found
+      if (!game) {
+        game = games.find((g: any) => {
+          const gn = normalize(g.name);
+          return gn.includes(searchName) || searchName.includes(gn);
+        });
+      }
+
       if (game) {
+        const achievements = await fetchSteamAchievementCountForUser(steamId, game.appid);
         return res.json({ 
           owned: true, 
           appId: game.appid,
           playtime_forever: game.playtime_forever,
-          name: game.name
+          name: game.name,
+          achievements: achievements
         });
       }
 

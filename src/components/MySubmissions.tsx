@@ -693,7 +693,7 @@ export default function MySubmissions() {
           
           {filteredSubmissions.length === 0 ? (
             <div className="text-center py-12 dark:bg-white/5 bg-black/5 rounded-2xl border border-dashed dark:border-white/10 border-slate-200">
-               <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here</p>
+               <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here...</p>
                <p className="text-[10px] opacity-20 mt-1 dark:text-white text-slate-600 italic">No entries match the selected filter</p>
             </div>
           ) : (
@@ -753,17 +753,15 @@ export default function MySubmissions() {
                       </div>
                       
                       <div className="flex flex-col gap-2 w-full max-w-[120px]">
-                        {(sub.status === 'pending' || sub.status === 'rejected' || (sub.status === 'verified' && ['unfinished', 'abandoned', 'beaten'].includes(sub.completion_status))) && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEdit(sub);
-                            }}
-                            className="w-full bg-white/20 hover:bg-white/30 text-white rounded-lg py-2 font-bold text-[10px] uppercase transition-all"
-                          >
-                            Edit
-                          </button>
-                        )}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(sub);
+                          }}
+                          className="w-full bg-white/20 hover:bg-white/30 text-white rounded-lg py-2 font-bold text-[10px] uppercase transition-all"
+                        >
+                          Edit
+                        </button>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
