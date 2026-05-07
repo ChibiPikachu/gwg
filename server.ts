@@ -800,12 +800,33 @@ async function createServer() {
         if (steamData[queryStr] && steamData[queryStr].success) {
           const game = steamData[queryStr].data;
           return res.json([{
-            id: queryStr, // Use App ID as ID if found on Steam directly
+            id: queryStr, 
             title: game.name,
             image: game.header_image || `https://cdn.cloudflare.steamstatic.com/steam/apps/${queryStr}/header.jpg`,
             summary: game.short_description,
             steam_appid: parseInt(queryStr)
           }]);
+        } else {
+          // FALLBACK FOR DELISTED / F2P GAMES
+          console.log(`[Steam Search] Store API failed for ${queryStr}. Trying Schema fallback...`);
+          try {
+            const apiKey = process.env.STEAM_API_KEY;
+            const schemaRes = await fetch(`https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${apiKey}&appid=${queryStr}`);
+            const schemaData = await schemaRes.json();
+            
+            if (schemaData.game && schemaData.game.gameName) {
+              return res.json([{
+                id: queryStr,
+                title: schemaData.game.gameName,
+                // The Steam CDN often keeps images for delisted games alive indefinitely
+                image: `https://cdn.cloudflare.steamstatic.com/steam/apps/${queryStr}/header.jpg`,
+                summary: "Delisted, Age-Restricted, or Free-to-Play game (No public Store Page available).",
+                steam_appid: parseInt(queryStr)
+              }]);
+            }
+          } catch (err) {
+             console.log(`[Steam Search] Schema fallback also failed for ${queryStr}.`);
+          }
         }
       }
 
