@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu, X } from 'lucide-react';
+import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu, X, User } from 'lucide-react';
 import { UserProfile, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -21,22 +21,26 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
   const [showNotifications, setShowNotifications] = React.useState(false);
+  const [showProfileMenu, setShowProfileMenu] = React.useState(false);
+  
   const notificationRef = React.useRef<HTMLDivElement>(null);
+  const profileContainerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
+      if (profileContainerRef.current && !profileContainerRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
     };
 
-    if (showNotifications) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showNotifications]);
+  }, []);
 
   React.useEffect(() => {
     localStorage.setItem('read_notification_ids', JSON.stringify(Array.from(readIds)));
@@ -138,11 +142,24 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
         </div>
       </div>
       
-      <div className="flex items-center gap-3 md:gap-6">
+      <div className="flex items-center gap-2 md:gap-4">
+        
+        {/* Single Theme Toggle Button */}
+        <button 
+          onClick={toggleDarkMode}
+          className="p-2 w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 transition-colors border border-black/5 dark:border-white/5"
+          title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {isDarkMode ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
+
         {user && (
           <div className="relative">
             <button 
-              onClick={() => setShowNotifications(!showNotifications)}
+              onClick={() => {
+                setShowNotifications(!showNotifications);
+                setShowProfileMenu(false);
+              }}
               className="p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors relative"
             >
               <Bell size={20} />
@@ -238,57 +255,63 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           </div>
         )}
 
+        {/* Profile Dropdown Container */}
         {user && (
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={onProfileClick}>
-            <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block dark:text-white text-slate-600">Welcome {user.steamName}!</span>
-            <div className={cn(
-              "w-10 h-10 rounded-full border-2 p-0.5 transition-colors",
-              user?.team === 'blue' && "border-blue-accent/50 group-hover:border-blue-accent",
-              user?.team === 'green' && "border-green-accent/50 group-hover:border-green-accent",
-              user?.team === 'purple' && "border-purple-accent/50 group-hover:border-purple-accent",
-              user?.team === 'red' && "border-red-accent/50 group-hover:border-red-accent",
-              (!user || user.team === 'none') && "dark:border-white/20 border-black/10"
-            )}>
-              <img 
-                src={user.steamAvatar || user.discordAvatar} 
-                alt="Avatar" 
-                className="w-full h-full rounded-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+          <div className="relative" ref={profileContainerRef}>
+            <div 
+              className="flex items-center gap-3 cursor-pointer group" 
+              onClick={() => {
+                setShowProfileMenu(!showProfileMenu);
+                setShowNotifications(false);
+              }}
+            >
+              <span className="text-sm opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block dark:text-white text-slate-600">
+                Welcome {user.steamName}!
+              </span>
+              <div className={cn(
+                "w-10 h-10 rounded-full border-2 p-0.5 transition-colors",
+                user?.team === 'blue' && "border-blue-accent/50 group-hover:border-blue-accent",
+                user?.team === 'green' && "border-green-accent/50 group-hover:border-green-accent",
+                user?.team === 'purple' && "border-purple-accent/50 group-hover:border-purple-accent",
+                user?.team === 'red' && "border-red-accent/50 group-hover:border-red-accent",
+                (!user || user.team === 'none') && "dark:border-white/20 border-black/10"
+              )}>
+                <img 
+                  src={user.steamAvatar || user.discordAvatar} 
+                  alt="Avatar" 
+                  className="w-full h-full rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
             </div>
+
+            {/* Profile Dropdown Menu */}
+            {showProfileMenu && (
+              <div className="absolute top-full right-0 mt-3 w-48 dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 rounded-xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <button 
+                  onClick={() => {
+                    onProfileClick();
+                    setShowProfileMenu(false);
+                  }} 
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:bg-slate-50 dark:hover:bg-white/5 dark:text-white text-slate-800 transition-colors"
+                >
+                  <User size={16} className="opacity-50" /> View Profile
+                </button>
+                <div className="h-px w-full bg-black/5 dark:bg-white/5" />
+                <button 
+                  onClick={() => {
+                    onLogout();
+                    setShowProfileMenu(false);
+                  }} 
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 transition-colors"
+                >
+                  <LogOut size={16} className="opacity-70" /> Log Out
+                </button>
+              </div>
+            )}
           </div>
         )}
-        
-        {user && (
-          <button 
-            onClick={onLogout}
-            className="p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors"
-            title="Logout"
-          >
-            <LogOut size={20} />
-          </button>
-        )}
 
-        <div className="flex items-center bg-black/30 dark:bg-black/30 bg-slate-100 rounded-full p-1 border border-white/5 dark:border-white/5 border-slate-200">
-          <button 
-            onClick={() => isDarkMode && toggleDarkMode()}
-            className={cn(
-              "w-8 h-8 flex items-center justify-center rounded-full transition-all",
-              !isDarkMode ? "bg-white text-amber-500 shadow-sm" : "text-slate-400 hover:text-slate-200"
-            )}
-          >
-            <Sun size={14} />
-          </button>
-          <button 
-            onClick={() => !isDarkMode && toggleDarkMode()}
-            className={cn(
-              "w-8 h-8 flex items-center justify-center rounded-full transition-all",
-              isDarkMode ? "bg-[#1a1a1a] text-blue-400 shadow-sm" : "text-slate-400 hover:text-slate-600"
-            )}
-          >
-            <Moon size={14} />
-          </button>
-        </div>
       </div>
     </div>
   );
