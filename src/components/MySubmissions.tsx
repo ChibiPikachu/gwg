@@ -698,7 +698,7 @@ export default function MySubmissions() {
                <p className="text-[10px] opacity-20 mt-1 dark:text-white text-slate-600 italic">No entries match the selected filter</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6">
               {filteredSubmissions.map((sub) => (
                 <div 
                   key={sub.id} 
@@ -847,4 +847,3 @@ export default function MySubmissions() {
     </div>
   );
 }
-

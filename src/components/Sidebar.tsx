@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, ListChecks, Group, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, ListChecks, Group, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS, CompetitionEvent } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
@@ -128,7 +128,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
             onClick={onClose}
             className="lg:hidden p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white shrink-0"
           >
-            <Settings size={20} className="rotate-45" />
+            <XCircle size={20} className="rotate-45" />
           </button>
         </div>
 
