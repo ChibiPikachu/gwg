@@ -1,10 +1,10 @@
 import React from 'react';
+import { Submission, TEAM_COLORS } from '@/types';
 import { CheckCircle2, XCircle, Clock, Eye, MessageSquare } from 'lucide-react';
-// Assuming you have these imports elsewhere:
-// import { Submission, TEAM_COLORS } from '@/types';
-// import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 export default function AdminSubmissions() {
+  // Mock data for now, ideally fetched from Supabase
   const submissions: any[] = [
     { 
       id: '1', 
@@ -35,78 +35,83 @@ export default function AdminSubmissions() {
   ];
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-8 md:gap-12 overflow-x-hidden">
+    <div className="p-3 sm:p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-6 md:gap-12 overflow-x-hidden">
       <section>
-        <h2 className="text-xl font-bold mb-2">Submission Queue</h2>
-        <p className="opacity-60 text-sm mb-6 md:mb-8">Review and verify player game completions.</p>
+        <h2 className="text-lg md:text-xl font-bold mb-1 md:mb-2">Submission Queue</h2>
+        <p className="opacity-60 text-xs md:text-sm mb-6 md:mb-8">Review and verify player game completions.</p>
         
-        <div className="flex flex-wrap gap-3 md:gap-4 mb-6 md:mb-8">
-           <button className="px-5 md:px-6 py-2 bg-pink-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-pink-500/20">Pending (2)</button>
-           <button className="px-5 md:px-6 py-2 bg-white/5 text-white/50 rounded-lg text-sm font-bold hover:bg-white/10 transition-all">Verified</button>
-           <button className="px-5 md:px-6 py-2 bg-white/5 text-white/50 rounded-lg text-sm font-bold hover:bg-white/10 transition-all">Rejected</button>
+        <div className="flex gap-2 md:gap-4 mb-6 md:mb-8 overflow-x-auto pb-2 scrollbar-hide">
+           <button className="whitespace-nowrap px-4 md:px-6 py-2 bg-pink-500 text-white rounded-lg text-xs md:text-sm font-bold shadow-lg shadow-pink-500/20">Pending (2)</button>
+           <button className="whitespace-nowrap px-4 md:px-6 py-2 bg-white/5 text-white/50 rounded-lg text-xs md:text-sm font-bold hover:bg-white/10 transition-all">Verified</button>
+           <button className="whitespace-nowrap px-4 md:px-6 py-2 bg-white/5 text-white/50 rounded-lg text-xs md:text-sm font-bold hover:bg-white/10 transition-all">Rejected</button>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 md:gap-4">
           {submissions.map((sub) => (
-            <div key={sub.id} className="bg-[#111111] border border-white/5 rounded-2xl p-4 md:p-6 flex flex-col lg:flex-row gap-6 md:gap-8 group hover:border-white/10 transition-all">
+            <div key={sub.id} className="bg-[#111111] border border-white/5 rounded-2xl p-3 md:p-6 flex flex-row gap-3 md:gap-8 group hover:border-white/10 transition-all items-stretch">
               
-              {/* Image Container - Added shrink-0 and ensured it takes full width gracefully on mobile */}
-              <div className="w-full lg:w-40 aspect-video rounded-xl overflow-hidden shadow-xl shrink-0">
+              {/* Image Column */}
+              <div className="w-16 sm:w-24 md:w-40 aspect-video rounded-lg md:rounded-xl overflow-hidden shadow-xl flex-shrink-0 self-start md:self-auto">
                  <img src={sub.gameImage} alt="" className="w-full h-full object-cover" />
               </div>
               
-              <div className="flex-1 flex flex-col gap-4 min-w-0">
-                 {/* Header - Allowed wrapping on very small screens */}
-                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                       <img src={sub.userAvatar} className="w-8 h-8 rounded-full border border-pink-500/30 shrink-0" alt="" />
-                       <div className="min-w-0">
-                          <h3 className="font-bold text-lg truncate sm:whitespace-normal break-words">{sub.gameTitle}</h3>
-                          <p className="text-sm opacity-50 font-medium">Submitted by <span className="text-pink-400 font-bold">{sub.userName}</span></p>
+              {/* Content Column (Added min-w-0 to prevent flex blowout) */}
+              <div className="flex-1 min-w-0 flex flex-col gap-2 md:gap-4">
+                 <div className="flex flex-col sm:flex-row justify-between items-start gap-1 sm:gap-0">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0 w-full">
+                       <img src={sub.userAvatar} className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-pink-500/30 flex-shrink-0" alt="" />
+                       <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-sm md:text-lg truncate">{sub.gameTitle}</h3>
+                          <p className="text-xs md:text-sm opacity-50 font-medium truncate">Submitted by <span className="text-pink-400 font-bold">{sub.userName}</span></p>
                        </div>
                     </div>
-                    <div className="flex items-center gap-2 text-xs opacity-30 shrink-0">
-                       <Clock size={14} />
+                    <div className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs opacity-30 flex-shrink-0 mt-1 sm:mt-0">
+                       <Clock className="w-3 h-3 md:w-3.5 md:h-3.5" />
                        {new Date(sub.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                  </div>
 
-                 {/* Stats Grid - Reduced gap on mobile so it doesn't blow out the width */}
-                 <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:gap-8 bg-black/20 p-3 md:p-4 rounded-xl border border-white/5">
-                    <div className="flex flex-col gap-1">
-                       <span className="text-[10px] uppercase font-bold opacity-30 truncate">Achievements</span>
-                       <span className="text-lg md:text-xl font-mono text-emerald-400">{sub.achievements}</span>
+                 {/* Stats Grid */}
+                 <div className="grid grid-cols-3 gap-2 md:gap-8 bg-black/20 p-2 md:p-4 rounded-lg md:rounded-xl border border-white/5">
+                    <div className="flex flex-col gap-0.5 md:gap-1 min-w-0">
+                       <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 truncate">Achievements</span>
+                       <span className="text-sm md:text-xl font-mono text-emerald-400 truncate">{sub.achievements}</span>
                     </div>
-                    <div className="flex flex-col gap-1">
-                       <span className="text-[10px] uppercase font-bold opacity-30 truncate">Hours</span>
-                       <span className="text-lg md:text-xl font-mono text-blue-400">{sub.hours}h</span>
+                    <div className="flex flex-col gap-0.5 md:gap-1 min-w-0">
+                       <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 truncate">Hours</span>
+                       <span className="text-sm md:text-xl font-mono text-blue-400 truncate">{sub.hours}h</span>
                     </div>
-                    <div className="flex flex-col gap-1">
-                       <span className="text-[10px] uppercase font-bold opacity-30 truncate">Points</span>
-                       <span className="text-lg md:text-xl font-mono text-amber-400">{sub.points}</span>
+                    <div className="flex flex-col gap-0.5 md:gap-1 min-w-0">
+                       <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 truncate">Points</span>
+                       <span className="text-sm md:text-xl font-mono text-amber-400 truncate">{sub.points}</span>
                     </div>
                  </div>
 
+                 {/* Notes */}
                  {sub.notes && (
-                    <div className="flex items-start gap-2 p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg">
-                       <MessageSquare size={16} className="text-blue-400 mt-0.5 shrink-0" />
-                       <p className="text-sm text-blue-100/70">{sub.notes}</p>
+                    <div className="flex items-start gap-1.5 md:gap-2 p-2 md:p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+                       <MessageSquare className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                       <p className="text-xs md:text-sm text-blue-100/70 line-clamp-2 md:line-clamp-none">{sub.notes}</p>
                     </div>
                  )}
               </div>
 
-              {/* Action Buttons - Switched border-left to border-top on mobile, fixed paddings */}
-              <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:justify-center border-t lg:border-t-0 lg:border-l border-white/5 pt-4 lg:pt-0 lg:pl-8 mt-2 lg:mt-0 shrink-0">
-                 <button className="flex-1 lg:flex-none flex items-center justify-center lg:justify-start gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-xl text-sm font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20">
-                    <CheckCircle2 size={18} /> Verify
+              {/* Actions Column */}
+              <div className="flex flex-col gap-1.5 md:gap-2 justify-center border-l border-white/5 pl-2 md:pl-8 flex-shrink-0">
+                 <button className="flex items-center justify-center gap-2 px-2 md:px-6 py-2 md:py-2.5 bg-emerald-500 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20" title="Verify">
+                    <CheckCircle2 className="w-4 h-4 md:w-[18px] md:h-[18px]" /> 
+                    <span className="hidden sm:inline">Verify</span>
                  </button>
-                 <button className="flex-1 lg:flex-none flex items-center justify-center lg:justify-start gap-2 px-6 py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-all">
-                    <XCircle size={18} /> Reject
+                 <button className="flex items-center justify-center gap-2 px-2 md:px-6 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-all" title="Reject">
+                    <XCircle className="w-4 h-4 md:w-[18px] md:h-[18px]" /> 
+                    <span className="hidden sm:inline">Reject</span>
                  </button>
-                 <button className="flex-1 lg:flex-none flex items-center justify-center lg:justify-start gap-2 px-6 py-2.5 bg-white/5 text-white/50 rounded-xl text-sm font-bold hover:bg-white/10 transition-all">
-                    <Eye size={18} /> Details
+                 <button className="flex items-center justify-center gap-2 px-2 md:px-6 py-2 md:py-2.5 bg-white/5 text-white/50 rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-white/10 transition-all" title="Details">
+                    <Eye className="w-4 h-4 md:w-[18px] md:h-[18px]" /> 
+                    <span className="hidden sm:inline">Details</span>
                  </button>
               </div>
+              
             </div>
           ))}
         </div>
