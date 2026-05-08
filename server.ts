@@ -1141,6 +1141,36 @@ async function createServer() {
     }
   });
 
+  // --- ADD THIS HELPER FUNCTION ---
+  async function translateIgdbToSteam(igdbId: string | number) {
+    try {
+      const token = await getIGDBToken();
+      const response = await fetch('https://api.igdb.com/v4/external_games', {
+        method: 'POST',
+        headers: {
+          'Client-ID': process.env.IGDB_CLIENT_ID!,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain'
+        },
+        // Category 1 = Steam
+        body: `fields uid; where game = ${igdbId} & category = 1; limit 1;`
+      });
+
+      if (!response.ok) return null;
+      
+      const data: any = await response.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].uid) {
+        console.log(`[IGDB Translation] Translated IGDB ID ${igdbId} to Steam ID ${data[0].uid}`);
+        return parseInt(data[0].uid);
+      }
+      return null;
+    } catch (err) {
+      console.error('[IGDB Translation] Failed to translate ID:', err);
+      return null;
+    }
+  }
+
+  // --- REPLACE YOUR EXISTING /api/submissions POST ROUTE WITH THIS ---
   app.post('/api/submissions', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -1168,8 +1198,15 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      // Sync the game to the games table first
-      const internalGameId = await getAndSyncGameData(supabase, gameTitle || game_title, gameId, gameImage, steamAppId);
+      // ---> THE MAGIC HAPPENS HERE <---
+      // If we don't have a Steam ID from the frontend, but we have a game ID, try translating it
+      let finalSteamAppId = steamAppId;
+      if (!finalSteamAppId && gameId) {
+         finalSteamAppId = await translateIgdbToSteam(gameId);
+      }
+
+      // Sync the game to the games table first (using our translated finalSteamAppId)
+      const internalGameId = await getAndSyncGameData(supabase, gameTitle || game_title, gameId, gameImage, finalSteamAppId);
 
       // Server-side point calculation
       let serverMultiplier = 1.0;
@@ -1226,7 +1263,7 @@ async function createServer() {
         calculated_score: serverPoints,
         completion_status: completionStatus || 'beaten',
         platform: platform || 'Others',
-        steam_appid: steamAppId || null,
+        steam_appid: finalSteamAppId || null, // Saved to DB here!
         points: serverPoints, 
         notes: notes || '',
         status: 'pending',
