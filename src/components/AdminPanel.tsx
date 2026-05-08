@@ -686,24 +686,43 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
+              <div className="grid grid-cols-1 gap-4 md:gap-6">
+            {filteredSubmissions.length === 0 ? (
+              <div className="p-8 md:p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
+                <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
+              </div>
+            ) : (
               filteredSubmissions.map(sub => (
                 <div key={sub.id} className={cn(
-                  "p-3 sm:p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-row gap-3 md:gap-8 items-stretch md:items-center relative overflow-hidden shadow-md",
+                  "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden shadow-md",
                   (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
                 )}>
-                  {/* Thumbnail */}
-                  <div className="flex flex-col gap-4 w-16 sm:w-24 md:w-32 shrink-0 self-start md:self-auto mt-1 md:mt-0">
-                    <div className="w-full aspect-[3/4] rounded-lg md:rounded-xl overflow-hidden shadow-xl relative group bg-black/20">
-                        <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
-                    </div>
+                  
+                  {/* Top Right Clickable ID */}
+                  <a
+                    // Change the URL base here if you use IGDB IDs instead of Steam App IDs
+                    href={sub.game_id ? `https://store.steampowered.com/app/${sub.game_id}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute top-2 right-2 md:top-4 md:right-4 z-10 bg-black/60 backdrop-blur-md hover:bg-black/80 text-white text-[10px] font-mono px-2 py-1 rounded-md border border-white/20 transition-all flex items-center gap-1.5 shadow-lg"
+                    title="Open Store Page"
+                  >
+                    <ExternalLink size={10} />
+                    {sub.game_id || 'ID N/A'}
+                  </a>
+
+                  {/* The Hybrid Cover Image */}
+                  {/* Mobile: Bleeds to edges (-mx-4 -mt-4) as a banner. Desktop: Resets to normal vertical cover. */}
+                  <div className="-mx-4 -mt-4 md:mx-0 md:mt-0 w-auto md:w-32 h-32 sm:h-48 md:h-auto md:aspect-[3/4] shrink-0 relative bg-black/20 md:rounded-xl overflow-hidden md:shadow-xl">
+                      <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   </div>
 
                   {/* Content - Forced min-w-0 prevents blowout */}
-                  <div className="flex-1 min-w-0 flex flex-col gap-2 md:gap-4 justify-between md:justify-start">
+                  <div className="flex-1 min-w-0 flex flex-col gap-3 md:gap-4 justify-between md:justify-start">
                     
                     {/* Header Info */}
                     <div className="flex flex-col xl:flex-row justify-between xl:items-start gap-2 md:gap-4 min-w-0">
-                      <div className="min-w-0">
+                      <div className="min-w-0 pr-16 md:pr-24"> {/* Added right padding so text doesn't overlap the absolute ID tag */}
                         <div className="flex items-center gap-2 mb-1.5 md:mb-2">
                            <div className={cn(
                              "px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] uppercase font-bold tracking-widest border shrink-0",
@@ -810,8 +829,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     </div>
 
                     {/* Game Title */}
-                    <div className="flex flex-col min-w-0 mt-1 md:mt-0">
-                       <h4 className="text-sm sm:text-lg md:text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
+                    <div className="flex flex-col min-w-0">
+                       <h4 className="text-base sm:text-lg md:text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
                     </div>
 
                     {/* Notes */}
@@ -829,7 +848,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     )}
 
                     {/* Actions footer */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4 mt-2 md:mt-4 w-full">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4 mt-1 w-full">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className={cn(
                             "text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full flex items-center gap-1.5 md:gap-2",
@@ -898,7 +917,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                   {/* Review Dialog */}
                   {reviewingId === sub.id && (
-                    <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/80 md:bg-black/60 p-4 md:p-6 flex flex-col gap-4 md:gap-6 justify-center animate-in fade-in zoom-in duration-200 overflow-y-auto">
+                     // ... Keep the dialog code the exact same here
+                     <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/80 md:bg-black/60 p-4 md:p-6 flex flex-col gap-4 md:gap-6 justify-center animate-in fade-in zoom-in duration-200 overflow-y-auto">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex flex-col">
                           <h4 className={cn("font-bold uppercase tracking-widest text-sm md:text-base", theme.text)}>Modifying {sub.user_name}</h4>
