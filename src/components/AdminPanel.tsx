@@ -1042,7 +1042,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     </div>
                   )}
                 </div>
-              ))
+              ); // Closes the return statement
+            }) // Closes the map block with a curly brace!
             )}
           </div>
         </section>
