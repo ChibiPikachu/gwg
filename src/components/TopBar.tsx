@@ -152,7 +152,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
             </button>
 
             {showNotifications && (
-              <div ref={notificationRef} className="absolute right-0 mt-4 w-96 dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              <div ref={notificationRef} className="fixed top-16 left-4 right-4 sm:absolute sm:top-auto sm:left-auto sm:right-0 sm:mt-4 sm:w-96 dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="p-4 border-b border-black/5 dark:border-white/5 dark:bg-white/5 bg-slate-50 flex justify-between items-center">
                   <span className="text-xs uppercase font-bold opacity-40 tracking-widest dark:text-white text-slate-500">Notifications</span>
                   <button onClick={() => setShowNotifications(false)} className="opacity-40 hover:opacity-100 dark:text-white text-slate-800 transition-colors">
