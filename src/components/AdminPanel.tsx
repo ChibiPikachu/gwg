@@ -330,7 +330,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-8 md:gap-12">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-6 md:gap-12">
       {backfillProgress && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4 animate-in slide-in-from-top-4 duration-300">
            <div className="dark:bg-[#1a1a1a] bg-white border dark:border-blue-500/30 border-blue-200 rounded-2xl shadow-2xl p-4 flex flex-col gap-3">
@@ -384,11 +384,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         </button>
       </div>
 
-      <section className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
-        <div className="flex-1 w-full flex flex-col gap-6">
+      <section className="flex flex-col lg:flex-row gap-4 md:gap-6 justify-between items-start lg:items-center">
+        <div className="flex-1 w-full flex flex-col gap-4 md:gap-6">
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div className="w-full sm:max-w-md">
-              <h2 className="text-xl font-bold mb-4 dark:text-white text-slate-900">Search & Filters</h2>
+              <h2 className="text-lg md:text-xl font-bold mb-2 md:mb-4 dark:text-white text-slate-900">Search & Filters</h2>
               <div className="relative group">
                 <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 dark:text-white/20 text-slate-300 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
                 <input 
@@ -402,11 +402,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             </div>
           </div>
           
-          <div className="flex flex-wrap gap-2 md:gap-3">
+          <div className="flex flex-wrap gap-2">
             <button 
               onClick={() => setFilterTeam('all')}
               className={cn(
-                  "px-6 py-2 rounded-lg text-sm font-bold transition-all dark:bg-white/5 bg-black/5 dark:border-transparent border-black/5 hover:dark:bg-white/10 hover:bg-black/10 dark:text-white text-slate-700",
+                  "px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-bold transition-all dark:bg-white/5 bg-black/5 dark:border-transparent border-black/5 hover:dark:bg-white/10 hover:bg-black/10 dark:text-white text-slate-700",
                   filterTeam === 'all' && "dark:bg-white/10 bg-black/10 ring-1 dark:ring-white/20 ring-black/10 border-white/10"
               )}
             >
@@ -417,7 +417,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 key={team}
                 onClick={() => setFilterTeam(team)}
                 className={cn(
-                    "px-6 py-2 rounded-lg text-sm font-bold transition-all",
+                    "px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-bold transition-all",
                     filterTeam === team 
                       ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
                       : "dark:bg-white/5 bg-black/5 dark:text-white text-slate-700 opacity-50 border border-transparent hover:opacity-100"
@@ -431,7 +431,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto relative">
           <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto order-last sm:order-first">
-            <span className={cn("text-2xl font-mono font-bold", theme.text)}>
+            <span className={cn("text-xl md:text-2xl font-mono font-bold", theme.text)}>
               {activeTab === 'users' ? filteredUsers.length : filteredSubmissions.length}
             </span>
             <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">
@@ -562,22 +562,22 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         <>
 
           <section>
-            <h2 className="text-xl font-bold mb-8">User Directory</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+            <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-8">User Directory</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 md:gap-y-12">
               {filteredUsers.map((u) => (
-                <div key={u.steamid} className="flex flex-col gap-5 p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm dark:shadow-none">
-                  <div className="flex items-center gap-4">
+                <div key={u.steamid} className="flex flex-col gap-4 md:gap-5 p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm dark:shadow-none min-w-0">
+                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
                       <button 
                         onClick={() => onViewProfile?.(u.steamid)}
                         className={cn(
-                          "w-14 h-14 rounded-full border-2 p-1 transition-transform hover:scale-110 active:scale-95",
+                          "w-12 h-12 md:w-14 md:h-14 rounded-full border-2 p-1 shrink-0 transition-transform hover:scale-110 active:scale-95",
                           u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "dark:border-white/10 border-black/10"
                         )}
                       >
                         <img src={u.steam_avatar} alt="" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
                       </button>
-                      <div className="flex flex-col overflow-hidden">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
                             <span className="text-sm font-black text-blue-400 truncate">{u.steam_name}</span>
                             {u.discord_name && (
                               <span className="text-[10px] font-bold dark:text-white/40 text-slate-400 truncate">
@@ -585,23 +585,23 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 dark:text-white text-slate-500">Points:</span>
                             <span className={cn("text-xs font-mono font-bold", theme.text)}>{u.points || 0}</span>
                         </div>
                       </div>
                   </div>
 
-                      <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-2 md:gap-3">
                         <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Assign to team:</span>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap md:flex-nowrap gap-2">
                           {teamsFilter.map(team => (
                               <button 
                                 key={team}
                                 disabled={updating === u.steamid}
                                 onClick={() => assignTeam(u.steamid, team)}
                                 className={cn(
-                                    "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
+                                    "flex-1 py-2 px-1 rounded-lg text-[9px] md:text-[10px] font-bold uppercase transition-all",
                                     (u.team === team || (!u.team && team === 'none')) 
                                       ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
                                       : "dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:bg-white/10 hover:bg-slate-100",
@@ -612,19 +612,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               </button>
                           ))}
                           
-                          <div className="relative group/settings shrink-0">
+                          <div className="relative group/settings shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
                              <button
                                onClick={() => setSettingsUserId(settingsUserId === u.steamid ? null : u.steamid)}
-                               className="h-full px-3 dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-slate-900 rounded-lg transition-colors flex items-center justify-center border dark:border-transparent border-black/5"
+                               className="h-full w-full py-2 sm:py-0 px-3 dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-slate-900 rounded-lg transition-colors flex items-center justify-center border dark:border-transparent border-black/5"
                              >
                                <Settings size={14} className={cn(settingsUserId === u.steamid && theme.text)} />
                              </button>
-                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-[10px] font-bold rounded opacity-0 group-hover/settings:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-30">
+                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-[10px] font-bold rounded opacity-0 sm:group-hover/settings:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-30 hidden sm:block">
                                Settings
                              </div>
                              
                              {settingsUserId === u.steamid && (
-                               <div className="absolute right-0 bottom-full mb-3 w-48 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                               <div className="absolute right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 bottom-full mb-3 w-48 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                                  <div className="p-2 flex flex-col gap-1">
                                    <button 
                                      onClick={() => handleUpdateRole(u.steamid, u.role === 'admin' ? 'member' : 'admin')}
@@ -655,17 +655,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           </section>
         </>
       ) : (
-        <section className="flex flex-col gap-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <h2 className="text-xl font-bold">Review Submissions</h2>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex dark:bg-[#111111] bg-slate-100 rounded-xl border dark:border-white/5 border-black/5 p-1">
+        <section className="flex flex-col gap-6 md:gap-8">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6">
+            <h2 className="text-lg md:text-xl font-bold">Review Submissions</h2>
+            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 md:gap-4 w-full sm:w-auto">
+              <div className="flex overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0 scrollbar-hide dark:bg-[#111111] bg-slate-100 rounded-xl border dark:border-white/5 border-black/5 p-1 shrink-0">
                 {(['all', 'pending', 'verified', 'rejected'] as const).map((status) => (
                   <button
                     key={status}
                     onClick={() => setSubStatusFilter(status)}
                     className={cn(
-                      "px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all",
+                      "px-3 md:px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap",
                       subStatusFilter === status ? theme.bg + " text-white" : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
                     )}
                   >
@@ -673,148 +673,151 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-4 text-[10px] uppercase tracking-widest font-bold opacity-30 ml-4">
+              <div className="flex items-center gap-3 md:gap-4 text-[10px] uppercase tracking-widest font-bold opacity-30">
                 <span className="flex items-center gap-1"><Clock size={12} /> {submissions.filter(s => s.status === 'pending').length} Pending</span>
                 <span className="flex items-center gap-1"><CheckCircle2 size={12} /> {submissions.filter(s => s.status === 'verified').length} Verified</span>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 gap-4 md:gap-6">
             {filteredSubmissions.length === 0 ? (
-              <div className="p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
-                <p className="opacity-30 dark:text-white text-slate-500">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
+              <div className="p-8 md:p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
+                <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
               filteredSubmissions.map(sub => (
                 <div key={sub.id} className={cn(
-                  "p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-8 items-center relative overflow-hidden shadow-md",
+                  "p-3 sm:p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-row gap-3 md:gap-8 items-stretch md:items-center relative overflow-hidden shadow-md",
                   (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
                 )}>
-                  <div className="flex flex-col gap-4 w-full md:w-32 shrink-0">
-                    <div className="w-full aspect-video md:aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative group bg-black/20">
+                  {/* Thumbnail */}
+                  <div className="flex flex-col gap-4 w-16 sm:w-24 md:w-32 shrink-0 self-start md:self-auto mt-1 md:mt-0">
+                    <div className="w-full aspect-square md:aspect-[3/4] rounded-lg md:rounded-xl overflow-hidden shadow-xl relative group bg-black/20">
                         <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                     </div>
                   </div>
 
-                  <div className="flex-1 flex flex-col gap-4 w-full">
-                    <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
+                  {/* Content - Forced min-w-0 prevents blowout */}
+                  <div className="flex-1 min-w-0 flex flex-col gap-2 md:gap-4 justify-between md:justify-start">
+                    
+                    {/* Header Info */}
+                    <div className="flex flex-col xl:flex-row justify-between xl:items-start gap-2 md:gap-4 min-w-0">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5 md:mb-2">
                            <div className={cn(
-                             "px-2 py-0.5 rounded text-[8px] uppercase font-bold tracking-widest border",
+                             "px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] uppercase font-bold tracking-widest border shrink-0",
                              (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].primary : TEAM_COLORS.none.primary,
                              (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].border : TEAM_COLORS.none.border,
                              (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].secondary : TEAM_COLORS.none.secondary
                            )}>
                              Team {sub.userTeam || 'none'}
                            </div>
-                           <span className="text-[10px] opacity-30 font-bold uppercase tracking-widest dark:text-white text-slate-500">Submission</span>
+                           <span className="text-[8px] md:text-[10px] opacity-30 font-bold uppercase tracking-widest dark:text-white text-slate-500 shrink-0">Submission</span>
                         </div>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <img src={sub.user_avatar} className="w-6 h-6 rounded-full" alt="" referrerPolicy="no-referrer" />
-                            <h3 className="font-bold truncate max-w-[150px]">{sub.user_name}</h3>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5 md:gap-2 min-w-0">
+                            <img src={sub.user_avatar} className="w-5 h-5 md:w-6 md:h-6 rounded-full shrink-0" alt="" referrerPolicy="no-referrer" />
+                            <h3 className="font-bold text-xs md:text-sm truncate">{sub.user_name}</h3>
                           </div>
                           <a 
                             href={`https://steamcommunity.com/profiles/${sub.user_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[10px] text-blue-400 hover:underline flex items-center gap-1 mt-1 shrink-0"
+                            className="text-[9px] md:text-[10px] text-blue-400 hover:underline flex items-center gap-1 mt-1 shrink-0 w-fit"
                           >
-                            <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-3 h-3 grayscale" alt="" />
-                            Steam Profile
+                            <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-2.5 h-2.5 md:w-3 md:h-3 grayscale" alt="" />
+                            Profile
                           </a>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-lg shadow-amber-500/5" title="HLTB Times: Main Story / Main + Extra / Completionist">
-                             <div className="flex flex-col items-center min-w-[30px]">
-                               <span className="text-[7px] uppercase font-bold opacity-50 text-amber-500">Main</span>
-                               <span className="text-sm font-black text-amber-500 leading-none">{hltbData[sub.game_name].hltb_main}h</span>
-                             </div>
-                             <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
-                             <div className="flex flex-col items-center min-w-[30px]">
-                               <span className="text-[7px] uppercase font-bold opacity-50 text-blue-400">Extra</span>
-                               <span className="text-sm font-black text-blue-400 leading-none">{hltbData[sub.game_name].hltb_extras}h</span>
-                             </div>
-                             <div className="w-px h-6 dark:bg-white/10 bg-black/5 mx-1" />
-                             <div className="flex flex-col items-center min-w-[30px]">
-                               <span className="text-[7px] uppercase font-bold opacity-50 text-purple-400">Comp</span>
-                               <span className="text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].hltb_completionist}h</span>
-                             </div>
-                           </div>
-                         )}
 
-                         {hltbData[sub.game_name]?.notFound && (
-                            <div className="flex flex-col items-center px-3 py-1.5 rounded-xl bg-slate-500/10 border border-slate-500/20 opacity-40">
-                              <span className="text-[8px] uppercase font-black tracking-widest text-slate-500">HLTB NA</span>
-                              <span className="text-[10px] font-bold text-slate-500">Not Found</span>
-                            </div>
-                         )}
+                      {/* HLTB & Stats Wrap */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 md:gap-3 w-full xl:w-auto min-w-0 overflow-hidden">
                          
-                         {hltbData[sub.game_name] && (
-                           <div className="w-[1px] h-8 dark:bg-white/5 bg-black/5 mx-1" />
-                         )}
-
-                         {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <>
-                                 {sub.hours_during >= (parseInt(hltbData[sub.game_name].hltb_main) || 1) * 5 ? (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
-                                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ring-4 ring-red-500/20" />
-                                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review Required!</span>
-                                   </div>
-                                 ) : (
-                                   <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
-                                     <span className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
-                                   </div>
-                                 )}
-                               </>
-                             )}
-                             {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading || fetchingHLTB === sub.game_name) && (
-                               <div className="flex flex-col items-center px-4 py-2 border border-blue-500/20 rounded-xl bg-blue-500/5 animate-pulse">
-                                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Searching...</span>
-                                  <div className="flex gap-1 mt-1">
-                                    <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-75" />
-                                    <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-150" />
-                                    <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-225" />
-                                  </div>
+                         <div className="flex overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-hide items-center gap-2">
+                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                               <div className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-lg shadow-amber-500/5 shrink-0">
+                                 <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
+                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-amber-500">Main</span>
+                                   <span className="text-xs md:text-sm font-black text-amber-500 leading-none">{hltbData[sub.game_name].hltb_main}h</span>
+                                 </div>
+                                 <div className="w-px h-5 md:h-6 dark:bg-white/10 bg-black/5 mx-0.5 md:mx-1" />
+                                 <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
+                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-blue-400">Extra</span>
+                                   <span className="text-xs md:text-sm font-black text-blue-400 leading-none">{hltbData[sub.game_name].hltb_extras}h</span>
+                                 </div>
+                                 <div className="w-px h-5 md:h-6 dark:bg-white/10 bg-black/5 mx-0.5 md:mx-1" />
+                                 <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
+                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-purple-400">Comp</span>
+                                   <span className="text-xs md:text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].hltb_completionist}h</span>
+                                 </div>
                                </div>
                              )}
 
-                         <div className="bg-black/5 dark:bg-white/5 px-4 py-2 rounded-xl flex items-center gap-6 border border-black/5 dark:border-white/5">
+                             {hltbData[sub.game_name]?.notFound && (
+                                <div className="flex flex-col items-center px-2 py-1 md:py-1.5 rounded-lg md:rounded-xl bg-slate-500/10 border border-slate-500/20 opacity-40 shrink-0">
+                                  <span className="text-[7px] md:text-[8px] uppercase font-black tracking-widest text-slate-500">HLTB NA</span>
+                                  <span className="text-[9px] md:text-[10px] font-bold text-slate-500">Not Found</span>
+                                </div>
+                             )}
+
+                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                                   <>
+                                     {sub.hours_during >= (parseInt(hltbData[sub.game_name].hltb_main) || 1) * 5 ? (
+                                       <div className="flex items-center gap-1.5 px-2 py-1.5 md:py-2 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)] shrink-0">
+                                         <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-red-500 animate-pulse ring-2 md:ring-4 ring-red-500/20" />
+                                         <span className="text-[8px] md:text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review!</span>
+                                       </div>
+                                     ) : (
+                                       <div className="flex items-center gap-1.5 px-2 py-1.5 md:py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                                         <div className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-emerald-500/60" />
+                                         <span className="text-[8px] md:text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
+                                       </div>
+                                     )}
+                                   </>
+                                 )}
+                                 {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading || fetchingHLTB === sub.game_name) && (
+                                   <div className="flex flex-col items-center px-3 py-1.5 md:py-2 border border-blue-500/20 rounded-lg md:rounded-xl bg-blue-500/5 animate-pulse shrink-0">
+                                      <span className="text-[8px] md:text-[10px] font-black text-blue-400 uppercase tracking-widest">Searching</span>
+                                      <div className="flex gap-1 mt-0.5 md:mt-1">
+                                        <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-75" />
+                                        <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-150" />
+                                        <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-225" />
+                                      </div>
+                                   </div>
+                                 )}
+                         </div>
+
+                         <div className="bg-black/5 dark:bg-white/5 px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center gap-3 md:gap-6 border border-black/5 dark:border-white/5 shrink-0 w-full sm:w-auto justify-between sm:justify-start">
                           <div className="flex flex-col">
-                            <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
-                            <span className="text-lg font-bold dark:text-white text-slate-800">
+                            <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
+                            <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">
                               {sub.achievements_during}
-                              {sub.totalAchievements > 0 ? ` / ${sub.totalAchievements}` : ''}
+                              {sub.totalAchievements > 0 ? <span className="text-xs md:text-sm font-normal opacity-50">/{sub.totalAchievements}</span> : ''}
                             </span>
                           </div>
                           <div className="flex flex-col">
-                            <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🕒</span>
-                            <span className="text-lg font-bold dark:text-white text-slate-800">{sub.hours_during}h</span>
+                            <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🕒</span>
+                            <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">{sub.hours_during}h</span>
                           </div>
                           <div className="flex flex-col">
-                            <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
-                            <span className={cn("text-lg font-bold", theme.text)}>{sub.calculated_score || 0}</span>
+                            <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
+                            <span className={cn("text-sm md:text-lg font-bold", theme.text)}>{sub.calculated_score || 0}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-row items-center gap-4">
-                      <div className="flex flex-col">
-                        <div className="flex flex-row items-center gap-2">
-                           <h4 className="text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
-                        </div>
-                      </div>
+                    {/* Game Title */}
+                    <div className="flex flex-col min-w-0 mt-1 md:mt-0">
+                       <h4 className="text-sm sm:text-lg md:text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
                     </div>
 
+                    {/* Notes */}
                     {sub.notes && (
-                      <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-xl border dark:border-white/5 border-black/5 text-sm italic opacity-70 dark:text-white text-slate-600">
-                        <div className="break-all whitespace-pre-wrap">
+                      <div className="p-2 md:p-4 dark:bg-white/5 bg-slate-50 rounded-lg md:rounded-xl border dark:border-white/5 border-black/5 text-xs md:text-sm italic opacity-70 dark:text-white text-slate-600 line-clamp-3 hover:line-clamp-none transition-all cursor-pointer">
+                        <div className="break-words whitespace-pre-wrap">
                           {sub.notes.split(/(\s+)/).map((part: string, i: number) => {
                             if (part.match(/^https?:\/\//)) {
                                return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{part}</a>;
@@ -825,21 +828,22 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       </div>
                     )}
 
-                      <div className="flex items-center justify-between mt-4">
-                        <div className="flex items-center gap-2">
+                    {/* Actions footer */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4 mt-2 md:mt-4 w-full">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className={cn(
-                            "text-[10px] font-bold uppercase py-1 px-3 rounded-full flex items-center gap-2",
+                            "text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full flex items-center gap-1.5 md:gap-2",
                             sub.status === 'pending' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
                             sub.status === 'verified' ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
                             "bg-red-500/10 text-red-500 border border-red-500/20"
                           )}>
-                            {sub.status === 'pending' ? <Clock size={10} /> : sub.status === 'verified' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                            {sub.status === 'pending' ? <Clock className="w-2.5 h-2.5 md:w-3 md:h-3" /> : sub.status === 'verified' ? <CheckCircle2 className="w-2.5 h-2.5 md:w-3 md:h-3" /> : <XCircle className="w-2.5 h-2.5 md:w-3 md:h-3" />}
                             {sub.status}
                           </div>
 
                           {sub.completion_status && (
                             <div className={cn(
-                              "text-[10px] font-bold uppercase py-1 px-3 rounded-full border",
+                              "text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full border",
                               sub.completion_status === 'completed' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
                               sub.completion_status === 'beaten' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                               sub.completion_status === 'abandoned' ? "bg-slate-500/10 text-slate-400 border-slate-500/20" :
@@ -850,7 +854,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           )}
                         </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 w-full sm:w-auto">
                         <button 
                           onClick={() => {
                             setReviewingId(sub.id);
@@ -875,7 +879,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             setRejectionReason(sub.rejection_reason || '');
                           }}
                           className={cn(
-                            "px-6 py-2 rounded-xl font-bold text-xs transition-all border shrink-0",
+                            "flex-1 sm:flex-none px-3 md:px-6 py-2 rounded-lg md:rounded-xl font-bold text-[10px] md:text-xs transition-all border shrink-0",
                             "dark:bg-white/5 bg-black/5 dark:hover:bg-white/10 hover:bg-black/10 dark:text-white text-slate-800 border-black/10 dark:border-white/5"
                           )}
                         >
@@ -884,7 +888,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <button 
                           disabled={updating === sub.id}
                           onClick={() => handleDeleteSubmission(sub.id)}
-                          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-xl font-bold text-xs transition-all border border-red-500/20 shrink-0"
+                          className="flex-1 sm:flex-none bg-red-500/10 hover:bg-red-500/20 text-red-500 px-3 md:px-4 py-2 rounded-lg md:rounded-xl font-bold text-[10px] md:text-xs transition-all border border-red-500/20 shrink-0"
                         >
                           Delete
                         </button>
@@ -894,46 +898,46 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                   {/* Review Dialog */}
                   {reviewingId === sub.id && (
-                    <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/60 p-6 flex flex-col gap-6 justify-center animate-in fade-in zoom-in duration-200">
-                      <div className="flex justify-between items-center">
+                    <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/80 md:bg-black/60 p-4 md:p-6 flex flex-col gap-4 md:gap-6 justify-center animate-in fade-in zoom-in duration-200 overflow-y-auto">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex flex-col">
-                          <h4 className={cn("font-bold uppercase tracking-widest", theme.text)}>Modifying {sub.user_name}</h4>
-                          <p className="text-[10px] opacity-40 uppercase font-black tracking-tighter dark:text-white">Reviewing: {sub.game_name}</p>
+                          <h4 className={cn("font-bold uppercase tracking-widest text-sm md:text-base", theme.text)}>Modifying {sub.user_name}</h4>
+                          <p className="text-[9px] md:text-[10px] opacity-40 uppercase font-black tracking-tighter dark:text-white">Reviewing: {sub.game_name}</p>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full sm:w-auto">
                           {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                            <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
+                            <div className="flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-white/5 border border-white/10">
                                <div className="flex flex-col items-center">
-                                 <span className="text-[8px] uppercase font-bold text-amber-500/50">Story</span>
-                                 <span className="text-xs font-black text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
+                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-amber-500/50">Story</span>
+                                 <span className="text-[10px] md:text-xs font-black text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
                                </div>
-                               <div className="w-px h-6 bg-white/10" />
+                               <div className="w-px h-5 md:h-6 bg-white/10" />
                                <div className="flex flex-col items-center">
-                                 <span className="text-[8px] uppercase font-bold text-blue-400/50">Extra</span>
-                                 <span className="text-xs font-black text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
+                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-blue-400/50">Extra</span>
+                                 <span className="text-[10px] md:text-xs font-black text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
                                </div>
-                               <div className="w-px h-6 bg-white/10" />
+                               <div className="w-px h-5 md:h-6 bg-white/10" />
                                <div className="flex flex-col items-center">
-                                 <span className="text-[8px] uppercase font-bold text-purple-400/50">Complete</span>
-                                 <span className="text-xs font-black text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
+                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-purple-400/50">Comp</span>
+                                 <span className="text-[10px] md:text-xs font-black text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
                                </div>
                             </div>
                           )}
                           {fetchingHLTB === sub.game_name && (
-                            <div className="text-[10px] font-bold uppercase animate-pulse text-amber-500">Fetching HLTB...</div>
+                            <div className="text-[9px] md:text-[10px] font-bold uppercase animate-pulse text-amber-500">Fetching HLTB...</div>
                           )}
-                          <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors">
+                          <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors ml-auto sm:ml-0 p-2">
                             <Plus className="rotate-45" size={24} />
                           </button>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆 {sub.totalAchievements > 0 && `(Total: ${sub.totalAchievements})`}</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                        <div className="space-y-1 md:space-y-2">
+                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆 {sub.totalAchievements > 0 && `(Total: ${sub.totalAchievements})`}</label>
                           <input 
                             type="number"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
                             value={editAchievements}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -943,12 +947,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             }}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Play Time (h)</label>
+                        <div className="space-y-1 md:space-y-2">
+                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Play Time (h)</label>
                           <input 
                             type="number"
                             step="0.1"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
                             value={editHours}
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
@@ -964,38 +968,38 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             }}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Final Points</label>
+                        <div className="space-y-1 md:space-y-2">
+                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Final Points</label>
                           <input 
                             type="number"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none dark:text-white text-white", `focus:${theme.border}`)}
+                            className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
                             value={pointsAwarded}
                             onChange={(e) => setPointsAwarded(e.target.value)}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase font-bold opacity-40 text-red-100">Rejection Reason</label>
+                        <div className="space-y-1 md:space-y-2">
+                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 text-red-100">Rejection Reason</label>
                           <input 
                             placeholder="Reason for rejection"
-                            className="w-full bg-white/10 border border-white/10 rounded-xl p-3 focus:outline-none focus:border-red-500 dark:text-white text-white"
+                            className="w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none focus:border-red-500 dark:text-white text-white text-sm"
                             value={rejectionReason}
                             onChange={(e) => setRejectionReason(e.target.value)}
                           />
                         </div>
                       </div>
 
-                      <div className="flex gap-4">
+                      <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mt-2">
                         <button 
                           disabled={updating === sub.id}
                           onClick={() => handleVerify('verified')}
-                          className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                          className="w-full sm:flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 md:py-3 rounded-lg md:rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 text-sm"
                         >
-                          Verify & Award Points
+                          Verify & Award
                         </button>
                         <button 
                           disabled={updating === sub.id}
                           onClick={() => handleVerify('rejected')}
-                          className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 disabled:opacity-50"
+                          className="w-full sm:flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 md:py-3 rounded-lg md:rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 disabled:opacity-50 text-sm"
                         >
                           Reject Submission
                         </button>
@@ -1011,4 +1015,3 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     </div>
   );
 }
-
