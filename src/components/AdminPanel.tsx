@@ -693,7 +693,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 )}>
                   {/* Thumbnail */}
                   <div className="flex flex-col gap-4 w-16 sm:w-24 md:w-32 shrink-0 self-start md:self-auto mt-1 md:mt-0">
-                    <div className="w-full aspect-square md:aspect-[3/4] rounded-lg md:rounded-xl overflow-hidden shadow-xl relative group bg-black/20">
+                    <div className="w-full aspect-[3/4] rounded-lg md:rounded-xl overflow-hidden shadow-xl relative group bg-black/20">
                         <img src={sub.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                     </div>
                   </div>
