@@ -1191,6 +1191,7 @@ async function createServer() {
       notes,
       platform,
       steamAppId,
+      steam_appid, // <-- Added the correct frontend variable name
       hltbId
     } = req.body;
 
@@ -1199,15 +1200,16 @@ async function createServer() {
 
     try {
       // ---> THE MAGIC HAPPENS HERE <---
-      // If we don't have a Steam ID from the frontend, but we have a game ID, try translating it
-      let finalSteamAppId = steamAppId;
+      // Check for either naming convention. If we ALREADY have a Steam ID, use it immediately!
+      let finalSteamAppId = steam_appid || steamAppId; 
+      
+      // ONLY translate if the finalSteamAppId is still empty
       if (!finalSteamAppId && gameId) {
          finalSteamAppId = await translateIgdbToSteam(gameId);
       }
 
-      // Sync the game to the games table first (using our translated finalSteamAppId)
+      // Sync the game to the games table first (using our translated or directly grabbed finalSteamAppId)
       const internalGameId = await getAndSyncGameData(supabase, gameTitle || game_title, gameId, gameImage, finalSteamAppId);
-
       // Server-side point calculation
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
