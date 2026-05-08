@@ -688,7 +688,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             ) : (
               filteredSubmissions.map(sub => (
                 <div key={sub.id} className={cn(
-                  "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden shadow-md",
+                  // REMOVED: shadow-md. ADDED: transition-all duration-300 hover:-translate-y-1 z-0 hover:z-10
+                  "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:z-10",
+                  // This will now successfully apply your custom shadow and colored border from types.ts
                   (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
                 )}>
                   
