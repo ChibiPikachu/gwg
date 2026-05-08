@@ -686,16 +686,23 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
-              filteredSubmissions.map(sub => (
-                <div key={sub.id} className={cn(
-                  // REMOVED: shadow-md. ADDED: transition-all duration-300 hover:-translate-y-1 z-0 hover:z-10
-                  "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:z-10",
-                  // This will now successfully apply your custom shadow and colored border from types.ts
-                  (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
-                )}>
-                  
-                  {/* Top Right Clickable ID (Conditional Steam / IGDB link) */}
-                  {sub.steam_appid ? (
+              filteredSubmissions.map(sub => {
+                // Custom Outer Glow Mapping
+                let outerGlowClass = "shadow-[0_0_20px_-5px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_-5px_rgba(255,255,255,0.05)] hover:dark:shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)] border-black/5 dark:border-white/5";
+                
+                if (sub.userTeam === 'blue') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] hover:shadow-[0_0_40px_-5px_rgba(59,130,246,0.5)] border-blue-500/40 hover:border-blue-500/60";
+                if (sub.userTeam === 'green') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] hover:shadow-[0_0_40px_-5px_rgba(16,185,129,0.5)] border-green-500/40 hover:border-green-500/60";
+                if (sub.userTeam === 'purple') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(168,85,247,0.3)] hover:shadow-[0_0_40px_-5px_rgba(168,85,247,0.5)] border-purple-500/40 hover:border-purple-500/60";
+                if (sub.userTeam === 'red') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(239,68,68,0.3)] hover:shadow-[0_0_40px_-5px_rgba(239,68,68,0.5)] border-red-500/40 hover:border-red-500/60";
+
+                return (
+                  <div key={sub.id} className={cn(
+                    "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:z-10",
+                    outerGlowClass // Apply the custom glow here instead of TEAM_COLORS
+                  )}>
+                    
+                    {/* Top Right Clickable ID (Conditional Steam / IGDB link) */}
+                    {sub.steam_appid ? (
                     <a
                       href={`https://store.steampowered.com/app/${sub.steam_appid}`}
                       target="_blank"
