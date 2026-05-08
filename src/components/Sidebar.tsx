@@ -128,7 +128,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
             onClick={onClose}
             className="lg:hidden p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white shrink-0"
           >
-            <XCircle size={20} className="rotate-45" />
+            <XCircle size={20} />
           </button>
         </div>
 
