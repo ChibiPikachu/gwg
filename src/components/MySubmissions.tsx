@@ -31,6 +31,7 @@ export default function MySubmissions() {
   const [submitting, setSubmitting] = React.useState(false);
   const [steamTotalStats, setSteamTotalStats] = React.useState<{hours: number, achievements: number} | null>(null);
   const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned'>('all');
+  const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
 
   // Auto-calculate 'during event' stats
   React.useEffect(() => {
@@ -697,31 +698,35 @@ export default function MySubmissions() {
                <p className="text-[10px] opacity-20 mt-1 dark:text-white text-slate-600 italic">No entries match the selected filter</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6">
               {filteredSubmissions.map((sub) => (
-                <div key={sub.id} className="flex flex-col gap-3 group">
-                <div className={cn(
-                  "aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border relative shadow-xl transition-all duration-300",
-                  "dark:border-white/5 border-slate-200",
-                  theme.glow,
-                  "group-hover:shadow-[0_0_25px_-5px_rgba(0,0,0,0.2)]"
-                )}>
-                   <img 
-                     src={sub.game_image} 
-                     alt={sub.game_name} 
-                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                     referrerPolicy="no-referrer"
-                   />
-                   
+                <div 
+                  key={sub.id} 
+                  className="flex flex-col gap-3 group cursor-pointer lg:cursor-default"
+                  onClick={() => setActiveMobileCard(activeMobileCard === sub.id ? null : sub.id)}
+                >
+                  <div className={cn(
+                    "aspect-[3/4] dark:bg-[#111111] bg-white rounded-xl overflow-hidden border relative shadow-xl transition-all duration-300",
+                    "dark:border-white/5 border-slate-200",
+                    theme.glow,
+                    "group-hover:shadow-[0_0_25px_-5px_rgba(0,0,0,0.2)]"
+                  )}>
+                    <img 
+                      src={sub.game_image} 
+                      alt={sub.game_name} 
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      referrerPolicy="no-referrer"
+                    />
+                    
                     {/* Link Overlays */}
-                   <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10">
-                       {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10">
+                      {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                         <div 
-                          className="w-10 h-10 rounded-xl bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
                           title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
                         >
-                          <span className="text-[10px] font-black text-white leading-none">HLTB</span>
-                          <span className="text-[8px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hltb_main}h</span>
+                          <span className="text-[8px] sm:text-[10px] font-black text-white leading-none">HLTB</span>
+                          <span className="text-[7px] sm:text-[8px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hltb_main}h</span>
                           
                           {/* Hover Details Popover */}
                           <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
@@ -740,25 +745,31 @@ export default function MySubmissions() {
                           </div>
                         </div>
                       )}
-                   </div>
-                   
-                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-4">
-                      <div className="flex flex-col items-center gap-1">
-                         <div className="flex items-center gap-2 text-xs font-bold text-white">
-                            🏆 {sub.achievements_during}
-                         </div>
-                         <div className="flex items-center gap-2 text-xs font-bold text-white">
-                            🕒 {sub.hours_during}h
-                         </div>
+                    </div>
+                    
+                    {/* The Click/Hover Overlay */}
+                    <div className={cn(
+                      "absolute inset-0 bg-black/70 transition-opacity flex flex-col items-center justify-center p-2 sm:p-4 gap-2 sm:gap-4",
+                      activeMobileCard === sub.id 
+                        ? "opacity-100 pointer-events-auto" 
+                        : "opacity-0 pointer-events-none lg:group-hover:opacity-100 lg:group-hover:pointer-events-auto"
+                    )}>
+                      <div className="flex flex-col items-center gap-0.5 sm:gap-1">
+                        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs font-bold text-white">
+                          🏆 {sub.achievements_during}
+                        </div>
+                        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs font-bold text-white">
+                          🕒 {sub.hours_during}h
+                        </div>
                       </div>
                       
-                      <div className="flex flex-col gap-2 w-full max-w-[120px]">
+                      <div className="flex flex-col gap-1.5 sm:gap-2 w-full max-w-[120px] px-2 sm:px-0">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             handleEdit(sub);
                           }}
-                          className="w-full bg-white/20 hover:bg-white/30 text-white rounded-lg py-2 font-bold text-[10px] uppercase transition-all"
+                          className="w-full bg-white/20 hover:bg-white/30 text-white rounded-md sm:rounded-lg py-1.5 sm:py-2 font-bold text-[9px] sm:text-[10px] uppercase transition-all"
                         >
                           Edit
                         </button>
@@ -767,63 +778,65 @@ export default function MySubmissions() {
                             e.stopPropagation();
                             handleDelete(sub.id);
                           }}
-                          className="w-full bg-red-500/20 hover:bg-red-500/40 text-red-500 hover:text-white rounded-lg py-2 font-bold text-[10px] uppercase transition-all border border-red-500/20"
+                          className="w-full bg-red-500/20 hover:bg-red-500/40 text-red-500 hover:text-white rounded-md sm:rounded-lg py-1.5 sm:py-2 font-bold text-[9px] sm:text-[10px] uppercase transition-all border border-red-500/20"
                         >
                           Delete
                         </button>
                       </div>
 
-                      <div className="text-[10px] opacity-60 font-bold text-white">
+                      <div className="text-[8px] sm:text-[10px] opacity-60 font-bold text-white mt-1 sm:mt-0">
                         {new Date(sub.created_at).toLocaleDateString()}
                       </div>
-                   </div>
-                </div>
-                <div className="flex flex-col gap-2 px-1">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize flex-1">{sub.game_name}</h4>
+                    </div>
                   </div>
-                  {hltbData[sub.game_name]?.notFound && (
-                     <div className="text-[9px] font-bold text-slate-400 opacity-40 uppercase">HLTB Stats Not Found</div>
-                  )}
-                  {(!hltbData[sub.game_name]) && (
-                     <div className="text-[9px] font-bold text-blue-400 animate-pulse uppercase">Fetching HLTB data...</div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    {sub.status === 'verified' ? (
-                      <>
-                        <CheckCircle2 size={14} className="text-emerald-400" />
-                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">Submission accepted</span>
-                      </>
-                    ) : sub.status === 'rejected' ? (
-                      <>
-                        <XCircle size={14} className="text-red-400" />
-                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-tighter">Submission rejected</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clock size={14} className="text-amber-400" />
-                        <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">Pending review</span>
-                      </>
+                  
+                  {/* Card Title and Details */}
+                  <div className="flex flex-col gap-2 px-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize flex-1">{sub.game_name}</h4>
+                    </div>
+                    {hltbData[sub.game_name]?.notFound && (
+                       <div className="text-[9px] font-bold text-slate-400 opacity-40 uppercase">HLTB Stats Not Found</div>
+                    )}
+                    {(!hltbData[sub.game_name]) && (
+                       <div className="text-[9px] font-bold text-blue-400 animate-pulse uppercase">Fetching HLTB data...</div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {sub.status === 'verified' ? (
+                        <>
+                          <CheckCircle2 size={14} className="text-emerald-400" />
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">Submission accepted</span>
+                        </>
+                      ) : sub.status === 'rejected' ? (
+                        <>
+                          <XCircle size={14} className="text-red-400" />
+                          <span className="text-[10px] font-bold text-red-500 uppercase tracking-tighter">Submission rejected</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={14} className="text-amber-400" />
+                          <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">Pending review</span>
+                        </>
+                      )}
+                    </div>
+                    {sub.status === 'rejected' && sub.rejection_reason && (
+                      <div className="p-2 bg-red-500/5 border border-red-500/10 rounded-lg text-[9px] text-red-300 leading-tight italic">
+                        <span className="font-bold uppercase opacity-50 block mb-1">Reason:</span>
+                        {sub.rejection_reason}
+                      </div>
+                    )}
+                    {sub.status === 'verified' && (
+                      <div className="text-[9px] font-bold opacity-40">
+                        Awarded {sub.points || 0} PTS
+                      </div>
                     )}
                   </div>
-                  {sub.status === 'rejected' && sub.rejection_reason && (
-                    <div className="p-2 bg-red-500/5 border border-red-500/10 rounded-lg text-[9px] text-red-300 leading-tight italic">
-                      <span className="font-bold uppercase opacity-50 block mb-1">Reason:</span>
-                      {sub.rejection_reason}
-                    </div>
-                  )}
-                  {sub.status === 'verified' && (
-                    <div className="text-[9px] font-bold opacity-40">
-                      Awarded {sub.points || 0} PTS
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    )}
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-12">
         <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Past events</h3>
@@ -834,4 +847,3 @@ export default function MySubmissions() {
     </div>
   );
 }
-

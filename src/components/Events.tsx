@@ -11,7 +11,6 @@ export default function EventsPanel() {
   const [isEditing, setIsEditing] = React.useState(false);
   const [editingEvent, setEditingEvent] = React.useState<Partial<CompetitionEvent> | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
-  const [isCountdownCollapsed, setIsCountdownCollapsed] = React.useState(false);
 
   const isAdmin = user?.isAdmin || user?.role === 'admin' || user?.role === 'admins';
 
@@ -112,25 +111,18 @@ export default function EventsPanel() {
             <div className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg)} />
             <h2 className="text-xs uppercase font-bold tracking-[0.2em] opacity-30">Active Event</h2>
           </div>
-          <button 
-            onClick={() => setIsCountdownCollapsed(!isCountdownCollapsed)}
-            className="text-[10px] font-bold uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity flex items-center gap-2 lg:hidden"
-          >
-            {isCountdownCollapsed ? 'Show Details' : 'Collapse'}
-          </button>
         </div>
         
         {currentEvent ? (
           <div className={cn(
             "dark:bg-[#111111] bg-white rounded-3xl border-2 p-6 md:p-8 relative overflow-hidden group shadow-2xl transition-all duration-500",
-            theme.border,
-            isCountdownCollapsed ? "max-h-24 overflow-hidden" : "max-h-[1000px]"
+            theme.border
           )}>
              <div className={cn("absolute top-0 right-0 w-64 h-64 opacity-5 blur-[100px] pointer-events-none rounded-full translate-x-1/2 -translate-y-1/2", theme.bg)} />
              
              <div className="relative z-10">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-                 <div className={cn("space-y-4 max-w-2xl transition-all", isCountdownCollapsed && "opacity-0 scale-95")}>
+                 <div className="space-y-4 max-w-2xl transition-all">
                    <h3 className={cn("text-3xl md:text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left underline underline-offset-8", theme.text)}>
                      {currentEvent.title}
                    </h3>
@@ -147,18 +139,15 @@ export default function EventsPanel() {
                    </div>
                  </div>
 
-                 <div className={cn("flex flex-col gap-4 min-w-[200px] w-full md:w-auto transition-all", isCountdownCollapsed && "md:opacity-100")}>
-                    <div className={cn(
-                      "dark:bg-black/40 bg-slate-50 backdrop-blur-xl border dark:border-white/10 border-black/5 rounded-2xl p-4 md:p-6 flex flex-col items-center shadow-sm dark:shadow-none transition-all",
-                      isCountdownCollapsed && "py-2"
-                    )}>
-                       <Clock size={isCountdownCollapsed ? 20 : 32} className={cn(isCountdownCollapsed ? "mb-1" : "mb-3", theme.text)} />
+                 <div className="flex flex-col gap-4 min-w-[200px] w-full md:w-auto transition-all">
+                    <div className="dark:bg-black/40 bg-slate-50 backdrop-blur-xl border dark:border-white/10 border-black/5 rounded-2xl p-4 md:p-6 flex flex-col items-center shadow-sm dark:shadow-none transition-all">
+                       <Clock size={32} className={cn("mb-3", theme.text)} />
                        <div className="text-center font-mono space-y-1">
-                          <div className={cn("font-black dark:text-white text-slate-800", isCountdownCollapsed ? "text-xl" : "text-3xl")}>ACTIVE</div>
-                          {!isCountdownCollapsed && <div className="text-[10px] uppercase opacity-40 font-bold dark:text-white text-slate-500 text-center">Progression is open</div>}
+                          <div className="font-black dark:text-white text-slate-800 text-3xl">ACTIVE</div>
+                          <div className="text-[10px] uppercase opacity-40 font-bold dark:text-white text-slate-500 text-center">Progression is open</div>
                        </div>
                     </div>
-                    {!isCountdownCollapsed && isAdmin && (
+                    {isAdmin && (
                       <button 
                         onClick={() => {
                           setEditingEvent(currentEvent);
@@ -302,4 +291,3 @@ export default function EventsPanel() {
     </div>
   );
 }
-
