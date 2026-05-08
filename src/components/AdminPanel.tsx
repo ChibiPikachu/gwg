@@ -686,12 +686,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:gap-6">
-            {filteredSubmissions.length === 0 ? (
-              <div className="p-8 md:p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
-                <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
-              </div>
-            ) : (
               filteredSubmissions.map(sub => (
                 <div key={sub.id} className={cn(
                   "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden shadow-md",
@@ -700,7 +694,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   
                   {/* Top Right Clickable ID */}
                   <a
-                    // Change the URL base here if you use IGDB IDs instead of Steam App IDs
                     href={sub.game_id ? `https://store.steampowered.com/app/${sub.game_id}` : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -917,7 +910,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                   {/* Review Dialog */}
                   {reviewingId === sub.id && (
-                     // ... Keep the dialog code the exact same here
                      <div className="absolute inset-0 z-20 backdrop-blur-xl bg-black/80 md:bg-black/60 p-4 md:p-6 flex flex-col gap-4 md:gap-6 justify-center animate-in fade-in zoom-in duration-200 overflow-y-auto">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex flex-col">
