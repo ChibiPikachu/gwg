@@ -692,17 +692,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].glow : TEAM_COLORS.none.glow
                 )}>
                   
-                  {/* Top Right Clickable ID */}
-                  <a
-                    href={sub.game_id ? `https://store.steampowered.com/app/${sub.game_id}` : '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="absolute top-2 right-2 md:top-4 md:right-4 z-10 bg-black/60 backdrop-blur-md hover:bg-black/80 text-white text-[10px] font-mono px-2 py-1 rounded-md border border-white/20 transition-all flex items-center gap-1.5 shadow-lg"
-                    title="Open Store Page"
-                  >
-                    <ExternalLink size={10} />
-                    {sub.game_id || 'ID N/A'}
-                  </a>
+                  {/* Top Right Clickable ID (Conditional Steam / IGDB link) */}
+                  {sub.steam_id ? (
+                    <a
+                      href={`https://store.steampowered.com/app/${sub.steam_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute top-2 right-2 md:top-4 md:right-4 z-10 bg-blue-900/60 backdrop-blur-md hover:bg-blue-900/80 text-blue-100 text-[10px] font-mono px-2 py-1 rounded-md border border-blue-500/30 transition-all flex items-center gap-1.5 shadow-lg"
+                      title="Open Steam Store"
+                    >
+                      <ExternalLink size={10} />
+                      Steam
+                    </a>
+                  ) : sub.igdb_id || sub.game_id ? (
+                    <a
+                      href={`https://www.igdb.com/games/${sub.igdb_id || sub.game_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute top-2 right-2 md:top-4 md:right-4 z-10 bg-purple-900/60 backdrop-blur-md hover:bg-purple-900/80 text-purple-100 text-[10px] font-mono px-2 py-1 rounded-md border border-purple-500/30 transition-all flex items-center gap-1.5 shadow-lg"
+                      title="Open IGDB Page"
+                    >
+                      <ExternalLink size={10} />
+                      IGDB
+                    </a>
+                  ) : null}
 
                   {/* The Hybrid Cover Image */}
                   {/* Mobile: Bleeds to edges (-mx-4 -mt-4) as a banner. Desktop: Resets to normal vertical cover. */}
