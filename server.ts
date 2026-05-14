@@ -1039,6 +1039,69 @@ async function createServer() {
     res.json(users);
   });
 
+  app.get('/api/leaderboard/games', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      // 1. Get active event
+      const now = new Date().toISOString();
+      const { data: event } = await supabase
+        .from('events')
+        .select('id')
+        .lte('start_date', now)
+        .gte('end_date', now)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (!event) return res.json([]);
+
+      // 2. Get all submissions for this event
+      const { data: submissions, error } = await supabase
+        .from('submissions')
+        .select('game_id, game_name, game_image, steam_appid, user_id')
+        .eq('event_id', event.id);
+
+      if (error) throw error;
+      if (!submissions || submissions.length === 0) return res.json([]);
+
+      // 3. Fetch user profiles for these submissions
+      const userIds = Array.from(new Set(submissions.map((s: any) => s.user_id)));
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('steamid, steam_name, steam_avatar')
+        .in('steamid', userIds);
+
+      const profileMap: Record<string, any> = {};
+      (profiles || []).forEach(p => { profileMap[p.steamid] = p; });
+
+      // 4. Group by game
+      const gamesMap = new Map();
+      submissions.forEach((s: any) => {
+        const key = s.game_id;
+        if (!gamesMap.has(key)) {
+          gamesMap.set(key, {
+            game_id: s.game_id,
+            game_name: s.game_name,
+            game_image: s.game_image,
+            steam_appid: s.steam_appid,
+            users: []
+          });
+        }
+        const game = gamesMap.get(key);
+        const profile = profileMap[s.user_id];
+        if (profile && !game.users.find((u: any) => u.steamid === profile.steamid)) {
+          game.users.push(profile);
+        }
+      });
+
+      res.json(Array.from(gamesMap.values()));
+    } catch (err) {
+      console.error('Failed to fetch games leaderboard:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/users/:steamid', async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });

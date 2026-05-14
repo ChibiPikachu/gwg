@@ -13,6 +13,7 @@ import MySubmissions from '@/components/MySubmissions';
 import Leaderboard from '@/components/Leaderboard';
 import Profile from '@/components/Profile';
 import MyTeam from '@/components/MyTeam';
+import Games from '@/components/Games';
 import AdminPanel from '@/components/AdminPanel';
 import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -79,6 +80,8 @@ function AppContent() {
         return <Profile steamId={viewedProfileId || undefined} />;
       case 'team':
         return <MyTeam onViewProfile={handleViewProfile} />;
+      case 'games':
+        return <Games onViewProfile={handleViewProfile} />;
       case 'leaderboard':
         return <Leaderboard onViewProfile={handleViewProfile} />;
       case 'events':
