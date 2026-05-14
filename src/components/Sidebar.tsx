@@ -97,7 +97,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
       {/* OUTER WRAPPER: Handles sizing, borders, and position. (Removed overflow-y-auto and padding) */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-screen flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:z-auto shadow-xl dark:shadow-none",
+        "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-screen flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:z-[60] shadow-xl dark:shadow-none",
         isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         isCollapsed ? "w-72 lg:w-20" : "w-72"
       )}>
