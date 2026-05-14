@@ -30,7 +30,7 @@ export default function MySubmissions() {
   const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [steamTotalStats, setSteamTotalStats] = React.useState<{hours: number, achievements: number} | null>(null);
-  const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned'>('all');
+  const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned' | 'pending'>('all');
   const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
 
   // Auto-calculate 'during event' stats
@@ -61,6 +61,7 @@ export default function MySubmissions() {
 
   const filteredSubmissions = React.useMemo(() => {
     if (completionFilter === 'all') return submissions;
+    if (completionFilter === 'pending') return submissions.filter(s => s.status === 'pending');
     return submissions.filter(s => s.completion_status === completionFilter);
   }, [submissions, completionFilter]);
 
@@ -663,7 +664,7 @@ export default function MySubmissions() {
         <h2 className="text-xl font-bold">My submissions</h2>
         
         <div className="flex flex-wrap items-center gap-2">
-          {(['all', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((status) => (
+          {(['all', 'pending', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setCompletionFilter(status)}
