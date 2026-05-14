@@ -16,8 +16,8 @@ export default function LandingPage() {
           <p>
             We're a group of girls and enbys who enjoy playing and talking about videogames. Genre and platform don't matter in our community, you could be a Marvel's Rivals enthusiast, or enjoy metroidvanias, or even play on mobile. It also doesn't matter if you're a seasoned veteran or are just starting out, if you enjoy playing videogames, you have a place here with us!
           </p>
-          <p className="opacity-60 text-base">
-            Our only requirement is that you identify with any of the following pronouns: <span className="text-blue-400">she/her - she/they - they/them</span>
+          <p className="text-base">
+            Our only requirement is that you identify with any of the following pronouns: <br /><span className="text-blue-400">she/her - she/they - they/them</span>
           </p>
           <p>
             This website is basically to keep track of members' achievements since we run bimonthly events that end with a chance to get a Steam key for the winning team.
