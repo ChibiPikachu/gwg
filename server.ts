@@ -1044,20 +1044,26 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      // 1. Get active event
-      const { data: event } = await supabase
-        .from('events')
-        .select('id')
-        .eq('is_active', true)
-        .maybeSingle();
+      const { eventId } = req.query;
+      let targetEventId = eventId;
 
-      if (!event) return res.json([]);
+      if (!targetEventId) {
+        // Get active event if no eventId provided
+        const { data: event } = await supabase
+          .from('events')
+          .select('id')
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (!event) return res.json([]);
+        targetEventId = event.id;
+      }
 
       // 2. Get all submissions for this event
       const { data: submissions, error } = await supabase
         .from('submissions')
         .select('game_id, game_name, game_image, steam_appid, user_id')
-        .eq('event_id', event.id);
+        .eq('event_id', targetEventId);
 
       if (error) throw error;
       if (!submissions || submissions.length === 0) return res.json([]);
@@ -2120,6 +2126,11 @@ async function createServer() {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+
+
+
+  // Removed duplicate leaderboard route
 
 
   // Vite middleware
