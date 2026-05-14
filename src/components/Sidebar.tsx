@@ -105,7 +105,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
         {/* Desktop Collapse Toggle */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="hidden lg:flex absolute -right-5 top-12 items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#1a1a1a] border-2 border-slate-200 dark:border-white/20 text-slate-700 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-white/40 hover:scale-105 z-50 transition-all shadow-md"
+          className="hidden lg:flex absolute -right-5 top-12 items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#1a1a1a] border-2 border-slate-200 dark:border-white/20 text-slate-700 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-white/40 hover:scale-105 z-150 transition-all shadow-md"
         >
           {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
