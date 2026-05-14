@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { Shield, Trophy, Edit2, Check } from 'lucide-react';
+import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TEAM_COLORS } from '@/types';
 
@@ -13,8 +13,32 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(true);
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
+
+  React.useEffect(() => {
+    const fetchSubmissions = async () => {
+      const idToFetch = steamId || currentUser?.uid;
+      if (!idToFetch) return;
+
+      setLoadingSubmissions(true);
+      try {
+        const res = await fetch(`/api/submissions?userId=${idToFetch}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSubmissions(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch submissions:', err);
+      } finally {
+        setLoadingSubmissions(false);
+      }
+    };
+
+    fetchSubmissions();
+  }, [steamId, currentUser?.uid]);
 
   React.useEffect(() => {
     if (isOwnProfile) {
@@ -258,6 +282,93 @@ export default function Profile({ steamId }: { steamId?: string }) {
             )}
          </div>
       </div>
+
+      {/* Submissions Section */}
+      <section className="flex flex-col gap-6">
+        <div className="flex items-center gap-3">
+          <div className={cn("p-2 rounded-lg bg-white/5", colors.text)}>
+            <History size={20} />
+          </div>
+          <h2 className="text-2xl font-bold dark:text-white text-slate-800">Submitted Games</h2>
+        </div>
+
+        {loadingSubmissions ? (
+          <div className="flex justify-center p-12">
+            <div className={cn("w-8 h-8 border-2 border-t-transparent rounded-full animate-spin", theme.border)}></div>
+          </div>
+        ) : submissions.length === 0 ? (
+          <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 opacity-30 italic">
+            No submissions found for this user.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {submissions.map((sub) => (
+              <div 
+                key={sub.id} 
+                className="group p-4 dark:bg-[#111111] bg-white rounded-xl border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-16 rounded overflow-hidden bg-white/5 shrink-0 border border-white/5 relative">
+                    {sub.game_image ? (
+                      <img src={sub.game_image} alt={sub.game_name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center opacity-20">
+                        <Gamepad2 size={24} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-lg dark:text-white text-slate-800">{sub.game_name}</h3>
+                      {sub.steam_appid && (
+                        <a 
+                          href={`https://store.steampowered.com/app/${sub.steam_appid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 hover:bg-white/5 rounded text-blue-400 opacity-60 hover:opacity-100 transition-all"
+                          title="View on Steam"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs opacity-60 flex-wrap">
+                       <span className="flex items-center gap-1">
+                          <Clock size={12} /> {sub.hours_played}h played
+                       </span>
+                       <span className="flex items-center gap-1">
+                          <Trophy size={12} /> {sub.achievements_earned} ach.
+                       </span>
+                       <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 uppercase font-bold tracking-wider text-[10px]">
+                         {sub.platform}
+                       </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between md:justify-end gap-4">
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={cn(
+                      "flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full",
+                      sub.status === 'verified' ? "text-emerald-400 bg-emerald-400/10" : 
+                      sub.status === 'rejected' ? "text-red-400 bg-red-400/10" : 
+                      "text-amber-400 bg-amber-400/10"
+                    )}>
+                      {sub.status === 'verified' && <CheckCircle2 size={12} />}
+                      {sub.status === 'rejected' && <XCircle size={12} />}
+                      {sub.status === 'pending' && <Clock size={12} />}
+                      {sub.status}
+                    </span>
+                    <span className="text-[10px] opacity-40 uppercase font-black">
+                      {sub.completion_status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

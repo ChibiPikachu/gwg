@@ -1121,7 +1121,10 @@ async function createServer() {
     }
 
     const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const { userId: targetUserId } = req.query;
+    
+    // Default to current user if no userId provided
+    const steamId = targetUserId ? String(targetUserId) : String(currentUser.id || currentUser.steamid || currentUser.steam_id);
     
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
