@@ -1045,13 +1045,10 @@ async function createServer() {
 
     try {
       // 1. Get active event
-      const now = new Date().toISOString();
       const { data: event } = await supabase
         .from('events')
         .select('id')
-        .lte('start_date', now)
-        .gte('end_date', now)
-        .eq('status', 'active')
+        .eq('is_active', true)
         .maybeSingle();
 
       if (!event) return res.json([]);
@@ -2123,11 +2120,6 @@ async function createServer() {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
-
-
-
-
-  // Removed duplicate leaderboard route
 
 
   // Vite middleware
