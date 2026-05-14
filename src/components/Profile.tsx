@@ -333,12 +333,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-xs opacity-60 flex-wrap">
-                       <span className="flex items-center gap-1">
-                          <Clock size={12} /> {sub.hours_played}h played
-                       </span>
-                       <span className="flex items-center gap-1">
-                          <Trophy size={12} /> {sub.achievements_earned} ach.
-                       </span>
                        <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 uppercase font-bold tracking-wider text-[10px]">
                          {sub.platform}
                        </span>
@@ -348,17 +342,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
                 <div className="flex items-center justify-between md:justify-end gap-4">
                   <div className="flex flex-col items-end gap-1">
-                    <span className={cn(
-                      "flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full",
-                      sub.status === 'verified' ? "text-emerald-400 bg-emerald-400/10" : 
-                      sub.status === 'rejected' ? "text-red-400 bg-red-400/10" : 
-                      "text-amber-400 bg-amber-400/10"
-                    )}>
-                      {sub.status === 'verified' && <CheckCircle2 size={12} />}
-                      {sub.status === 'rejected' && <XCircle size={12} />}
-                      {sub.status === 'pending' && <Clock size={12} />}
-                      {sub.status}
-                    </span>
                     <span className="text-[10px] opacity-40 uppercase font-black">
                       {sub.completion_status}
                     </span>
