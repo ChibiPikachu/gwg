@@ -1,5 +1,5 @@
 import React from 'react';
-import { Gamepad2, Users, ExternalLink, Trophy, SortAsc, Users2, Filter, ChevronLeft, ChevronRight, Archive, CheckCircle2 } from 'lucide-react';
+import { Gamepad2, Users, ExternalLink, Trophy, SortAsc, Users2, Filter, ChevronLeft, ChevronRight, Archive, CheckCircle2, Search, X } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   const [sortBy, setSortBy] = React.useState<SortOption>('az');
   const [filterBy, setFilterBy] = React.useState<FilterOption>('active');
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
   const [currentPage, setCurrentPage] = React.useState(1);
   const itemsPerPage = 40;
 
@@ -52,18 +53,29 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
       });
   }, [selectedEventId]);
 
-  const sortedGames = React.useMemo(() => {
-    const sorted = [...games];
-    if (sortBy === 'az') {
-      sorted.sort((a, b) => a.game_name.localeCompare(b.game_name));
-    } else if (sortBy === 'members') {
-      sorted.sort((a, b) => b.users.length - a.users.length);
-    }
-    return sorted;
-  }, [games, sortBy]);
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
-  const totalPages = Math.ceil(sortedGames.length / itemsPerPage);
-  const paginatedGames = sortedGames.slice(
+  const filteredAndSortedGames = React.useMemo(() => {
+    let result = [...games];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(g => 
+        (g.game_name && g.game_name.toLowerCase().includes(q)) ||
+        (g.users && g.users.some((user: any) => user.steam_name && user.steam_name.toLowerCase().includes(q)))
+      );
+    }
+    if (sortBy === 'az') {
+      result.sort((a, b) => a.game_name.localeCompare(b.game_name));
+    } else if (sortBy === 'members') {
+      result.sort((a, b) => b.users.length - a.users.length);
+    }
+    return result;
+  }, [games, sortBy, searchQuery]);
+
+  const totalPages = Math.ceil(filteredAndSortedGames.length / itemsPerPage);
+  const paginatedGames = filteredAndSortedGames.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -82,6 +94,30 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Real-time Game Search Bar */}
+          <div className="relative w-full sm:w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" size={14} />
+            <input
+              type="text"
+              placeholder="Search games or submitters..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={cn(
+                "w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-2 pl-9 pr-8 focus:outline-none transition-all font-sans text-xs dark:text-white text-slate-900",
+                `focus:${theme.border}/50`
+              )}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30 hover:dark:text-white hover:text-slate-900 transition-colors"
+                title="Clear Search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
           {/* Filter by Event Status */}
           <div className="flex bg-black/10 dark:bg-white/5 p-1 rounded-xl border border-black/5 dark:border-white/5">
             <button
@@ -160,9 +196,9 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
         <div className="flex justify-center p-12">
           <div className={cn("w-8 h-8 border-2 border-t-transparent rounded-full animate-spin", theme.border)}></div>
         </div>
-      ) : sortedGames.length === 0 ? (
+      ) : filteredAndSortedGames.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 opacity-30 italic">
-          No games found for this event selection.
+          {searchQuery ? `No games found matching "${searchQuery}".` : "No games found for this event selection."}
         </div>
       ) : (
         <div className="flex flex-col gap-6">
