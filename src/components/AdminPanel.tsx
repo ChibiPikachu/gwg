@@ -658,6 +658,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       {activeTab !== 'team_points' ? (
         activeTab === 'users' ? (
         <>
+          <TeamPointContributionChart 
+            users={users} 
+            theme={theme} 
+            onViewProfile={onViewProfile}
+            filterTeam={filterTeam}
+          />
 
           <section>
             <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-8">User Directory</h2>
@@ -1331,6 +1337,295 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Visual contribution pie chart of each member to their team's points
+function TeamPointContributionChart({ 
+  users, 
+  theme, 
+  onViewProfile,
+  filterTeam 
+}: { 
+  users: any[]; 
+  theme: any; 
+  onViewProfile?: (id: string) => void;
+  filterTeam: Team | 'all';
+}) {
+  const [selectedChartTeam, setSelectedChartTeam] = React.useState<Team>('blue');
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+
+  // Sync with main team filter if a valid team is selected
+  React.useEffect(() => {
+    if (filterTeam !== 'all' && filterTeam !== 'none') {
+      setSelectedChartTeam(filterTeam);
+    }
+  }, [filterTeam]);
+
+  const teamMembers = React.useMemo(() => {
+    return users
+      .filter(u => u.team === selectedChartTeam)
+      .sort((a, b) => (b.points || 0) - (a.points || 0));
+  }, [users, selectedChartTeam]);
+
+  const totalPoints = React.useMemo(() => {
+    return teamMembers.reduce((sum, m) => sum + (m.points || 0), 0);
+  }, [teamMembers]);
+
+  // Slices are members with actual points > 0
+  const chartSlices = React.useMemo(() => {
+    return teamMembers.filter(m => (m.points || 0) > 0);
+  }, [teamMembers]);
+
+  const chartTeams: Team[] = ['blue', 'green', 'purple', 'red'];
+
+  const getSliceColor = (index: number, total: number) => {
+    const hues: Record<Team, number> = {
+      blue: 217,
+      green: 142,
+      purple: 270,
+      red: 0,
+      none: 200
+    };
+    const baseHue = hues[selectedChartTeam] || 0;
+    // Sequential lightness from 42% to 74%
+    const step = total > 1 ? index / (total - 1) : 0.5;
+    const lightness = 42 + step * 32; 
+    const saturation = 75 + (index % 3) * 5; 
+    return `hsl(${baseHue}, ${saturation}%, ${lightness}%)`;
+  };
+
+  // Convert angles for pie slices
+  const wedges = React.useMemo(() => {
+    let currentAngle = 0;
+    return chartSlices.map((slide, index) => {
+      const percentage = totalPoints > 0 ? (slide.points || 0) / totalPoints : 0;
+      const angleSweep = percentage * 360;
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + angleSweep;
+      currentAngle = endAngle;
+
+      return {
+        member: slide,
+        percentage,
+        startAngle,
+        endAngle,
+        color: getSliceColor(index, chartSlices.length)
+      };
+    });
+  }, [chartSlices, totalPoints, selectedChartTeam]);
+
+  // Helper to construct SVG Path
+  const getWedgePath = (cx: number, cy: number, r: number, startAngle: number, endAngle: number) => {
+    let diff = endAngle - startAngle;
+    if (diff >= 360) {
+      diff = 359.99;
+    }
+    const safeEnd = startAngle + diff;
+
+    const startRad = (startAngle - 90) * Math.PI / 180;
+    const endRad = (safeEnd - 90) * Math.PI / 180;
+
+    const x1 = cx + r * Math.cos(startRad);
+    const y1 = cy + r * Math.sin(startRad);
+    const x2 = cx + r * Math.cos(endRad);
+    const y2 = cy + r * Math.sin(endRad);
+
+    const largeArcFlag = diff > 180 ? 1 : 0;
+
+    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+  };
+
+  const activeWidget = hoveredIndex !== null ? wedges[hoveredIndex] : null;
+
+  return (
+    <div className="dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-2xl p-6 mb-8 shadow-sm dark:shadow-none">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div>
+          <h3 className="text-base font-black dark:text-white text-slate-900 tracking-wide">
+            Team Point Contributions
+          </h3>
+          <p className="text-xs dark:text-white/40 text-slate-400 mt-1">
+            Visual breakdown of member point contribution percentage of each member towards their team's score.
+          </p>
+        </div>
+
+        {/* Team Selector tabs */}
+        <div className="flex bg-black/10 dark:bg-white/5 p-1 rounded-xl border border-black/5 dark:border-white/5 self-stretch sm:self-auto justify-between sm:justify-start">
+          {chartTeams.map(t => (
+            <button
+              key={t}
+              onClick={() => setSelectedChartTeam(t)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                selectedChartTeam === t 
+                  ? `${TEAM_COLORS[t].primary} ${TEAM_COLORS[t].secondary} shadow-sm ring-1 ring-${t}-accent/20`
+                  : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center min-h-[220px]">
+        {/* Chart View */}
+        <div className="md:col-span-5 flex flex-col items-center justify-center relative">
+          {totalPoints === 0 ? (
+            <div className="flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-12 h-12 rounded-full dark:bg-white/5 bg-slate-50 flex items-center justify-center mb-2 border dark:border-white/5 border-black/5">
+                <Settings size={20} className="dark:text-white/20 text-slate-400 font-bold" />
+              </div>
+              <span className="text-xs font-black dark:text-white/60 text-slate-700 capitalize">
+                No Points Awarded Yet
+              </span>
+              <span className="text-[10px] dark:text-white/30 text-slate-400 mt-1">
+                No players on Team {selectedChartTeam} have points.
+              </span>
+            </div>
+          ) : (
+            <div className="relative w-44 h-44 md:w-48 md:h-48 flex items-center justify-center group/donut">
+              <svg 
+                viewBox="0 0 200 200" 
+                className="w-full h-full transform -rotate-180 select-none scale-x-[-1]"
+              >
+                {wedges.map((wedge, idx) => {
+                  const isHovered = hoveredIndex === idx;
+                  const pathD = getWedgePath(100, 100, isHovered ? 88 : 80, wedge.startAngle, wedge.endAngle);
+                  return (
+                    <path
+                      key={idx}
+                      d={pathD}
+                      fill={wedge.color}
+                      className="transition-all duration-300 cursor-pointer origin-center"
+                      style={{
+                        opacity: hoveredIndex === null || isHovered ? 1 : 0.45,
+                        transform: isHovered ? 'scale(1.025)' : 'scale(1)',
+                      }}
+                      onMouseEnter={() => setHoveredIndex(idx)}
+                      onMouseLeave={() => setHoveredIndex(null)}
+                      onClick={() => onViewProfile?.(wedge.member.steamid)}
+                    />
+                  );
+                })}
+                {/* Center cut-out circle to make it a donut */}
+                <circle 
+                  cx="100" 
+                  cy="100" 
+                  r="52" 
+                  className="fill-white dark:fill-[#111111] transition-colors" 
+                />
+              </svg>
+
+              {/* Dynamic Center Panel */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none p-4">
+                {activeWidget ? (
+                  <div className="animate-in fade-in zoom-in-95 duration-200">
+                    <span className="block text-[10px] uppercase tracking-widest font-extrabold dark:text-white/40 text-slate-400 truncate max-w-[120px]">
+                      {activeWidget.member.steam_name}
+                    </span>
+                    <span className="block text-lg font-mono font-black dark:text-white text-slate-900 leading-tight">
+                      {activeWidget.member.points || 0} pts
+                    </span>
+                    <span className={cn("inline-block text-[10px] font-black uppercase mt-0.5 px-1.5 py-0.5 rounded-full", TEAM_COLORS[selectedChartTeam].secondary, TEAM_COLORS[selectedChartTeam].primary)}>
+                      {(activeWidget.percentage * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                ) : (
+                  <div className="animate-in fade-in duration-200">
+                    <span className="block text-[9px] uppercase tracking-widest font-black dark:text-white/30 text-slate-400">
+                      Total Points
+                    </span>
+                    <span className={cn("block text-2xl font-mono font-black", TEAM_COLORS[selectedChartTeam].primary)}>
+                      {totalPoints}
+                    </span>
+                    <span className="block text-[9px] font-bold dark:text-white/40 text-slate-400">
+                      {chartSlices.length} contributor{chartSlices.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Legend Panel */}
+        <div className="md:col-span-7 flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+          {teamMembers.length === 0 ? (
+            <div className="text-center py-6">
+              <span className="text-xs dark:text-white/40 text-slate-400 font-bold uppercase tracking-wider">
+                No members found in this team.
+              </span>
+            </div>
+          ) : (
+            teamMembers.map((member, idx) => {
+              const points = member.points || 0;
+              const percentage = totalPoints > 0 ? points / totalPoints : 0;
+              const hasPoints = points > 0;
+              const sliceIndex = chartSlices.findIndex(s => s.steamid === member.steamid);
+              const sliceColor = hasPoints && sliceIndex !== -1 ? getSliceColor(sliceIndex, chartSlices.length) : 'transparent';
+              
+              const isHovered = hoveredIndex === sliceIndex && hasPoints;
+
+              return (
+                <div
+                  key={member.steamid}
+                  className={cn(
+                    "flex items-center justify-between p-2 rounded-xl transition-all border border-transparent cursor-pointer",
+                    isHovered 
+                      ? "dark:bg-white/5 bg-slate-50 dark:border-white/10 border-black/10 scale-[1.01]" 
+                      : "hover:dark:bg-white/5 hover:bg-slate-50"
+                  )}
+                  onMouseEnter={() => hasPoints && sliceIndex !== -1 && setHoveredIndex(sliceIndex)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  onClick={() => onViewProfile?.(member.steamid)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Visual point indicator node */}
+                    <div 
+                      className="w-3 h-3 rounded-full shrink-0 border border-black/10 dark:border-white/10"
+                      style={{ 
+                        backgroundColor: hasPoints ? sliceColor : 'rgba(156, 163, 175, 0.15)',
+                      }}
+                    />
+
+                    <img 
+                      src={member.steam_avatar} 
+                      alt="" 
+                      className="w-7 h-7 rounded-full object-cover shrink-0 border border-black/5 dark:border-white/10 animate-fade-in" 
+                      referrerPolicy="no-referrer"
+                    />
+
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-black dark:text-white text-slate-800 truncate">
+                        {member.steam_name}
+                      </span>
+                      {member.discord_name && (
+                        <span className="text-[9px] font-bold dark:text-white/30 text-slate-400 truncate">
+                          @{member.discord_name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 shrink-0 text-right font-mono">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold dark:text-white text-slate-800">
+                        {points} pts
+                      </span>
+                      <span className="text-[10px] font-bold dark:text-white/40 text-slate-400 leading-none">
+                        {(percentage * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }
