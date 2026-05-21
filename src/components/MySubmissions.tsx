@@ -31,6 +31,7 @@ export default function MySubmissions() {
   const [submitting, setSubmitting] = React.useState(false);
   const [steamTotalStats, setSteamTotalStats] = React.useState<{hours: number, achievements: number} | null>(null);
   const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned' | 'pending'>('all');
+  const [submissionsSearchQuery, setSubmissionsSearchQuery] = React.useState('');
   const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
 
   // Auto-calculate 'during event' stats
@@ -60,10 +61,20 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed]);
 
   const filteredSubmissions = React.useMemo(() => {
-    if (completionFilter === 'all') return submissions;
-    if (completionFilter === 'pending') return submissions.filter(s => s.status === 'pending');
-    return submissions.filter(s => s.completion_status === completionFilter);
-  }, [submissions, completionFilter]);
+    let result = submissions;
+    if (completionFilter !== 'all') {
+      if (completionFilter === 'pending') {
+        result = submissions.filter(s => s.status === 'pending');
+      } else {
+        result = submissions.filter(s => s.completion_status === completionFilter);
+      }
+    }
+    if (submissionsSearchQuery.trim()) {
+      const q = submissionsSearchQuery.toLowerCase().trim();
+      result = result.filter(s => s.game_name && s.game_name.toLowerCase().includes(q));
+    }
+    return result;
+  }, [submissions, completionFilter, submissionsSearchQuery]);
 
   const scorePreview = React.useMemo(() => {
     const earned = parseInt(formData.achievementsEarned) || 0;
@@ -660,8 +671,34 @@ export default function MySubmissions() {
       )}
 
       {/* Submissions List */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
-        <h2 className="text-xl font-bold">My submissions</h2>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full lg:w-auto mt-4 sm:mt-0">
+          <h2 className="text-xl font-bold shrink-0">My submissions</h2>
+          
+          {/* Submissions Search Bar */}
+          <div className="relative w-full sm:w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" size={14} />
+            <input
+              type="text"
+              placeholder="Search my games..."
+              value={submissionsSearchQuery}
+              onChange={(e) => setSubmissionsSearchQuery(e.target.value)}
+              className={cn(
+                "w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-2 pl-9 pr-8 focus:outline-none transition-all font-sans text-xs dark:text-white text-slate-900",
+                `focus:${theme.border}/50`
+              )}
+            />
+            {submissionsSearchQuery && (
+              <button
+                onClick={() => setSubmissionsSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30 hover:dark:text-white hover:text-slate-900 transition-colors"
+                title="Clear Search"
+              >
+                <Plus className="rotate-45" size={14} />
+              </button>
+            )}
+          </div>
+        </div>
         
         <div className="flex flex-wrap items-center gap-2">
           {(['all', 'pending', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((status) => (
