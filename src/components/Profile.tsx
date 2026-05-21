@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Flame } from 'lucide-react';
+import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TEAM_COLORS } from '@/types';
 
@@ -16,6 +16,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(true);
   const [events, setEvents] = useState<any[]>([]);
+  const [showSurvivorTooltip, setShowSurvivorTooltip] = useState(false);
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
 
@@ -183,14 +184,27 @@ export default function Profile({ steamId }: { steamId?: string }) {
               {(hasSurvivedMigration || (events.length > 0 && events.some(e => !e.is_active && e.winner_team && targetUser.team === e.winner_team))) && (
                 <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2 mb-1 animate-in fade-in duration-300">
                   {hasSurvivedMigration && (
-                    <div className="relative group/tooltip flex items-center justify-center">
-                      <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-semibold select-none cursor-default">
-                        <Flame size={12} className="animate-pulse" />
-                        <span>Migration Survivor</span>
-                      </span>
-                      <div className="absolute bottom-full mb-2 hidden group-hover/tooltip:block z-50 bg-slate-900 border border-white/10 text-white text-[11px] px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1 duration-150 font-bold">
-                        i survived the migration horrors
-                      </div>
+                    <div 
+                      className="relative group/tooltip flex items-center justify-center"
+                      onMouseEnter={() => setShowSurvivorTooltip(true)}
+                      onMouseLeave={() => setShowSurvivorTooltip(false)}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setShowSurvivorTooltip(!showSurvivorTooltip);
+                        }}
+                        className="flex items-center justify-center p-1.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-semibold select-none cursor-pointer hover:bg-orange-500/20 transition-all active:scale-95 duration-150"
+                        title="i survived the migration horrors"
+                      >
+                        <Skull size={12} className="animate-pulse" />
+                      </button>
+                      {showSurvivorTooltip && (
+                        <div className="absolute bottom-full mb-2 z-[9999] bg-slate-900 border border-white/10 text-white text-[11px] px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1 duration-150 font-bold pointer-events-none">
+                          i survived the migration horrors
+                        </div>
+                      )}
                     </div>
                   )}
 
