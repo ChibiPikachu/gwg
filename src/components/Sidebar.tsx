@@ -22,12 +22,26 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
-    fetch('/api/events')
-      .then(res => res.json())
-      .then(data => {
-        const active = data.find((e: any) => e.is_active);
-        if (active) setCurrentEvent(active);
-      });
+    const fetchActiveEvent = () => {
+      fetch('/api/events')
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const active = data.find((e: any) => e.is_active);
+            setCurrentEvent(active || null);
+          } else {
+            setCurrentEvent(null);
+          }
+        })
+        .catch(err => console.error('Failed to fetch events in Sidebar:', err));
+    };
+
+    fetchActiveEvent();
+
+    window.addEventListener('active-event-updated', fetchActiveEvent);
+    return () => {
+      window.removeEventListener('active-event-updated', fetchActiveEvent);
+    };
   }, []);
 
   const getCountdownTarget = (endDateStr: string): number => {

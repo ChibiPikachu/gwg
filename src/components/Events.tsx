@@ -63,13 +63,7 @@ export default function EventsPanel() {
     });
   };
 
-  // Sync startTime and endTime ONLY when the editing modal is opened
-  React.useEffect(() => {
-    if (isEditing && editingEvent) {
-      setStartTime(parseTimeFromDateStr(editingEvent.start_date, '00:00'));
-      setEndTime(parseTimeFromDateStr(editingEvent.end_date, '23:59'));
-    }
-  }, [isEditing]);
+  // State values are synced on click in the button handlers to avoid race conditions and dependency synchronization loops
 
   const fetchEvents = React.useCallback(async () => {
     try {
@@ -120,6 +114,7 @@ export default function EventsPanel() {
         setIsEditing(false);
         setEditingEvent(null);
         fetchEvents();
+        window.dispatchEvent(new Event('active-event-updated'));
       } else {
         const errorData = await res.json().catch(() => ({}));
         console.error('Server error saving event:', errorData);
@@ -155,6 +150,8 @@ export default function EventsPanel() {
           <button 
             onClick={() => {
               setEditingEvent({ title: '', start_date: '', end_date: '', is_active: false, hide_scores: false });
+              setStartTime('00:00');
+              setEndTime('23:59');
               setIsEditing(true);
             }}
             className={cn("w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, theme.glow, "text-white")}
@@ -222,6 +219,8 @@ export default function EventsPanel() {
                       <button 
                         onClick={() => {
                           setEditingEvent(currentEvent);
+                          setStartTime(parseTimeFromDateStr(currentEvent.start_date, '00:00'));
+                          setEndTime(parseTimeFromDateStr(currentEvent.end_date, '23:59'));
                           setIsEditing(true);
                         }}
                         className="w-full py-3 dark:bg-white/5 bg-black/5 hover:dark:bg-white/10 hover:bg-black/10 border dark:border-white/10 border-black/10 rounded-xl font-bold dark:text-white text-slate-800 text-xs transition-all flex items-center justify-center gap-2"
@@ -260,6 +259,8 @@ export default function EventsPanel() {
                     <button 
                       onClick={() => {
                         setEditingEvent(event);
+                        setStartTime(parseTimeFromDateStr(event.start_date, '00:00'));
+                        setEndTime(parseTimeFromDateStr(event.end_date, '23:59'));
                         setIsEditing(true);
                       }}
                       className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg dark:text-white/30 text-slate-400 hover:dark:text-white hover:text-slate-900 transition-all"
