@@ -154,7 +154,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
            )}
         </div>
 
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-4 overflow-visible">
            <div>
               {isEditing && isOwnProfile ? (
                  <div className="flex flex-col gap-1 mb-2">
@@ -196,7 +196,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                           setShowSurvivorTooltip(!showSurvivorTooltip);
                         }}
                         className="flex items-center justify-center p-1.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-semibold select-none cursor-pointer hover:bg-orange-500/20 transition-all active:scale-95 duration-150"
-                        title="i survived the migration horrors"
+                        title="I survived the migration horrors!"
                       >
                         <Skull size={12} className="animate-pulse" />
                       </button>
