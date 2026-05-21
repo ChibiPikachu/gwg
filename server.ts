@@ -1196,11 +1196,13 @@ async function createServer() {
     if (!supabase) return res.json([]);
 
     try {
-      const { data, error } = await supabase
-        .from('submissions')
-        .select('*')
-        .eq('user_id', steamId)
-        .order('created_at', { ascending: false });
+      let query = supabase.from('submissions').select('*');
+      if (targetUserId) {
+        query = query.eq('user_id', steamId);
+      } else {
+        query = query.or(`user_id.eq.${steamId},user_id.eq.system_notification`);
+      }
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
       res.json(data || []);
@@ -1981,6 +1983,156 @@ async function createServer() {
     } catch (err) {
       console.error('Failed to update event:', err);
       res.status(500).json({ error: 'Failed to update event' });
+    }
+  });
+
+  app.post('/api/admin/close-event', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const currentUser = (req as any).user;
+    if (!currentUser.isAdmin && currentUser.role !== 'admin' && currentUser.role !== 'admins') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.body;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      // 1. Mark event as inactive
+      const { data: updatedEvent, error: eventError } = await supabase
+        .from('events')
+        .update({ is_active: false })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (eventError) throw eventError;
+
+      // 2. Ensure general system_notification profile exists to satisfy FK constraint if present
+      await supabase.from('profiles').upsert({
+        steamid: 'system_notification',
+        steam_name: 'System',
+        team: 'none',
+        points: 0,
+        role: 'system'
+      });
+
+      // 3. Fetch default game id as fallback if needed for constraint
+      const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
+      const defaultGameId = game?.id || null;
+
+      // 4. Insert system notification into submissions for all to pull
+      const notificationMessage = "The event is now over! Head over to discord for the screenshot voting period.";
+      const notificationData = {
+        user_id: 'system_notification',
+        user_name: 'Girls Who Game',
+        user_avatar: 'https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png',
+        game_id: defaultGameId,
+        game_name: 'Event Update',
+        game_image: 'https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png',
+        achievements_during: 0,
+        hours_during: 0,
+        achievements_before: 0,
+        hours_before: 0,
+        multiplier: 1.0,
+        calculated_score: 0,
+        completion_status: 'completed',
+        platform: 'System',
+        points: 0,
+        notes: notificationMessage,
+        status: 'verified',
+        event_id: id,
+        created_at: new Date().toISOString()
+      };
+
+      const { error: subError } = await supabase
+        .from('submissions')
+        .insert(notificationData);
+
+      if (subError) throw subError;
+
+      res.json({ success: true, event: updatedEvent });
+    } catch (err: any) {
+      console.error('Failed to close event:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/team-adjustments', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.json([]);
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .like('user_id', 'team_pts_%')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (err) {
+      console.error('Failed to fetch team adjustments:', err);
+      res.json([]);
+    }
+  });
+
+  app.post('/api/admin/team-adjustments', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const currentUser = (req as any).user;
+    if (!currentUser.isAdmin && currentUser.role !== 'admin' && currentUser.role !== 'admins') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { team, points, notes } = req.body;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const dummySteamId = `team_pts_${team}`;
+      await supabase.from('profiles').upsert({
+        steamid: dummySteamId,
+        steam_name: `Team ${team.toUpperCase()} Adjustments`,
+        team: 'none',
+        points: 0
+      });
+
+      const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
+      const defaultGameId = game?.id || null;
+
+      const adjustmentData = {
+        user_id: dummySteamId,
+        user_name: `Team ${team.toUpperCase()}`,
+        user_avatar: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+        game_id: defaultGameId,
+        game_name: 'Team Award',
+        game_image: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+        achievements_during: 0,
+        hours_during: 0,
+        achievements_before: 0,
+        hours_before: 0,
+        multiplier: 1.0,
+        calculated_score: parseInt(points) || 0,
+        completion_status: 'completed',
+        platform: 'System',
+        points: parseInt(points) || 0,
+        notes: notes || '',
+        status: 'verified',
+        created_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('submissions')
+        .insert(adjustmentData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err: any) {
+      console.error('Failed to add team points:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 

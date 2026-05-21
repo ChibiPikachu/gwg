@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Medal, Users, Shield } from 'lucide-react';
+import { Trophy, Medal, Users, Shield, Bell } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -10,6 +10,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const [users, setUsers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [activeEvent, setActiveEvent] = React.useState<any | null>(null);
+  const [adjustments, setAdjustments] = React.useState<any[]>([]);
 
   const fetchUsers = React.useCallback(() => {
     fetch('/api/leaderboard/users')
@@ -24,8 +25,20 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       });
   }, []);
 
+  const fetchAdjustments = React.useCallback(() => {
+    fetch('/api/team-adjustments')
+      .then(res => res.json())
+      .then(data => {
+        setAdjustments(Array.isArray(data) ? data : []);
+      })
+      .catch(err => {
+        console.error('Failed to fetch team adjustments:', err);
+      });
+  }, []);
+
   React.useEffect(() => {
     fetchUsers();
+    fetchAdjustments();
 
     // Fetch active event settings
     fetch('/api/events')
@@ -48,16 +61,26 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         schema: 'public', 
         table: 'profiles' 
       }, () => {
-        // Simple approach: Refetch when any profile changes
-        // More efficient would be updating local state, but this ensures consistency with API filters
         fetchUsers();
+      })
+      .subscribe();
+
+    const subChannel = supabase
+      .channel('leaderboard-submissions')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'submissions' 
+      }, () => {
+        fetchAdjustments();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(subChannel);
     };
-  }, [fetchUsers]);
+  }, [fetchUsers, fetchAdjustments]);
 
   const hideScores = !!activeEvent?.hide_scores;
 
@@ -70,11 +93,17 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       }) 
     : [];
 
+  const getTeamAdjustmentPoints = (teamName: string) => {
+    return adjustments
+      .filter(a => a.user_id === `team_pts_${teamName}`)
+      .reduce((acc, a) => acc + Number(a.points || 0), 0);
+  };
+
   const standings = [
-    { team: 'blue', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },
-    { team: 'purple', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'purple').length, rank: 2 },
-    { team: 'green', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
-    { team: 'red', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
+    { team: 'blue', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('blue'), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },
+    { team: 'purple', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('purple'), members: safeUsers.filter(u => u.team === 'purple').length, rank: 2 },
+    { team: 'green', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('green'), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
+    { team: 'red', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('red'), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
   ].sort((a, b) => hideScores ? a.team.localeCompare(b.team) : b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
@@ -181,6 +210,43 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           )}
         </div>
       </section>
+
+      {adjustments.length > 0 && !hideScores && (
+        <section className="mt-8 dark:bg-zinc-950/20 p-6 rounded-3xl border border-black/5 dark:border-white/5 bg-slate-50/50">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-3 dark:text-white text-slate-800">
+            <Bell className="text-indigo-400" size={24} />
+            Team Point Adjustments log
+          </h2>
+          <div className="grid grid-cols-1 gap-3">
+            {adjustments.map((adj) => {
+              const teamName = adj.user_id.replace('team_pts_', '');
+              return (
+                <div key={adj.id} className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <span className={cn(
+                      "font-black tracking-widest text-[10px] uppercase px-2.5 py-1 rounded-lg border shrink-0",
+                      TEAM_COLORS[teamName as Team]?.primary || "text-slate-500",
+                      TEAM_COLORS[teamName as Team]?.border || "border-slate-500/10",
+                      TEAM_COLORS[teamName as Team]?.secondary || "bg-slate-500/5"
+                    )}>
+                      Team {teamName}
+                    </span>
+                    <p className="text-sm dark:text-white/80 text-slate-705">
+                      {adj.notes || "Bonus points awarded by Admin"}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    "font-mono font-black text-sm shrink-0 px-3 py-1 rounded-lg",
+                    adj.points >= 0 ? "text-emerald-500 bg-emerald-500/5 border border-emerald-500/10" : "text-red-500 bg-red-500/5 border border-red-500/10"
+                  )}>
+                    {adj.points >= 0 ? `+${adj.points}` : adj.points} pts
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

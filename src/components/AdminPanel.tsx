@@ -5,7 +5,7 @@ import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, P
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
-type AdminTab = 'users' | 'submissions';
+type AdminTab = 'users' | 'submissions' | 'team_points';
 
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
   const { user: currentUser, theme } = useAuth();
@@ -39,6 +39,74 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = React.useState(false);
   const [backfillProgress, setBackfillProgress] = React.useState<{ processed: number, remaining: number, total: number } | null>(null);
+
+  const [awardTeam, setAwardTeam] = React.useState<'blue' | 'purple' | 'green' | 'red'>('blue');
+  const [awardPoints, setAwardPoints] = React.useState('');
+  const [awardNotes, setAwardNotes] = React.useState('');
+  const [isAwarding, setIsAwarding] = React.useState(false);
+  const [teamAdjustments, setTeamAdjustments] = React.useState<any[]>([]);
+
+  const fetchTeamAdjustments = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/team-adjustments');
+      if (res.ok) {
+        const data = await res.json();
+        setTeamAdjustments(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch team adjustments:', err);
+    }
+  }, []);
+
+  const handleAwardTeamPoints = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!awardTeam || !awardPoints || parseInt(awardPoints) === 0) return;
+    setIsAwarding(true);
+    try {
+      const res = await fetch('/api/admin/team-adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team: awardTeam,
+          points: parseInt(awardPoints),
+          notes: awardNotes
+        })
+      });
+      if (res.ok) {
+        setAwardPoints('');
+        setAwardNotes('');
+        await fetchTeamAdjustments();
+        alert('Points successfully awarded to the team!');
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Unknown server error' }));
+        alert(`Failed to award team points: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to award points:', err);
+      alert('An error occurred while awarding points.');
+    } finally {
+      setIsAwarding(false);
+    }
+  };
+
+  const handleDeleteAdjustment = async (id: string) => {
+    if (!window.confirm('Are you sure you want to remove this point adjustment?')) return;
+    try {
+      const res = await fetch(`/api/admin/submissions/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchTeamAdjustments();
+        alert('Adjustment successfully revoked!');
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Unknown error' }));
+        alert(`Failed to delete: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to delete adjustment:', err);
+      alert('An error occurred.');
+    }
+  };
 
   const fetchHLTBForGame = async (title: string) => {
     if (hltbData[title] && !hltbData[title].notFound) return;
@@ -103,9 +171,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchUsers(), fetchSubmissions()]);
+    await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments()]);
     setLoading(false);
-  }, [fetchUsers, fetchSubmissions]);
+  }, [fetchUsers, fetchSubmissions, fetchTeamAdjustments]);
 
   React.useEffect(() => {
     if (activeAdminTab) {
@@ -131,6 +199,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       .channel('admin-submissions')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, () => {
         fetchSubmissions();
+        fetchTeamAdjustments();
       })
       .subscribe();
 
@@ -138,7 +207,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       supabase.removeChannel(channelProfiles);
       supabase.removeChannel(channelSubmissions);
     };
-  }, [fetchData, fetchUsers, fetchSubmissions]);
+  }, [fetchData, fetchUsers, fetchSubmissions, fetchTeamAdjustments]);
 
   const assignTeam = async (targetSteamId: string, team: Team) => {
     setUpdating(targetSteamId);
@@ -382,9 +451,20 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
           {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
         </button>
+        <button 
+          onClick={() => setActiveTab('team_points')}
+          className={cn(
+            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+            activeTab === 'team_points' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+          )}
+        >
+          Team Points
+          {activeTab === 'team_points' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+        </button>
       </div>
 
-      <section className="flex flex-col lg:flex-row gap-4 md:gap-6 justify-between items-start lg:items-center">
+      {activeTab !== 'team_points' && (
+        <section className="flex flex-col lg:flex-row gap-4 md:gap-6 justify-between items-start lg:items-center">
         <div className="flex-1 w-full flex flex-col gap-4 md:gap-6">
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div className="w-full sm:max-w-md">
@@ -557,8 +637,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
         </div>
       </section>
+      )}
 
-      {activeTab === 'users' ? (
+      {activeTab !== 'team_points' ? (
+        activeTab === 'users' ? (
         <>
 
           <section>
@@ -1047,6 +1129,123 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             )}
           </div>
         </section>
+        )
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Award Form */}
+          <div className="lg:col-span-1 border dark:border-white/5 border-black/5 dark:bg-[#111111] bg-white p-6 rounded-2xl flex flex-col gap-6 h-fit shadow-xl">
+            <div>
+              <h3 className="text-base font-bold dark:text-white text-slate-800 font-sans">Award Team Points</h3>
+              <p className="text-xs opacity-50 mt-1">Directly grant or deduct points from team totals.</p>
+            </div>
+
+            <form onSubmit={handleAwardTeamPoints} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select Team</label>
+                <select
+                  value={awardTeam}
+                  onChange={(e) => setAwardTeam(e.target.value as any)}
+                  className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
+                >
+                  <option value="blue">Team Blue</option>
+                  <option value="purple">Team Purple</option>
+                  <option value="green">Team Green</option>
+                  <option value="red">Team Red</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Points</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 100 or -50"
+                  value={awardPoints}
+                  onChange={(e) => setAwardPoints(e.target.value)}
+                  className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-sm dark:text-white text-slate-900"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">What are these points for?</label>
+                <textarea
+                  placeholder="Note the reason for these points..."
+                  value={awardNotes}
+                  onChange={(e) => setAwardNotes(e.target.value)}
+                  rows={4}
+                  className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isAwarding || !awardPoints || parseInt(awardPoints) === 0}
+                className={cn(
+                  "w-full py-3.5 rounded-xl font-bold text-white text-xs transition-all uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg cursor-pointer",
+                  isAwarding ? "opacity-50 cursor-not-allowed" : theme.bg,
+                  theme.glow
+                )}
+              >
+                {isAwarding ? "Awarding..." : "Award Points"}
+              </button>
+            </form>
+          </div>
+
+          {/* Adjustments Log */}
+          <div className="lg:col-span-2 border dark:border-white/5 border-black/5 dark:bg-[#111111] bg-white p-6 rounded-2xl flex flex-col gap-6 shadow-xl">
+            <div>
+              <h3 className="text-base font-bold dark:text-white text-slate-800 font-sans">Point Adjustments Log</h3>
+              <p className="text-xs opacity-50 mt-1">Audit trail of all administrative adjustments.</p>
+            </div>
+
+            {teamAdjustments.length === 0 ? (
+              <div className="p-12 text-center opacity-30 text-xs italic dark:text-white text-slate-500">
+                No adjustments recorded yet.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {teamAdjustments.map((adj) => {
+                  const teamName = adj.user_id.replace('team_pts_', '');
+                  return (
+                    <div key={adj.id} className="p-4 rounded-xl dark:bg-black/20 bg-slate-50 border dark:border-white/5 border-black/5 flex items-center justify-between gap-4 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <span className={cn(
+                          "font-black tracking-widest text-[9px] uppercase px-2 py-0.5 rounded border shrink-0",
+                          TEAM_COLORS[teamName as Team]?.primary || "text-slate-500",
+                          TEAM_COLORS[teamName as Team]?.border || "border-slate-500/15",
+                          TEAM_COLORS[teamName as Team]?.secondary || "bg-slate-500/5"
+                        )}>
+                          {teamName}
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold dark:text-white text-slate-850 select-text">{adj.notes}</p>
+                          <span className="text-[9px] opacity-40 font-mono">{new Date(adj.created_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <span className={cn(
+                          "font-mono font-bold text-xs shrink-0 px-2 py-0.5 rounded",
+                          adj.points >= 0 ? "text-emerald-500 bg-emerald-500/5 border border-emerald-500/10" : "text-red-500 bg-red-500/5 border border-red-500/10"
+                        )}>
+                          {adj.points >= 0 ? `+${adj.points}` : adj.points} pts
+                        </span>
+
+                        <button
+                          onClick={() => handleDeleteAdjustment(adj.id)}
+                          className="p-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-500 text-[10px] font-bold tracking-widest uppercase transition-all cursor-pointer outline-none"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2, History } from 'lucide-react';
+import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2, History, XCircle } from 'lucide-react';
 import { CompetitionEvent, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -128,6 +128,33 @@ export default function EventsPanel() {
     }
   };
 
+  const handleCloseActiveEvent = async () => {
+    if (!currentEvent) return;
+    if (!window.confirm('Are you sure you want to close this event? This will mark it as inactive and send a notification to all members.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/close-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentEvent.id })
+      });
+
+      if (res.ok) {
+        alert('Event successfully closed!');
+        fetchEvents();
+        window.dispatchEvent(new Event('active-event-updated'));
+      } else {
+        const data = await res.json();
+        alert(`Failed to close event: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to close event:', err);
+      alert('An error occurred while closing the event.');
+    }
+  };
+
   const currentEvent = events.find(e => e.is_active);
   const pastEvents = events.filter(e => !e.is_active);
 
@@ -216,18 +243,27 @@ export default function EventsPanel() {
                        </div>
                     </div>
                     {!isCountdownCollapsed && isAdmin && (
-                      <button 
-                        onClick={() => {
-                          setEditingEvent(currentEvent);
-                          setStartTime(parseTimeFromDateStr(currentEvent.start_date, '00:00'));
-                          setEndTime(parseTimeFromDateStr(currentEvent.end_date, '23:59'));
-                          setIsEditing(true);
-                        }}
-                        className="w-full py-3 dark:bg-white/5 bg-black/5 hover:dark:bg-white/10 hover:bg-black/10 border dark:border-white/10 border-black/10 rounded-xl font-bold dark:text-white text-slate-800 text-xs transition-all flex items-center justify-center gap-2"
-                      >
-                        <Edit2 size={14} />
-                        Modify Event
-                      </button>
+                      <div className="flex flex-col gap-2 w-full">
+                        <button 
+                          onClick={() => {
+                            setEditingEvent(currentEvent);
+                            setStartTime(parseTimeFromDateStr(currentEvent.start_date, '00:00'));
+                            setEndTime(parseTimeFromDateStr(currentEvent.end_date, '23:59'));
+                            setIsEditing(true);
+                          }}
+                          className="w-full py-3 dark:bg-white/5 bg-black/5 hover:dark:bg-white/10 hover:bg-black/10 border dark:border-white/10 border-black/10 rounded-xl font-bold dark:text-white text-slate-800 text-xs transition-all flex items-center justify-center gap-2"
+                        >
+                          <Edit2 size={14} />
+                          Modify Event
+                        </button>
+                        <button 
+                          onClick={handleCloseActiveEvent}
+                          className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-xl font-bold text-red-500 text-xs transition-all flex items-center justify-center gap-2"
+                        >
+                          <XCircle size={14} />
+                          Close Event
+                        </button>
+                      </div>
                     )}
                  </div>
                </div>

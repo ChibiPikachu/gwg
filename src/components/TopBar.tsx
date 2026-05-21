@@ -193,6 +193,29 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           setShowNotifications(true); // Auto-show notification when status changes
         }
       })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'submissions',
+        filter: `user_id=eq.system_notification`
+      }, (payload) => {
+        const newNotification = payload.new as any;
+        // Add to start of notification list
+        setNotifications(prev => {
+          const exists = prev.find(n => n.id === newNotification.id);
+          if (exists) return prev;
+          return [newNotification, ...prev].slice(0, 5);
+        });
+        
+        // Ensure it's marked as unread
+        setReadIds(prev => {
+          const next = new Set(prev);
+          next.delete(newNotification.id);
+          return next;
+        });
+        
+        setShowNotifications(true); // Auto-show when an event ends
+      })
       .subscribe();
 
     return () => {
@@ -284,24 +307,40 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                             <img src={n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-2">
-                              {n.status === 'verified' ? (
-                                <CheckCircle2 size={14} className="text-emerald-500" />
-                              ) : (
-                                <XCircle size={14} className="text-red-500" />
-                              )}
-                              <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
-                                {n.status === 'verified' ? "Approved" : "Rejected"}
-                              </span>
-                            </div>
-                            
-                            <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
-                              {n.status === 'verified' ? (
-                                <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
-                              ) : (
-                                <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
-                              )}
-                            </p>
+                            {n.user_id === 'system_notification' ? (
+                              <>
+                                <div className="flex items-center gap-1.5 mb-2">
+                                  <Bell size={14} className="text-indigo-500 dark:text-indigo-400" />
+                                  <span className="text-[10px] font-black uppercase tracking-tighter text-indigo-500 dark:text-indigo-400">
+                                    Announcement
+                                  </span>
+                                </div>
+                                <p className="text-sm font-bold leading-relaxed mb-1 dark:text-white text-slate-850 select-text">
+                                  {n.notes}
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-1.5 mb-2">
+                                  {n.status === 'verified' ? (
+                                    <CheckCircle2 size={14} className="text-emerald-500" />
+                                  ) : (
+                                    <XCircle size={14} className="text-red-500" />
+                                  )}
+                                  <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
+                                    {n.status === 'verified' ? "Approved" : "Rejected"}
+                                  </span>
+                                </div>
+                                
+                                <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
+                                  {n.status === 'verified' ? (
+                                    <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
+                                  ) : (
+                                    <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
+                                  )}
+                                </p>
+                              </>
+                            )}
 
                             {n.status === 'rejected' && (
                               <p className="text-[10px] text-red-500 opacity-60 mt-2 p-2 bg-red-500/5 rounded italic border border-red-500/10 dark:text-red-300">
