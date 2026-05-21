@@ -273,7 +273,7 @@ export default function MySubmissions() {
     setSelectedGame({
       id: sub.game_id,
       title: sub.game_name,
-      image: sub.game_image,
+      image: sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image,
       steam_appid: sub.steam_appid || null
     });
     setFormData({
@@ -750,7 +750,7 @@ export default function MySubmissions() {
                     "group-hover:shadow-[0_0_25px_-5px_rgba(0,0,0,0.2)]"
                   )}>
                     <img 
-                      src={sub.game_image} 
+                      src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} 
                       alt={sub.game_name} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                       referrerPolicy="no-referrer"

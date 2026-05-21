@@ -2180,7 +2180,7 @@ async function createServer() {
           user_avatar: userProfile.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
           game_id: defaultGameId,
           game_name: 'Screenshot Points',
-          game_image: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+          game_image: 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png',
           achievements_during: 0,
           hours_during: 0,
           achievements_before: 0,

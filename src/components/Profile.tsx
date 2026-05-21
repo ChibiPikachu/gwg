@@ -198,7 +198,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                         className="flex items-center justify-center p-1.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-semibold select-none cursor-pointer hover:bg-orange-500/20 transition-all active:scale-95 duration-150"
                         title="I survived the migration horrors!"
                       >
-                        <Skull size={12} className="animate-pulse" />
+                        <Skull size={12} />
                       </button>
                       {showSurvivorTooltip && (
                         <div className="absolute bottom-full mb-2 z-[9999] bg-slate-900 border border-white/10 text-white text-[11px] px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1 duration-150 font-bold pointer-events-none">
@@ -389,7 +389,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-16 rounded overflow-hidden bg-white/5 shrink-0 border border-white/5 relative">
                     {sub.game_image ? (
-                      <img src={sub.game_image} alt={sub.game_name} className="w-full h-full object-cover" />
+                      <img src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} alt={sub.game_name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center opacity-20">
                         <Gamepad2 size={24} />

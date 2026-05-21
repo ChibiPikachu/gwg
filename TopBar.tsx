@@ -23,81 +23,6 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showProfileMenu, setShowProfileMenu] = React.useState(false);
   
-  const [currentEvent, setCurrentEvent] = React.useState<any>(null);
-  const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0 });
-
-  const getCountdownTarget = (endDateStr: string): number => {
-    if (!endDateStr) return 0;
-    if (endDateStr.includes('T')) {
-      const parts = endDateStr.split('T');
-      const timePart = parts[1];
-      const isBareDate = !timePart || timePart.startsWith('00:00:00') || timePart.startsWith('23:59:59');
-      if (isBareDate) {
-        return new Date(`${parts[0]}T23:59:59-03:00`).getTime();
-      }
-      return new Date(endDateStr).getTime();
-    }
-    return new Date(`${endDateStr}T23:59:59-03:00`).getTime();
-  };
-
-  React.useEffect(() => {
-    const fetchActiveEvent = () => {
-      fetch('/api/events')
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const active = data.find((e: any) => e.is_active || e.isActive);
-            setCurrentEvent(active || null);
-          } else {
-            setCurrentEvent(null);
-          }
-        })
-        .catch(err => console.error('Failed to fetch events in TopBar:', err));
-    };
-
-    fetchActiveEvent();
-
-    window.addEventListener('active-event-updated', fetchActiveEvent);
-    return () => {
-      window.removeEventListener('active-event-updated', fetchActiveEvent);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    if (!currentEvent) return;
-
-    const timer = setInterval(() => {
-      const now = new Date().getTime();
-      const end = getCountdownTarget(currentEvent.end_date || currentEvent.endDate);
-      const diff = end - now;
-
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0 });
-        clearInterval(timer);
-        return;
-      }
-
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      });
-    }, 10000);
-
-    const now = new Date().getTime();
-    const end = getCountdownTarget(currentEvent.end_date || currentEvent.endDate);
-    const diff = end - now;
-    if (diff > 0) {
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      });
-    }
-
-    return () => clearInterval(timer);
-  }, [currentEvent]);
-  
   const notificationRef = React.useRef<HTMLDivElement>(null);
   const profileContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -193,29 +118,6 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           setShowNotifications(true); // Auto-show notification when status changes
         }
       })
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'submissions',
-        filter: `user_id=eq.system_notification`
-      }, (payload) => {
-        const newNotification = payload.new as any;
-        // Add to start of notification list
-        setNotifications(prev => {
-          const exists = prev.find(n => n.id === newNotification.id);
-          if (exists) return prev;
-          return [newNotification, ...prev].slice(0, 5);
-        });
-        
-        // Ensure it's marked as unread
-        setReadIds(prev => {
-          const next = new Set(prev);
-          next.delete(newNotification.id);
-          return next;
-        });
-        
-        setShowNotifications(true); // Auto-show when an event ends
-      })
       .subscribe();
 
     return () => {
@@ -235,14 +137,8 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
             <Menu size={24} />
           </button>
         )}
-        <div className="flex-1 flex items-center gap-2">
+        <div className="flex-1">
           <Logo />
-          {currentEvent && (
-            <div className="lg:hidden flex items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
-              <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
-              <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
-            </div>
-          )}
         </div>
       </div>
       
@@ -307,40 +203,24 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                             <img src={n.game_name === 'Screenshot Points' || n.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            {n.user_id === 'system_notification' ? (
-                              <>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  <Bell size={14} className="text-indigo-500 dark:text-indigo-400" />
-                                  <span className="text-[10px] font-black uppercase tracking-tighter text-indigo-500 dark:text-indigo-400">
-                                    Announcement
-                                  </span>
-                                </div>
-                                <p className="text-sm font-bold leading-relaxed mb-1 dark:text-white text-slate-850 select-text">
-                                  {n.notes}
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  {n.status === 'verified' ? (
-                                    <CheckCircle2 size={14} className="text-emerald-500" />
-                                  ) : (
-                                    <XCircle size={14} className="text-red-500" />
-                                  )}
-                                  <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
-                                    {n.status === 'verified' ? "Approved" : "Rejected"}
-                                  </span>
-                                </div>
-                                
-                                <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
-                                  {n.status === 'verified' ? (
-                                    <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
-                                  ) : (
-                                    <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
-                                  )}
-                                </p>
-                              </>
-                            )}
+                            <div className="flex items-center gap-1.5 mb-2">
+                              {n.status === 'verified' ? (
+                                <CheckCircle2 size={14} className="text-emerald-500" />
+                              ) : (
+                                <XCircle size={14} className="text-red-500" />
+                              )}
+                              <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
+                                {n.status === 'verified' ? "Approved" : "Rejected"}
+                              </span>
+                            </div>
+                            
+                            <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
+                              {n.status === 'verified' ? (
+                                <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
+                              ) : (
+                                <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
+                              )}
+                            </p>
 
                             {n.status === 'rejected' && (
                               <p className="text-[10px] text-red-500 opacity-60 mt-2 p-2 bg-red-500/5 rounded italic border border-red-500/10 dark:text-red-300">
