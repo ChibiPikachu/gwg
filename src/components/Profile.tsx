@@ -201,8 +201,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
                         <Skull size={12} className="animate-pulse" />
                       </button>
                       {showSurvivorTooltip && (
-                        <div className="absolute bottom-full mb-2 z-[9999] bg-slate-900 border border-white/10 text-white text-[11px] px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1 duration-150 font-bold pointer-events-none">
-                          i survived the migration horrors
+                        <div className="absolute bottom-full mb-2 z-9999 bg-slate-900 border border-white/10 text-white text-[11px] px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1 duration-150 font-bold pointer-events-none">
+                          I survived the migration horrors
                         </div>
                       )}
                     </div>
