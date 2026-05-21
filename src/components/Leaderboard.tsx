@@ -254,7 +254,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       {isUserAdj && (
                         <div className="mt-1">
                           <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
-                            screenshot points
+                            screenshot points awarded
                           </span>
                         </div>
                       )}
