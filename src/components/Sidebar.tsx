@@ -159,7 +159,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
         {/* INNER SCROLL WRAPPER: Handles the scrolling and padding */}
         <div className={cn(
-          "flex-1 flex flex-col overflow-y-auto overflow-x-hidden",
+          "flex-1 flex flex-col overflow-y-auto",
           isCollapsed ? "lg:p-4 p-6" : "p-6"
         )}>
           
@@ -187,8 +187,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
           </div>
 
           {/* Event Widget */}
-          <div className={cn("transition-all duration-300 overflow-hidden", isCollapsed ? "lg:hidden lg:mb-0 lg:opacity-0 lg:h-0" : "mb-8 opacity-100 h-auto")}>
-            <div className="dark:bg-[#151515] bg-slate-100 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden">
+          <div className={cn("transition-all duration-300", isCollapsed ? "lg:hidden lg:mb-0 lg:opacity-0 lg:h-0" : "mb-8 opacity-100 h-auto")}>
+            <div className="dark:bg-[#151515] bg-slate-100 rounded-xl border border-black/5 dark:border-white/5">
               <div className="dark:bg-[#1a1a1a] bg-slate-200/50 px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-center opacity-70">
                 Current event
               </div>
