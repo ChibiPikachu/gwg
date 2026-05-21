@@ -13,6 +13,7 @@ export interface UserProfile {
   role?: string;
   status: string;
   points: number;
+  createdAt?: string;
 }
 
 export type SubmissionStatus = 'pending' | 'verified' | 'rejected';

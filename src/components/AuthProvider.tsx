@@ -86,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             discordId: profile.discord_id || profile.discordId,
             discordName: profile.discord_name || profile.discordName,
             discordAvatar: profile.discord_avatar || profile.discordAvatar,
+            createdAt: profile.created_at || profile.createdAt,
           } as any);
         }
         setLoading(false);

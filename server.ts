@@ -1112,7 +1112,7 @@ async function createServer() {
     const { steamid } = req.params;
     const { data: profile, error } = await supabase
       .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, team, status, points, role')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, team, status, points, role, created_at')
       .eq('steamid', steamid)
       .single();
 
@@ -1131,7 +1131,8 @@ async function createServer() {
       status: profile.status,
       points: profile.points,
       role: profile.role,
-      isAdmin: profile.role === 'admin' || profile.role === 'admins'
+      isAdmin: profile.role === 'admin' || profile.role === 'admins',
+      createdAt: profile.created_at
     };
     
     res.json(transformedUser);
@@ -1916,13 +1917,83 @@ async function createServer() {
     if (!supabase) return res.json([]);
 
     try {
-      const { data, error } = await supabase
+      const { data: events, error } = await supabase
         .from('events')
         .select('*')
-        .order('start_date', { ascending: false });
+        .order('start_date', { ascending: true }); // Gather oldest to newest to allocate 1-based Event #s
 
       if (error) throw error;
-      res.json(data || []);
+      if (!events || events.length === 0) return res.json([]);
+
+      // Gather user profile team allocations
+      const { data: profiles } = await supabase.from('profiles').select('steamid, team');
+      const profileTeamMap = new Map<string, string>();
+      (profiles || []).forEach((p: any) => {
+        if (p.steamid) profileTeamMap.set(p.steamid, p.team || 'none');
+      });
+
+      // Gather verified submissions & adjustments
+      const { data: verifiedSubs } = await supabase
+        .from('submissions')
+        .select('event_id, user_id, points')
+        .eq('status', 'verified');
+
+      const subsByEvent = new Map<string, any[]>();
+      (verifiedSubs || []).forEach((sub: any) => {
+        if (sub.event_id) {
+          if (!subsByEvent.has(sub.event_id)) {
+            subsByEvent.set(sub.event_id, []);
+          }
+          subsByEvent.get(sub.event_id)!.push(sub);
+        }
+      });
+
+      const eventsWithWinners = events.map((event: any, index: number) => {
+        const eventNum = index + 1;
+        let winnerTeam: string | null = null;
+
+        if (!event.is_active) {
+          const teamPoints: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+          const eventSubs = subsByEvent.get(event.id) || [];
+
+          eventSubs.forEach((sub: any) => {
+            if (sub.user_id === 'system_notification') return;
+
+            let team: string | null = null;
+            if (sub.user_id.startsWith('team_pts_')) {
+              team = sub.user_id.substring('team_pts_'.length);
+            } else {
+              team = profileTeamMap.get(sub.user_id) || null;
+            }
+
+            if (team && teamPoints[team] !== undefined) {
+              teamPoints[team] += Number(sub.points || 0);
+            }
+          });
+
+          // Find team with highest total points for this event
+          let maxPoints = -1;
+          let bestTeam: string | null = null;
+          for (const team in teamPoints) {
+            if (teamPoints[team] > maxPoints && teamPoints[team] > 0) {
+              maxPoints = teamPoints[team];
+              bestTeam = team;
+            }
+          }
+          winnerTeam = bestTeam;
+        }
+
+        return {
+          ...event,
+          event_number: eventNum,
+          winner_team: winnerTeam
+        };
+      });
+
+      // Maintain latest events first descending order for UI
+      eventsWithWinners.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+
+      res.json(eventsWithWinners);
     } catch (err) {
       console.error('Failed to fetch events:', err);
       res.status(500).json({ error: 'Failed to fetch events' });
@@ -2084,6 +2155,10 @@ async function createServer() {
     try {
       let adjustmentData: any;
 
+      // Detect active event dynamically to bind event_id to the adjustments
+      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      const activeEventId = activeEvent?.id || null;
+
       if (userId) {
         // Fetch user profile to get steam_name and avatar
         const { data: userProfile, error: profileErr } = await supabase
@@ -2117,6 +2192,7 @@ async function createServer() {
           points: parseInt(points) || 0,
           notes: notes || '',
           status: 'verified',
+          event_id: activeEventId,
           created_at: new Date().toISOString()
         };
       } else {
@@ -2149,6 +2225,7 @@ async function createServer() {
           points: parseInt(points) || 0,
           notes: notes || '',
           status: 'verified',
+          event_id: activeEventId,
           created_at: new Date().toISOString()
         };
       }

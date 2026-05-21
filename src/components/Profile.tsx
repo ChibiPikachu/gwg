@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TEAM_COLORS } from '@/types';
 
@@ -15,8 +15,18 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(true);
+  const [events, setEvents] = useState<any[]>([]);
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
+
+  React.useEffect(() => {
+    fetch('/api/events')
+      .then(res => res.json())
+      .then(data => {
+        setEvents(Array.isArray(data) ? data : []);
+      })
+      .catch(err => console.error('Failed to fetch events in profile:', err));
+  }, []);
 
   React.useEffect(() => {
     const fetchSubmissions = async () => {
@@ -104,6 +114,28 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     targetUser.team === 'purple' ? 'bg-purple-accent' : 
                     targetUser.team === 'red' ? 'bg-red-accent' : 'bg-white/10';
 
+  const hasSurvivedMigration = (() => {
+    const timestamp = targetUser.createdAt || targetUser.created_at;
+    if (!timestamp) return true; // Legacy user logged in before May 30, 2026.
+    const date = new Date(timestamp);
+    return date.getTime() < new Date('2026-05-30T00:00:00Z').getTime();
+  })();
+
+  const getTeamBadgeClasses = (team: string) => {
+    switch (team) {
+      case 'blue':
+        return 'bg-blue-accent/10 text-blue-accent border-blue-accent/30';
+      case 'green':
+        return 'bg-green-accent/10 text-green-accent border-green-accent/30';
+      case 'purple':
+        return 'bg-purple-accent/10 text-purple-accent border-purple-accent/30';
+      case 'red':
+        return 'bg-red-accent/10 text-red-accent border-red-accent/30';
+      default:
+        return 'bg-white/10 text-white/80 border-white/20';
+    }
+  };
+
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
       <section className="flex flex-col md:flex-row gap-8 items-center md:items-start text-center md:text-left">
@@ -146,6 +178,39 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   )}
                 </div>
               )}
+
+              {/* Accolades & Badges */}
+              {(hasSurvivedMigration || (events.length > 0 && events.some(e => !e.is_active && e.winner_team && targetUser.team === e.winner_team))) && (
+                <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2 mb-1 animate-in fade-in duration-300">
+                  {hasSurvivedMigration && (
+                    <div className="relative group/tooltip flex items-center justify-center">
+                      <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-semibold select-none cursor-default">
+                        <Flame size={12} className="animate-pulse" />
+                        <span>Migration Survivor</span>
+                      </span>
+                      <div className="absolute bottom-full mb-2 hidden group-hover/tooltip:block z-50 bg-slate-900 border border-white/10 text-white text-[11px] px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1 duration-150 font-bold">
+                        i survived the migration horrors
+                      </div>
+                    </div>
+                  )}
+
+                  {events
+                    .filter(e => !e.is_active && e.winner_team && targetUser.team === e.winner_team)
+                    .map(e => (
+                      <span
+                        key={e.id}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider select-none",
+                          getTeamBadgeClasses(e.winner_team)
+                        )}
+                      >
+                        <Trophy size={11} />
+                        <span>Event #{e.event_number} Winner</span>
+                      </span>
+                    ))}
+                </div>
+              )}
+
               <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-2">
                  <a 
                     href={`https://steamcommunity.com/profiles/${targetUser.steamId}`}
