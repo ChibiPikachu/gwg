@@ -162,51 +162,59 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           {loading ? (
             <div className="p-8 text-center opacity-30 col-span-2">Loading...</div>
           ) : (
-            safeUsers.map((u, i) => (
-              <div key={u.steamid} className="flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 group hover:border-black/10 dark:hover:border-white/10 transition-all shadow-sm dark:shadow-none">
-                <div className="text-sm font-bold opacity-30 w-4 dark:text-white text-slate-500">
-                  {hideScores ? '—' : i + 1}
-                </div>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onViewProfile?.(u.steamid);
-                  }}
-                  title="View App Profile"
-                  className={cn(
-                    "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 shrink-0", 
-                    `focus:${theme.ring}/50`,
-                    u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10'
-                  )}
-                >
-                  <img src={u.steam_avatar} className="w-full h-full rounded-full object-cover" alt="" referrerPolicy="no-referrer" />
-                </button>
-                <div className="flex-1 overflow-hidden">
-                  <div className="flex items-center gap-2">
-                     <a 
-                      href={`https://steamcommunity.com/profiles/${u.steamid}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className={cn("font-bold truncate transition-colors relative z-10 hover:underline inline-block max-w-full", `hover:${theme.text}`)}
-                     >
-                      {u.steam_name}
-                     </a>
-                     {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className={theme.text} />}
-                     {u.discord_name && (
-                      <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
-                     )}
+            safeUsers.map((u, i) => {
+              const hasScreenshotPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Screenshot Points');
+              return (
+                <div key={u.steamid} className="flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 group hover:border-black/10 dark:hover:border-white/10 transition-all shadow-sm dark:shadow-none">
+                  <div className="text-sm font-bold opacity-30 w-4 dark:text-white text-slate-500">
+                    {hideScores ? '—' : i + 1}
                   </div>
-                  <p className="text-xs opacity-50 italic truncate">"{u.status || 'Chasing achievements...'}"</p>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono font-bold text-amber-400">
-                    {hideScores ? '—' : (u.points || 0)}
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewProfile?.(u.steamid);
+                    }}
+                    title="View App Profile"
+                    className={cn(
+                      "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 shrink-0", 
+                      `focus:${theme.ring}/50`,
+                      u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10'
+                    )}
+                  >
+                    <img src={u.steam_avatar} className="w-full h-full rounded-full object-cover" alt="" referrerPolicy="no-referrer" />
+                  </button>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2 flex-wrap">
+                       <a 
+                        href={`https://steamcommunity.com/profiles/${u.steamid}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn("font-bold truncate transition-colors relative z-10 hover:underline inline-block max-w-full", `hover:${theme.text}`)}
+                       >
+                        {u.steam_name}
+                       </a>
+                       {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className={theme.text} />}
+                       {u.discord_name && (
+                        <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
+                       )}
+                       {hasScreenshotPoints && (
+                         <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                           screenshot points
+                         </span>
+                       )}
+                    </div>
+                    <p className="text-xs opacity-50 italic truncate">"{u.status || 'Chasing achievements...'}"</p>
                   </div>
-                  <div className="text-[10px] uppercase opacity-30 font-bold">Points</div>
+                  <div className="text-right">
+                    <div className="font-mono font-bold text-amber-400">
+                      {hideScores ? '—' : (u.points || 0)}
+                    </div>
+                    <div className="text-[10px] uppercase opacity-30 font-bold">Points</div>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </section>
@@ -219,7 +227,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           </h2>
           <div className="grid grid-cols-1 gap-3">
             {adjustments.map((adj) => {
-              const teamName = adj.user_id.replace('team_pts_', '');
+              const isUserAdj = !adj.user_id.startsWith('team_pts_');
+              const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
+              const teamName = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
               return (
                 <div key={adj.id} className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 shadow-sm">
                   <div className="flex items-center gap-3">
@@ -231,9 +241,24 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     )}>
                       Team {teamName}
                     </span>
-                    <p className="text-sm dark:text-white/80 text-slate-705">
-                      {adj.notes || "Bonus points awarded by Admin"}
-                    </p>
+                    <div>
+                      <p className="text-sm dark:text-white/80 text-slate-705">
+                        {isUserAdj ? (
+                          <>
+                            Awarded to <span className="font-bold underline underline-offset-2">{adj.user_name}</span>: {adj.notes}
+                          </>
+                        ) : (
+                          adj.notes || "Bonus points awarded by Admin"
+                        )}
+                      </p>
+                      {isUserAdj && (
+                        <div className="mt-1">
+                          <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                            screenshot points
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <span className={cn(
                     "font-mono font-black text-sm shrink-0 px-3 py-1 rounded-lg",

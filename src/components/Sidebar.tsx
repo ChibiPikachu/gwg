@@ -144,6 +144,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   const adminItems = [
     { id: 'admin-users', label: 'All users', icon: Users, section: 'admin' },
     { id: 'admin-submissions', label: 'All submissions', icon: ListChecks, section: 'admin' },
+    { id: 'admin-team_points', label: 'Team points', icon: ShieldCheck, section: 'admin' },
   ];
 
   return (

@@ -45,6 +45,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [awardNotes, setAwardNotes] = React.useState('');
   const [isAwarding, setIsAwarding] = React.useState(false);
   const [teamAdjustments, setTeamAdjustments] = React.useState<any[]>([]);
+  const [awardTargetType, setAwardTargetType] = React.useState<'team' | 'user'>('team');
+  const [awardUserId, setAwardUserId] = React.useState('');
 
   const fetchTeamAdjustments = React.useCallback(async () => {
     try {
@@ -60,26 +62,40 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const handleAwardTeamPoints = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!awardTeam || !awardPoints || parseInt(awardPoints) === 0) return;
+    const isUser = awardTargetType === 'user';
+    if (isUser && !awardUserId) {
+      alert('Please select a user first!');
+      return;
+    }
+    if (!isUser && !awardTeam) return;
+    if (!awardPoints || parseInt(awardPoints) === 0) return;
+
     setIsAwarding(true);
     try {
+      const selectedU = users.find(u => u.steamid === awardUserId);
+      const teamToSend = isUser ? (selectedU?.team || 'blue') : awardTeam;
+
       const res = await fetch('/api/admin/team-adjustments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team: awardTeam,
+          team: teamToSend,
           points: parseInt(awardPoints),
-          notes: awardNotes
+          notes: awardNotes,
+          userId: isUser ? awardUserId : null
         })
       });
       if (res.ok) {
         setAwardPoints('');
         setAwardNotes('');
+        setAwardUserId('');
+        // Reload all data (including user points and adjustments log)
         await fetchTeamAdjustments();
-        alert('Points successfully awarded to the team!');
+        await fetchUsers(); // Refresh leaderboard data
+        alert(isUser ? 'Points successfully awarded to the user!' : 'Points successfully awarded to the team!');
       } else {
         const data = await res.json().catch(() => ({ error: 'Unknown server error' }));
-        alert(`Failed to award team points: ${data.error}`);
+        alert(`Failed to award points: ${data.error}`);
       }
     } catch (err) {
       console.error('Failed to award points:', err);
@@ -1141,18 +1157,69 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
             <form onSubmit={handleAwardTeamPoints} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select Team</label>
-                <select
-                  value={awardTeam}
-                  onChange={(e) => setAwardTeam(e.target.value as any)}
-                  className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
-                >
-                  <option value="blue">Team Blue</option>
-                  <option value="purple">Team Purple</option>
-                  <option value="green">Team Green</option>
-                  <option value="red">Team Red</option>
-                </select>
+                <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Award Target</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-black/40 p-1 rounded-xl border dark:border-white/5 border-black/5">
+                  <button
+                    type="button"
+                    onClick={() => setAwardTargetType('team')}
+                    className={cn(
+                      "py-2 rounded-lg text-xs font-bold transition-all",
+                      awardTargetType === 'team'
+                        ? "bg-white dark:bg-white/10 dark:text-white text-slate-900 shadow-sm"
+                        : "dark:text-white/40 text-slate-500 hover:text-slate-700 dark:hover:text-white/60"
+                    )}
+                  >
+                    Whole Team
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAwardTargetType('user')}
+                    className={cn(
+                      "py-2 rounded-lg text-xs font-bold transition-all",
+                      awardTargetType === 'user'
+                        ? "bg-white dark:bg-white/10 dark:text-white text-slate-900 shadow-sm"
+                        : "dark:text-white/40 text-slate-500 hover:text-slate-700 dark:hover:text-white/60"
+                    )}
+                  >
+                    Specific User
+                  </button>
+                </div>
               </div>
+
+              {awardTargetType === 'team' ? (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select Team</label>
+                  <select
+                    value={awardTeam}
+                    onChange={(e) => setAwardTeam(e.target.value as any)}
+                    className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
+                  >
+                    <option value="blue">Team Blue</option>
+                    <option value="purple">Team Purple</option>
+                    <option value="green">Team Green</option>
+                    <option value="red">Team Red</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select User</label>
+                  <select
+                    value={awardUserId}
+                    onChange={(e) => setAwardUserId(e.target.value)}
+                    className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
+                    required
+                  >
+                    <option value="">-- Choose User --</option>
+                    {users
+                      .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
+                      .map(u => (
+                        <option key={u.steamid} value={u.steamid}>
+                          {u.steam_name} (Team {u.team})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Points</label>
@@ -1206,7 +1273,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {teamAdjustments.map((adj) => {
-                  const teamName = adj.user_id.replace('team_pts_', '');
+                  const isUserAdj = !adj.user_id.startsWith('team_pts_');
+                  const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
+                  const teamName = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
                   return (
                     <div key={adj.id} className="p-4 rounded-xl dark:bg-black/20 bg-slate-50 border dark:border-white/5 border-black/5 flex items-center justify-between gap-4 transition-colors">
                       <div className="flex items-center gap-3">
@@ -1219,8 +1288,23 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           {teamName}
                         </span>
                         <div>
-                          <p className="text-xs font-bold dark:text-white text-slate-850 select-text">{adj.notes}</p>
-                          <span className="text-[9px] opacity-40 font-mono">{new Date(adj.created_at).toLocaleString()}</span>
+                          <p className="text-xs font-bold dark:text-white text-slate-850 select-text">
+                            {isUserAdj ? (
+                              <>
+                                Awarded to <span className="underline decoration-slate-200 dark:decoration-white/10 underline-offset-2">{adj.user_name}</span>: {adj.notes}
+                              </>
+                            ) : (
+                              adj.notes
+                            )}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] opacity-40 font-mono">{new Date(adj.created_at).toLocaleString()}</span>
+                            {isUserAdj && (
+                              <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0">
+                                Screenshot Points
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 

@@ -2066,7 +2066,7 @@ async function createServer() {
       const { data, error } = await supabase
         .from('submissions')
         .select('*')
-        .like('user_id', 'team_pts_%')
+        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points')
         .order('created_at', { ascending: false });
       if (error) throw error;
       res.json(data || []);
@@ -2085,42 +2085,81 @@ async function createServer() {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { team, points, notes } = req.body;
+    const { team, points, notes, userId } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      const dummySteamId = `team_pts_${team}`;
-      await supabase.from('profiles').upsert({
-        steamid: dummySteamId,
-        steam_name: `Team ${team.toUpperCase()} Adjustments`,
-        team: 'none',
-        points: 0
-      });
+      let adjustmentData: any;
 
-      const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
-      const defaultGameId = game?.id || null;
+      if (userId) {
+        // Fetch user profile to get steam_name and avatar
+        const { data: userProfile, error: profileErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('steamid', userId)
+          .single();
 
-      const adjustmentData = {
-        user_id: dummySteamId,
-        user_name: `Team ${team.toUpperCase()}`,
-        user_avatar: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
-        game_id: defaultGameId,
-        game_name: 'Team Award',
-        game_image: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
-        achievements_during: 0,
-        hours_during: 0,
-        achievements_before: 0,
-        hours_before: 0,
-        multiplier: 1.0,
-        calculated_score: parseInt(points) || 0,
-        completion_status: 'completed',
-        platform: 'System',
-        points: parseInt(points) || 0,
-        notes: notes || '',
-        status: 'verified',
-        created_at: new Date().toISOString()
-      };
+        if (profileErr || !userProfile) {
+          return res.status(404).json({ error: 'User profile not found' });
+        }
+
+        const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
+        const defaultGameId = game?.id || null;
+
+        adjustmentData = {
+          user_id: userId,
+          user_name: userProfile.steam_name,
+          user_avatar: userProfile.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+          game_id: defaultGameId,
+          game_name: 'Screenshot Points',
+          game_image: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+          achievements_during: 0,
+          hours_during: 0,
+          achievements_before: 0,
+          hours_before: 0,
+          multiplier: 1.0,
+          calculated_score: parseInt(points) || 0,
+          completion_status: 'completed',
+          platform: 'Screenshot Points',
+          points: parseInt(points) || 0,
+          notes: notes || '',
+          status: 'verified',
+          created_at: new Date().toISOString()
+        };
+      } else {
+        const dummySteamId = `team_pts_${team}`;
+        await supabase.from('profiles').upsert({
+          steamid: dummySteamId,
+          steam_name: `Team ${team.toUpperCase()} Adjustments`,
+          team: 'none',
+          points: 0
+        });
+
+        const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
+        const defaultGameId = game?.id || null;
+
+        adjustmentData = {
+          user_id: dummySteamId,
+          user_name: `Team ${team.toUpperCase()}`,
+          user_avatar: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+          game_id: defaultGameId,
+          game_name: 'Team Award',
+          game_image: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+          achievements_during: 0,
+          hours_during: 0,
+          achievements_before: 0,
+          hours_before: 0,
+          multiplier: 1.0,
+          calculated_score: parseInt(points) || 0,
+          completion_status: 'completed',
+          platform: 'System',
+          points: parseInt(points) || 0,
+          notes: notes || '',
+          status: 'verified',
+          created_at: new Date().toISOString()
+        };
+      }
 
       const { data, error } = await supabase
         .from('submissions')
@@ -2129,6 +2168,11 @@ async function createServer() {
         .single();
 
       if (error) throw error;
+
+      if (userId) {
+        await syncUserPoints(supabase, userId);
+      }
+
       res.json(data);
     } catch (err: any) {
       console.error('Failed to add team points:', err);
