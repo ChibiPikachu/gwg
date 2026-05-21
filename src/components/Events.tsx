@@ -63,13 +63,13 @@ export default function EventsPanel() {
     });
   };
 
-  // Sync startTime and endTime when editingEvent is opened/updated
+  // Sync startTime and endTime ONLY when the editing modal is opened
   React.useEffect(() => {
-    if (editingEvent) {
+    if (isEditing && editingEvent) {
       setStartTime(parseTimeFromDateStr(editingEvent.start_date, '00:00'));
       setEndTime(parseTimeFromDateStr(editingEvent.end_date, '23:59'));
     }
-  }, [editingEvent]);
+  }, [isEditing]);
 
   const fetchEvents = React.useCallback(async () => {
     try {
