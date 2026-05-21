@@ -48,6 +48,7 @@ export interface CompetitionEvent {
   start_date: string;
   end_date: string;
   is_active: boolean;
+  hide_scores?: boolean;
 }
 
 export interface ThemeHelper {

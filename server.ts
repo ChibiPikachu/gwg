@@ -1928,7 +1928,7 @@ async function createServer() {
   });
 
   app.post('/api/admin/events', async (req, res) => {
-    const { title, description, startDate, endDate, isActive } = req.body;
+    const { title, description, startDate, endDate, isActive, hideScores } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
@@ -1941,6 +1941,7 @@ async function createServer() {
           start_date: startDate,
           end_date: endDate,
           is_active: isActive || false,
+          hide_scores: hideScores || false,
           created_at: new Date().toISOString()
         })
         .select()
@@ -1956,7 +1957,7 @@ async function createServer() {
 
   app.put('/api/admin/events/:id', async (req, res) => {
     const { id } = req.params;
-    const { title, description, startDate, endDate, isActive } = req.body;
+    const { title, description, startDate, endDate, isActive, hideScores } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
@@ -1968,7 +1969,8 @@ async function createServer() {
           description,
           start_date: startDate,
           end_date: endDate,
-          is_active: isActive
+          is_active: isActive,
+          hide_scores: hideScores || false
         })
         .eq('id', id)
         .select()
