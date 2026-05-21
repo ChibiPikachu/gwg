@@ -1990,10 +1990,6 @@ async function createServer() {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    const currentUser = (req as any).user;
-    if (!currentUser.isAdmin && currentUser.role !== 'admin' && currentUser.role !== 'admins') {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
     const { id } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -2079,10 +2075,6 @@ async function createServer() {
   app.post('/api/admin/team-adjustments', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const currentUser = (req as any).user;
-    if (!currentUser.isAdmin && currentUser.role !== 'admin' && currentUser.role !== 'admins') {
-      return res.status(403).json({ error: 'Forbidden' });
     }
 
     const { team, points, notes, userId } = req.body;
