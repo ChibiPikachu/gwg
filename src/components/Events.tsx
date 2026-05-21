@@ -13,7 +13,63 @@ export default function EventsPanel() {
   const [submitting, setSubmitting] = React.useState(false);
   const [isCountdownCollapsed, setIsCountdownCollapsed] = React.useState(false);
 
+  // States to manage start/end times separate from dates in admin's local timezone
+  const [startTime, setStartTime] = React.useState('00:00');
+  const [endTime, setEndTime] = React.useState('23:59');
+
   const isAdmin = user?.isAdmin || user?.role === 'admin' || user?.role === 'admins';
+
+  const parseTimeFromDateStr = (dateStr: string | undefined, defaultTime = '00:00'): string => {
+    if (!dateStr) return defaultTime;
+    if (dateStr.includes('T')) {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        const hrs = String(d.getHours()).padStart(2, '0');
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        return `${hrs}:${mins}`;
+      }
+    }
+    return defaultTime;
+  };
+
+  const combineDateAndTimeStr = (datePart: string | undefined, timePart: string): string => {
+    if (!datePart) return '';
+    const dateOnly = datePart.split('T')[0];
+    const [hrs, mins] = timePart.split(':');
+    const [year, month, day] = dateOnly.split('-').map(Number);
+    const hourNum = Number(hrs || 0);
+    const minNum = Number(mins || 0);
+    const d = new Date(year, month - 1, day, hourNum, minNum, 0, 0);
+    return d.toISOString();
+  };
+
+  const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
+    if (!isoStr) return fallbackText;
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return fallbackText;
+    
+    if (!isoStr.includes('T') || isoStr.includes('T00:00:00') || isoStr.includes('T23:59:59')) {
+      const dateOnly = isoStr.split('T')[0];
+      return dateOnly;
+    }
+    
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  };
+
+  // Sync startTime and endTime when editingEvent is opened/updated
+  React.useEffect(() => {
+    if (editingEvent) {
+      setStartTime(parseTimeFromDateStr(editingEvent.start_date, '00:00'));
+      setEndTime(parseTimeFromDateStr(editingEvent.end_date, '23:59'));
+    }
+  }, [editingEvent]);
 
   const fetchEvents = React.useCallback(async () => {
     try {
@@ -44,14 +100,17 @@ export default function EventsPanel() {
         ? '/api/admin/events'
         : `/api/admin/events/${editingEvent.id}`;
       
+      const finalStartDate = combineDateAndTimeStr(editingEvent.start_date, startTime);
+      const finalEndDate = combineDateAndTimeStr(editingEvent.end_date, endTime);
+
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editingEvent.title,
           description: editingEvent.description,
-          startDate: editingEvent.start_date,
-          endDate: editingEvent.end_date,
+          startDate: finalStartDate,
+          endDate: finalEndDate,
           isActive: editingEvent.is_active,
           hideScores: !!editingEvent.hide_scores
         })
@@ -142,7 +201,7 @@ export default function EventsPanel() {
                      <div className="dark:bg-white/5 bg-slate-50 px-3 py-1.5 md:px-4 md:py-2 rounded-xl flex items-center gap-2 border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
                         <Calendar size={14} className={theme.text} />
                         <span className="font-bold opacity-80 dark:text-white text-slate-700">
-                          {new Date((currentEvent as any).start_date).toLocaleDateString()} - {new Date((currentEvent as any).end_date).toLocaleDateString()}
+                          {formatEventDateTime(currentEvent.start_date)} - {formatEventDateTime(currentEvent.end_date)}
                         </span>
                      </div>
                    </div>
@@ -213,7 +272,7 @@ export default function EventsPanel() {
                 <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{event.description}</p>
                 <div className="pt-4 border-t dark:border-white/5 border-black/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30 dark:text-white text-slate-500">
                   <span>Timeline</span>
-                  <span>{new Date(event.end_date).toLocaleDateString()}</span>
+                  <span>{formatEventDateTime(event.end_date)}</span>
                 </div>
               </div>
             ))}
@@ -255,25 +314,52 @@ export default function EventsPanel() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Start Date</label>
-                  <input 
-                    type="date"
-                    required
-                    className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
-                    value={editingEvent?.start_date?.split('T')[0] || ''}
-                    onChange={e => setEditingEvent({ ...editingEvent!, start_date: e.target.value })}
-                  />
+                {/* Start Fields */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Start Date</label>
+                    <input 
+                      type="date"
+                      required
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
+                      value={editingEvent?.start_date?.split('T')[0] || ''}
+                      onChange={e => setEditingEvent({ ...editingEvent!, start_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Start Time <span className="opacity-60 font-normal">(User Time)</span></label>
+                    <input 
+                      type="time"
+                      required
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
+                      value={startTime}
+                      onChange={e => setStartTime(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">End Date</label>
-                  <input 
-                    type="date"
-                    required
-                    className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
-                    value={editingEvent?.end_date?.split('T')[0] || ''}
-                    onChange={e => setEditingEvent({ ...editingEvent!, end_date: e.target.value })}
-                  />
+
+                {/* End Fields */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">End Date</label>
+                    <input 
+                      type="date"
+                      required
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
+                      value={editingEvent?.end_date?.split('T')[0] || ''}
+                      onChange={e => setEditingEvent({ ...editingEvent!, end_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">End Time <span className="opacity-60 font-normal">(User Time)</span></label>
+                    <input 
+                      type="time"
+                      required
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
+                      value={endTime}
+                      onChange={e => setEndTime(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 

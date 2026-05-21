@@ -30,12 +30,58 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       });
   }, []);
 
+  const getCountdownTarget = (endDateStr: string): number => {
+    if (!endDateStr) return 0;
+    if (endDateStr.includes('T')) {
+      const parts = endDateStr.split('T');
+      const timePart = parts[1];
+      const isBareDate = !timePart || timePart.startsWith('00:00:00') || timePart.startsWith('23:59:59');
+      if (isBareDate) {
+        return new Date(`${parts[0]}T23:59:59-03:00`).getTime();
+      }
+      return new Date(endDateStr).getTime();
+    }
+    return new Date(`${endDateStr}T23:59:59-03:00`).getTime();
+  };
+
+  const formatToArgentinaTime = (isoStr: string | undefined): string => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    
+    if (!isoStr.includes('T') || isoStr.includes('T00:00:00') || isoStr.includes('T23:59:59')) {
+      const dateOnly = isoStr.split('T')[0];
+      return `${dateOnly} at 23:59 (GMT-3)`;
+    }
+    
+    try {
+      return d.toLocaleString('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }) + ' (GMT-3)';
+    } catch (err) {
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    }
+  };
+
   useEffect(() => {
     if (!currentEvent) return;
 
     const timer = setInterval(() => {
       const now = new Date().getTime();
-      const end = new Date((currentEvent as any).end_date).getTime();
+      const end = getCountdownTarget((currentEvent as any).end_date);
       const diff = end - now;
 
       if (diff <= 0) {
@@ -49,10 +95,10 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
         hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
         minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
       });
-    }, 60000);
+    }, 10000); // Trigger more frequently to stay accurate
 
     const now = new Date().getTime();
-    const end = new Date((currentEvent as any).end_date).getTime();
+    const end = getCountdownTarget((currentEvent as any).end_date);
     const diff = end - now;
     if (diff > 0) {
       setTimeLeft({
@@ -155,7 +201,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                 <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{currentEvent ? currentEvent.title : 'Inactive'}</span>
                 <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                   {currentEvent 
-                    ? `Ends on ${new Date((currentEvent as any).end_date).toLocaleDateString()}` 
+                    ? `Ends on ${formatToArgentinaTime((currentEvent as any).end_date)}` 
                     : 'Waiting for next event'}
                 </span>
                 
