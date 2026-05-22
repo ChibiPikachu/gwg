@@ -1366,16 +1366,16 @@ function TeamPointContributionChart({
   const teamMembers = React.useMemo(() => {
     return users
       .filter(u => u.team === selectedChartTeam)
-      .sort((a, b) => (b.points || 0) - (a.points || 0));
+      .sort((a, b) => Number(b.points || 0) - Number(a.points || 0));
   }, [users, selectedChartTeam]);
 
   const totalPoints = React.useMemo(() => {
-    return teamMembers.reduce((sum, m) => sum + (m.points || 0), 0);
+    return teamMembers.reduce((sum, m) => sum + Number(m.points || 0), 0);
   }, [teamMembers]);
 
   // Slices are members with actual points > 0
   const chartSlices = React.useMemo(() => {
-    return teamMembers.filter(m => (m.points || 0) > 0);
+    return teamMembers.filter(m => Number(m.points || 0) > 0);
   }, [teamMembers]);
 
   const chartTeams: Team[] = ['blue', 'green', 'purple', 'red'];
@@ -1400,7 +1400,7 @@ function TeamPointContributionChart({
   const wedges = React.useMemo(() => {
     let currentAngle = 0;
     return chartSlices.map((slide, index) => {
-      const percentage = totalPoints > 0 ? (slide.points || 0) / totalPoints : 0;
+      const percentage = totalPoints > 0 ? Number(slide.points || 0) / totalPoints : 0;
       const angleSweep = percentage * 360;
       const startAngle = currentAngle;
       const endAngle = currentAngle + angleSweep;
@@ -1527,7 +1527,7 @@ function TeamPointContributionChart({
                       {activeWidget.member.steam_name}
                     </span>
                     <span className="block text-lg font-mono font-black dark:text-white text-slate-900 leading-tight">
-                      {activeWidget.member.points || 0} pts
+                      {Number(activeWidget.member.points || 0)} pts
                     </span>
                     <span className={cn("inline-block text-[10px] font-black uppercase mt-0.5 px-1.5 py-0.5 rounded-full", TEAM_COLORS[selectedChartTeam].secondary, TEAM_COLORS[selectedChartTeam].primary)}>
                       {(activeWidget.percentage * 100).toFixed(1)}%
@@ -1561,7 +1561,7 @@ function TeamPointContributionChart({
             </div>
           ) : (
             teamMembers.map((member, idx) => {
-              const points = member.points || 0;
+              const points = Number(member.points || 0);
               const percentage = totalPoints > 0 ? points / totalPoints : 0;
               const hasPoints = points > 0;
               const sliceIndex = chartSlices.findIndex(s => s.steamid === member.steamid);
