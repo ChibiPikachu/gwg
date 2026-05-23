@@ -137,6 +137,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
     }
   };
 
+  const activeEvent = Array.isArray(events) ? events.find((e: any) => e.is_active) : null;
+  const hideScores = !!activeEvent?.hide_scores;
+  const hideUserScores = hideScores && !isOwnProfile;
+
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
       <section className="flex flex-col md:flex-row gap-8 items-center md:items-start text-center md:text-left">
@@ -306,7 +310,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
          <div className="p-8 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 flex flex-col items-center gap-4 text-center shadow-xl">
             <Trophy size={32} className="text-amber-400" />
             <div>
-               <span className="text-4xl font-mono font-bold block dark:text-white text-slate-800">{targetUser.points}</span>
+               <span className="text-4xl font-mono font-bold block dark:text-white text-slate-800">{hideUserScores ? '—' : targetUser.points}</span>
                <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Points Earned</span>
             </div>
          </div>
