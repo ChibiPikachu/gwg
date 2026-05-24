@@ -103,14 +103,15 @@ export default function EventsPanel() {
   };
 
   const combineDateAndTimeStr = (datePart: string | undefined, timePart: string): string => {
-    if (!datePart) return '';
-    const dateOnly = datePart.split('T')[0];
-    const [hrs, mins] = timePart.split(':');
-    const formattedHrs = String(hrs || '00').padStart(2, '0');
-    const formattedMins = String(mins || '00').padStart(2, '0');
-    // Force saving as America/Argentina/Buenos_Aires (GMT-3) offset
-    return `${dateOnly}T${formattedHrs}:${formattedMins}:00`;
-  };
+  if (!datePart) return '';
+  const dateOnly = datePart.split('T')[0];
+  const [hrs, mins] = timePart.split(':');
+  const formattedHrs = String(hrs || '00').padStart(2, '0');
+  const formattedMins = String(mins || '00').padStart(2, '0');
+  
+  // Explicitly force the America/Argentina/Buenos_Aires (GMT-3) offset suffix
+  return `${dateOnly}T${formattedHrs}:${formattedMins}:00-03:00`;
+};
 
   const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
     if (!isoStr) return fallbackText;
