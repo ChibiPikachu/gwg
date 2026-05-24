@@ -140,10 +140,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const updateTimers = () => {
       const now = new Date().getTime();
       
-      // End date countdown / Voting period countdown
-      const end = votingStartIso 
-        ? new Date(votingStartIso).getTime() 
-        : getCountdownTarget((currentEvent as any).end_date);
+      // End date countdown
+      const end = new Date((currentEvent as any).end_date).getTime();
       const diffEnd = end - now;
 
       if (diffEnd <= 0) {
@@ -276,9 +274,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                 <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{currentEvent ? currentEvent.title : 'Inactive'}</span>
                 <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                   {currentEvent 
-                    ? (votingStartIsoStr 
-                        ? `Voting starts on ${getVotingFormatted(votingStartIsoStr)}` 
-                        : `Ends on ${formatToArgentinaTime((currentEvent as any).end_date)}`)
+                    ? `Ends on ${getVotingFormatted((currentEvent as any).end_date)}`
                     : 'Waiting for next event'}
                 </span>
                 
