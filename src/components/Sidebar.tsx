@@ -191,7 +191,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       return;
     }
 
-    const votingMatch = activeEventToUse?.description?.match(//);
+    const votingMatch = activeEventToUse?.description?.match(/<!--VOTING:(.*?)-->/);
     const votingStartIso = votingMatch ? votingMatch[1] : '';
 
     const updateTimers = () => {
