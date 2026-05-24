@@ -141,7 +141,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       const now = new Date().getTime();
       
       // End date countdown
-      const end = getCountdownTarget((currentEvent as any).end_date);
+      const end = (currentEvent as any).end_date ? new Date((currentEvent as any).end_date).getTime() : 0;
       const diffEnd = end - now;
 
       if (diffEnd <= 0) {
