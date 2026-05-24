@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2, XCircle, Clock } from 'lucide-react';
+import { History, CheckCircle2, AlertCircle, Plus, Search, Loader2, XCircle, Clock, ChevronLeft, ChevronRight, Gamepad2 } from 'lucide-react';
 import { Submission, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -33,6 +33,38 @@ export default function MySubmissions() {
   const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned' | 'pending'>('all');
   const [submissionsSearchQuery, setSubmissionsSearchQuery] = React.useState('');
   const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
+
+  const [events, setEvents] = React.useState<any[]>([]);
+  const [pastEventsPage, setPastEventsPage] = React.useState(1);
+  const [cols, setCols] = React.useState(6);
+
+  React.useEffect(() => {
+    const getCols = () => {
+      if (typeof window === 'undefined') return 6;
+      if (window.innerWidth >= 1280) return 6; // xl: xl-grid-cols-6
+      if (window.innerWidth >= 1024) return 5; // lg: lg-grid-cols-5
+      if (window.innerWidth >= 768) return 4;  // md: md-grid-cols-4
+      if (window.innerWidth >= 640) return 3;  // sm: sm-grid-cols-3
+      return 2;                                // xs: xs-grid-cols-2
+    };
+    setCols(getCols());
+    const handleResize = () => setCols(getCols());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  React.useEffect(() => {
+    fetch('/api/events')
+      .then(res => res.json())
+      .then(data => {
+        setEvents(Array.isArray(data) ? data : []);
+      })
+      .catch(err => console.error('Failed to fetch events:', err));
+  }, []);
+
+  React.useEffect(() => {
+    setPastEventsPage(1);
+  }, [submissionsSearchQuery, completionFilter]);
 
   // Auto-calculate 'during event' stats
   React.useEffect(() => {
@@ -75,6 +107,39 @@ export default function MySubmissions() {
     }
     return result;
   }, [submissions, completionFilter, submissionsSearchQuery]);
+
+  const activeEventIds = React.useMemo(() => {
+    return new Set(events.filter(e => e.is_active).map(e => e.id));
+  }, [events]);
+
+  const inactiveEventIds = React.useMemo(() => {
+    return new Set(events.filter(e => !e.is_active).map(e => e.id));
+  }, [events]);
+
+  const currentEventSubmissions = React.useMemo(() => {
+    return filteredSubmissions.filter(sub => {
+      if (events.length === 0) return true;
+      if (!sub.event_id) return true;
+      return activeEventIds.has(sub.event_id);
+    });
+  }, [filteredSubmissions, events, activeEventIds]);
+
+  const pastEventSubmissions = React.useMemo(() => {
+    return filteredSubmissions.filter(sub => {
+      if (events.length === 0) return false;
+      if (!sub.event_id) return false;
+      return inactiveEventIds.has(sub.event_id);
+    });
+  }, [filteredSubmissions, events, inactiveEventIds]);
+
+  const pastItemsPerPage = cols * 3;
+  const totalPastPages = Math.ceil(pastEventSubmissions.length / pastItemsPerPage);
+  const paginatedPastSubmissions = React.useMemo(() => {
+    return pastEventSubmissions.slice(
+      (pastEventsPage - 1) * pastItemsPerPage,
+      pastEventsPage * pastItemsPerPage
+    );
+  }, [pastEventSubmissions, pastEventsPage, pastItemsPerPage]);
 
   const scorePreview = React.useMemo(() => {
     const earned = parseInt(formData.achievementsEarned) || 0;
@@ -730,14 +795,14 @@ export default function MySubmissions() {
         <div className="mb-12">
           <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Current event</h3>
           
-          {filteredSubmissions.length === 0 ? (
+          {currentEventSubmissions.length === 0 ? (
             <div className="text-center py-12 dark:bg-white/5 bg-black/5 rounded-2xl border border-dashed dark:border-white/10 border-slate-200">
                <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here...</p>
                <p className="text-[10px] opacity-20 mt-1 dark:text-white text-slate-600 italic">No entries match the selected filter</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6">
-              {filteredSubmissions.map((sub) => (
+              {currentEventSubmissions.map((sub) => (
                 <div 
                   key={sub.id} 
                   className="flex flex-col gap-3 group cursor-pointer lg:cursor-default"
@@ -878,9 +943,178 @@ export default function MySubmissions() {
 
       <div className="mt-12">
         <h3 className="text-xs uppercase tracking-widest font-bold opacity-30 mb-6 dark:text-white text-slate-500">Past events</h3>
-        <div className="text-center py-12 dark:bg-white/5 bg-slate-50 rounded-2xl border border-dashed dark:border-white/5 border-black/5">
-          <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here...</p>
-        </div>
+        {pastEventSubmissions.length === 0 ? (
+          <div className="text-center py-12 dark:bg-white/5 bg-slate-50 rounded-2xl border border-dashed dark:border-white/5 border-black/5">
+            <p className="text-xs font-bold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Nothing to see here...</p>
+            <p className="text-[10px] opacity-20 mt-1 dark:text-white text-slate-600 italic">No past event entries found</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-in fade-in duration-300">
+              {paginatedPastSubmissions.map((sub) => (
+                <div 
+                  key={sub.id}
+                  className="group relative flex flex-col rounded-2xl overflow-hidden border border-black/5 dark:border-white/5 bg-[#111111] hover:border-blue-500/40 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 min-w-0"
+                  onClick={() => setActiveMobileCard(activeMobileCard === sub.id ? null : sub.id)}
+                >
+                  <div className="aspect-[3/4] relative w-full overflow-hidden bg-black/40">
+                    {sub.game_image ? (
+                      <img 
+                        src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} 
+                        alt={sub.game_name} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center opacity-30 gap-2">
+                        <Gamepad2 size={36} />
+                        <span className="text-[10px] text-center px-1 truncate w-full font-bold">{sub.game_name}</span>
+                      </div>
+                    )}
+
+                    {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
+                      <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10 animate-in fade-in slide-in-from-right-1">
+                        <div 
+                          className="w-8 h-8 rounded-lg bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
+                          title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-[8px] font-black text-white leading-none">HLTB</span>
+                          <span className="text-[7px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hltb_main}h</span>
+                          
+                          <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
+                              <span className="text-[10px] font-bold text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>
+                              <span className="text-[10px] font-bold text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-[8px] uppercase font-bold text-white/40">Complete</span>
+                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={cn(
+                      "absolute inset-0 bg-black/80 transition-opacity flex flex-col items-center justify-center p-2 gap-2 z-10",
+                      activeMobileCard === sub.id 
+                        ? "opacity-100 pointer-events-auto" 
+                        : "opacity-0 pointer-events-none lg:group-hover:opacity-100 lg:group-hover:pointer-events-auto"
+                    )}>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-white">
+                          🏆 {sub.achievements_during} Ach
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-white">
+                          🕒 {sub.hours_during}h Played
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col gap-1 w-full max-w-[100px] px-1">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(sub);
+                          }}
+                          className="w-full bg-white/20 hover:bg-white/30 text-white rounded-md py-1 font-bold text-[9px] uppercase transition-all"
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(sub.id);
+                          }}
+                          className="w-full bg-red-500/20 hover:bg-red-500/40 text-red-500 hover:text-white rounded-md py-1 font-bold text-[9px] uppercase transition-all border border-red-500/20"
+                        >
+                          Delete
+                        </button>
+                      </div>
+
+                      <div className="text-[8px] opacity-60 font-bold text-white mt-1">
+                        {new Date(sub.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 flex flex-col gap-1.5 min-w-0 bg-white/5">
+                    <h3 className="font-bold text-sm dark:text-white text-slate-800 truncate capitalize" title={sub.game_name}>
+                      {sub.game_name}
+                    </h3>
+                    
+                    {hltbData[sub.game_name]?.notFound && (
+                       <div className="text-[9px] font-bold text-slate-400 opacity-40 uppercase">HLTB Not Found</div>
+                    )}
+                    {(!hltbData[sub.game_name]) && (
+                       <div className="text-[9px] font-bold text-blue-400 animate-pulse uppercase">Fetching HLTB...</div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      {sub.status === 'verified' ? (
+                        <>
+                          <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
+                          <span className="text-[9px] font-extrabold text-emerald-400 uppercase tracking-tighter truncate">Accepted</span>
+                        </>
+                      ) : sub.status === 'rejected' ? (
+                        <>
+                          <XCircle size={12} className="text-red-400 shrink-0" />
+                          <span className="text-[9px] font-extrabold text-red-500 uppercase tracking-tighter truncate">Rejected</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={12} className="text-amber-400 shrink-0" />
+                          <span className="text-[9px] font-extrabold text-amber-500 uppercase tracking-tighter truncate">Pending</span>
+                        </>
+                      )}
+                    </div>
+                    {sub.status === 'rejected' && sub.rejection_reason && (
+                      <div className="p-2 bg-red-500/5 border border-red-500/10 rounded-lg text-[9px] text-red-300 leading-tight italic truncate" title={sub.rejection_reason}>
+                        <span className="font-bold uppercase opacity-50 block mb-0.5">Reason:</span>
+                        {sub.rejection_reason}
+                      </div>
+                    )}
+                    {sub.status === 'verified' && (
+                      <div className="text-[9px] font-extrabold opacity-40 uppercase tracking-tighter">
+                        Awarded {sub.points || 0} PTS
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {totalPastPages > 1 && (
+              <div className="flex items-center justify-center gap-4 mt-4">
+                <button
+                  disabled={pastEventsPage === 1}
+                  onClick={() => setPastEventsPage(prev => prev - 1)}
+                  className="p-2 rounded-xl bg-white/5 border border-white/5 disabled:opacity-20 hover:bg-white/10 transition-all"
+                  title="Previous Page"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold opacity-60">Page</span>
+                  <span className={cn("text-sm font-bold", theme.text)}>{pastEventsPage}</span>
+                  <span className="text-sm font-bold opacity-60">of {totalPastPages}</span>
+                </div>
+                <button
+                  disabled={pastEventsPage === totalPastPages}
+                  onClick={() => setPastEventsPage(prev => prev + 1)}
+                  className="p-2 rounded-xl bg-white/5 border border-white/5 disabled:opacity-20 hover:bg-white/10 transition-all"
+                  title="Next Page"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
