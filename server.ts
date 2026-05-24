@@ -2099,7 +2099,7 @@ async function createServer() {
       const defaultGameId = game?.id || null;
 
       // 4. Insert system notification into submissions for all to pull
-      const notificationMessage = "The event is now over! Head over to discord for the screenshot voting period.";
+      const notificationMessage = "The event is now over! Thank you to everyone who participated and congratulations to the winning team! Stay tuned for the next event announcement.";
       const notificationData = {
         user_id: 'system_notification',
         user_name: 'Girls Who Game',
