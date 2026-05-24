@@ -109,7 +109,7 @@ export default function EventsPanel() {
     const formattedHrs = String(hrs || '00').padStart(2, '0');
     const formattedMins = String(mins || '00').padStart(2, '0');
     // Force saving as America/Argentina/Buenos_Aires (GMT-3) offset
-    return `${dateOnly}T${formattedHrs}:${formattedMins}:00-03:00`;
+    return `${dateOnly}T${formattedHrs}:${formattedMins}:00`;
   };
 
   const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
