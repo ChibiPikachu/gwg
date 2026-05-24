@@ -106,7 +106,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     
     if (!isoStr.includes('T') || isoStr.includes('T00:00:00') || isoStr.includes('T23:59:59')) {
       const dateOnly = isoStr.split('T')[0];
-      return `${dateOnly} at 0:00 (GMT-3)`;
+      return `${dateOnly} at 23:59 (GMT-3)`;
     }
     
     try {
@@ -274,7 +274,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                 <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{currentEvent ? currentEvent.title : 'Inactive'}</span>
                 <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                   {currentEvent 
-                    ? `Ends on ${formatToArgentinaTime((currentEvent as any).end_date)}`
+                    ? `Ends on ${getVotingFormatted((currentEvent as any).end_date)}`
                     : 'Waiting for next event'}
                 </span>
                 
