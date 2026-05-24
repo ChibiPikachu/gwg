@@ -32,37 +32,19 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '';
     
-    try {
-      const formattedDate = d.toLocaleDateString('en-US', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-      
-      const formattedTime = d.toLocaleTimeString('en-US', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
-      
-      return `Voting period begins on ${formattedDate} at ${formattedTime} (GMT-3)`;
-    } catch (err) {
-      const formattedDate = d.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-      
-      const formattedTime = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
-      
-      return `Voting period begins on ${formattedDate} at ${formattedTime}`;
-    }
+    const formattedDate = d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+    
+    const formattedTime = d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    return `Voting period begins on ${formattedDate} at ${formattedTime}`;
   };
 
   const getVotingFormatted = (isoStr: string | undefined): string => {
@@ -70,37 +52,19 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '';
     
-    try {
-      const formattedDate = d.toLocaleDateString('en-US', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-      
-      const formattedTime = d.toLocaleTimeString('en-US', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
-      
-      return `${formattedDate} at ${formattedTime} (GMT-3)`;
-    } catch (err) {
-      const formattedDate = d.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-      
-      const formattedTime = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
-      
-      return `${formattedDate} at ${formattedTime}`;
-    }
+    const formattedDate = d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+    
+    const formattedTime = d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    return `${formattedDate} at ${formattedTime}`;
   };
 
   useEffect(() => {
@@ -140,48 +104,22 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
   const getCountdownTarget = (endDateStr: string): number => {
     if (!endDateStr) return 0;
-    if (endDateStr.includes('T')) {
-      const parts = endDateStr.split('T');
-      const timePart = parts[1];
-      const isBareDate = !timePart || timePart.startsWith('00:00:00') || timePart.startsWith('23:59:59');
-      if (isBareDate) {
-        return new Date(`${parts[0]}T23:59:59`).getTime();
-      }
-      return new Date(endDateStr).getTime();
-    }
-    return new Date(`${endDateStr}T23:59:59`).getTime();
+    return new Date(endDateStr).getTime();
   };
 
-  const formatToArgentinaTime = (isoStr: string | undefined): string => {
+  const formatToLocalTime = (isoStr: string | undefined): string => {
     if (!isoStr) return '';
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '';
     
-    if (!isoStr.includes('T') || isoStr.includes('T00:00:00') || isoStr.includes('T23:59:59')) {
-      const dateOnly = isoStr.split('T')[0];
-      return `${dateOnly} at 23:59 (GMT-3)`;
-    }
-    
-    try {
-      return d.toLocaleString('en-US', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      }) + ' (GMT-3)';
-    } catch (err) {
-      return d.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
-    }
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
   };
 
   useEffect(() => {
@@ -199,15 +137,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       
       // 1. End Date Countdown
       const endDateStr = (activeEventToUse as any).end_date;
-      let end = 0;
-      if (endDateStr) {
-        // If the incoming string doesn't specify an offset, inject the forced Argentina offset
-        if (endDateStr.includes('T') && !endDateStr.includes('-03:00') && !endDateStr.endsWith('Z')) {
-          end = new Date(`${endDateStr.split('T')[0]}T${endDateStr.split('T')[1].slice(0,8)}-03:00`).getTime();
-        } else {
-          end = new Date(endDateStr).getTime();
-        }
-      }
+      const end = endDateStr ? new Date(endDateStr).getTime() : 0;
       
       const diffEnd = end - now;
       if (diffEnd <= 0 || isNaN(diffEnd)) {
@@ -222,12 +152,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
       // 2. Voting Start Countdown
       if (votingStartIso) {
-        let vStart = 0;
-        if (!votingStartIso.includes('-03:00') && !votingStartIso.endsWith('Z')) {
-          vStart = new Date(`${votingStartIso}-03:00`).getTime();
-        } else {
-          vStart = new Date(votingStartIso).getTime();
-        }
+        const vStart = new Date(votingStartIso).getTime();
         
         const diffVoting = vStart - now;
         if (diffVoting <= 0 || isNaN(diffVoting)) {
