@@ -106,7 +106,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     
     if (!isoStr.includes('T') || isoStr.includes('T00:00:00') || isoStr.includes('T23:59:59')) {
       const dateOnly = isoStr.split('T')[0];
-      return `${dateOnly} at 23:59 (GMT-3)`;
+      return `${dateOnly} at 0:00 (GMT-3)`;
     }
     
     try {
