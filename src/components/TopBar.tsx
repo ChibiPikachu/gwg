@@ -24,20 +24,46 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
   const [showProfileMenu, setShowProfileMenu] = React.useState(false);
   
   const [currentEvent, setCurrentEvent] = React.useState<any>(null);
+  const [draftEvent, setDraftEvent] = React.useState<any>(null);
   const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0 });
+
+  const activeEventToUse = draftEvent && (draftEvent.is_active || (currentEvent && draftEvent.id === currentEvent.id))
+    ? draftEvent
+    : currentEvent;
+
+  React.useEffect(() => {
+    const handleDraftUpdate = () => {
+      setDraftEvent((window as any).__activeEventDraft || null);
+    };
+    handleDraftUpdate();
+
+    window.addEventListener('active-event-draft-updated', handleDraftUpdate);
+    return () => {
+      window.removeEventListener('active-event-draft-updated', handleDraftUpdate);
+    };
+  }, []);
 
   const getCountdownTarget = (endDateStr: string): number => {
     if (!endDateStr) return 0;
     if (endDateStr.includes('T')) {
-      const parts = endDateStr.split('T');
-      const timePart = parts[1];
-      const isBareDate = !timePart || timePart.startsWith('00:00:00') || timePart.startsWith('23:59:59');
-      if (isBareDate) {
-        return new Date(`${parts[0]}T23:59:59-03:00`).getTime();
+      const [datePart, timePart] = endDateStr.split('T');
+      const dateParts = datePart.split('-');
+      if (dateParts.length === 3) {
+        const year = Number(dateParts[0]);
+        const month = Number(dateParts[1]);
+        const day = Number(dateParts[2]);
+        
+        const cleanTimePart = timePart.split(/[Z+-]/)[0];
+        const timeParts = cleanTimePart.split(':');
+        const hour = Number(timeParts[0] || 0);
+        const minute = Number(timeParts[1] || 0);
+        const second = Number(timeParts[2] || 0);
+        
+        const d = new Date(year, month - 1, day, hour, minute, second, 0);
+        return d.getTime();
       }
-      return new Date(endDateStr).getTime();
     }
-    return new Date(`${endDateStr}T23:59:59-03:00`).getTime();
+    return new Date(endDateStr).getTime();
   };
 
   React.useEffect(() => {
@@ -64,39 +90,32 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
   }, []);
 
   React.useEffect(() => {
-    if (!currentEvent) return;
-
-    const timer = setInterval(() => {
-      const now = new Date().getTime();
-      const end = getCountdownTarget(currentEvent.end_date || currentEvent.endDate);
-      const diff = end - now;
-
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0 });
-        clearInterval(timer);
-        return;
-      }
-
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      });
-    }, 10000);
-
-    const now = new Date().getTime();
-    const end = getCountdownTarget(currentEvent.end_date || currentEvent.endDate);
-    const diff = end - now;
-    if (diff > 0) {
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      });
+    if (!activeEventToUse) {
+      setTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      return;
     }
 
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const end = getCountdownTarget(activeEventToUse.end_date || activeEventToUse.endDate);
+      const diff = end - now;
+
+      if (diff <= 0 || isNaN(diff)) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      } else {
+        setTimeLeft({
+          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+        });
+      }
+    };
+
+    const timer = setInterval(updateTimer, 1000);
+    updateTimer();
+
     return () => clearInterval(timer);
-  }, [currentEvent]);
+  }, [activeEventToUse]);
   
   const notificationRef = React.useRef<HTMLDivElement>(null);
   const profileContainerRef = React.useRef<HTMLDivElement>(null);
@@ -237,7 +256,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
         )}
         <div className="flex-1 flex items-center gap-2">
           <Logo />
-          {currentEvent && (
+          {activeEventToUse && (
             <div className="lg:hidden flex items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
               <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
               <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>

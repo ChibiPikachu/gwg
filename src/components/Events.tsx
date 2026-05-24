@@ -27,6 +27,22 @@ export default function EventsPanel() {
 
   const parseDateTimeToLocalParts = (isoStr: string | undefined) => {
     if (!isoStr) return null;
+    
+    // Check if it's a standard T-delimited timestamp
+    if (isoStr.includes('T')) {
+      const [datePart, timePart] = isoStr.split('T');
+      const dateParts = datePart.split('-');
+      if (dateParts.length === 3) {
+        const year = dateParts[0];
+        const month = dateParts[1];
+        const day = dateParts[2];
+        const timeParts = timePart.split(':');
+        const hour = timeParts[0] || '00';
+        const minute = timeParts[1] || '00';
+        return { year, month, day, hour, minute };
+      }
+    }
+    
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return null;
     
@@ -89,16 +105,31 @@ export default function EventsPanel() {
     const [hrs, mins] = timePart.split(':');
     const formattedHrs = String(hrs || '00').padStart(2, '0');
     const formattedMins = String(mins || '00').padStart(2, '0');
-    
-    const [year, month, day] = dateOnly.split('-').map(Number);
-    const hourNum = Number(formattedHrs);
-    const minNum = Number(formattedMins);
-    const d = new Date(year, month - 1, day, hourNum, minNum, 0, 0);
-    return d.toISOString();
+    return `${dateOnly}T${formattedHrs}:${formattedMins}:00`;
   };
 
   const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
     if (!isoStr) return fallbackText;
+    
+    // Attempt literal parsing to prevent any timezone shifts
+    if (isoStr.includes('T')) {
+      const [datePart, timePart] = isoStr.split('T');
+      const dateParts = datePart.split('-');
+      if (dateParts.length === 3) {
+        const year = dateParts[0];
+        const monthNum = parseInt(dateParts[1], 10);
+        const day = dateParts[2];
+        const timeParts = timePart.split(':');
+        const hour = timeParts[0] || '00';
+        const minute = timeParts[1] || '00';
+        
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthName = monthNames[monthNum - 1] || 'Jan';
+        
+        return `${monthName} ${parseInt(day, 10)}, ${year}, ${hour}:${minute}`;
+      }
+    }
+    
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return fallbackText;
     
