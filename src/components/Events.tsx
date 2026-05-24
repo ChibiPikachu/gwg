@@ -28,9 +28,11 @@ export default function EventsPanel() {
   const parseDateTimeToLocalParts = (isoStr: string | undefined) => {
     if (!isoStr) return null;
     
+    const cleanStr = isoStr.replace(' ', 'T');
+    
     // Check if it's a standard T-delimited timestamp
-    if (isoStr.includes('T')) {
-      const [datePart, timePart] = isoStr.split('T');
+    if (cleanStr.includes('T')) {
+      const [datePart, timePart] = cleanStr.split('T');
       const dateParts = datePart.split('-');
       if (dateParts.length === 3) {
         const year = dateParts[0];
@@ -111,9 +113,11 @@ export default function EventsPanel() {
   const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
     if (!isoStr) return fallbackText;
     
+    const cleanStr = isoStr.replace(' ', 'T');
+    
     // Attempt literal parsing to prevent any timezone shifts
-    if (isoStr.includes('T')) {
-      const [datePart, timePart] = isoStr.split('T');
+    if (cleanStr.includes('T')) {
+      const [datePart, timePart] = cleanStr.split('T');
       const dateParts = datePart.split('-');
       if (dateParts.length === 3) {
         const year = dateParts[0];

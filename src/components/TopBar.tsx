@@ -45,8 +45,9 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
 
   const getCountdownTarget = (endDateStr: string): number => {
     if (!endDateStr) return 0;
-    if (endDateStr.includes('T')) {
-      const [datePart, timePart] = endDateStr.split('T');
+    const cleanStr = endDateStr.replace(' ', 'T');
+    if (cleanStr.includes('T')) {
+      const [datePart, timePart] = cleanStr.split('T');
       const dateParts = datePart.split('-');
       if (dateParts.length === 3) {
         const year = Number(dateParts[0]);

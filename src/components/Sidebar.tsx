@@ -29,8 +29,9 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
   const formatLiteralDateTime = (isoStr: string | undefined): string => {
     if (!isoStr) return '';
-    if (isoStr.includes('T')) {
-      const [datePart, timePart] = isoStr.split('T');
+    const cleanStr = isoStr.replace(' ', 'T');
+    if (cleanStr.includes('T')) {
+      const [datePart, timePart] = cleanStr.split('T');
       const dateParts = datePart.split('-');
       if (dateParts.length === 3) {
         const year = dateParts[0];
@@ -110,8 +111,9 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
   const getCountdownTarget = (endDateStr: string): number => {
     if (!endDateStr) return 0;
-    if (endDateStr.includes('T')) {
-      const [datePart, timePart] = endDateStr.split('T');
+    const cleanStr = endDateStr.replace(' ', 'T');
+    if (cleanStr.includes('T')) {
+      const [datePart, timePart] = cleanStr.split('T');
       const dateParts = datePart.split('-');
       if (dateParts.length === 3) {
         const year = Number(dateParts[0]);
