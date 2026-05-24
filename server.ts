@@ -1435,6 +1435,10 @@ async function createServer() {
         .single();
 
       if (error) throw error;
+
+      // Sync points since status has reset to pending
+      await syncUserPoints(supabase, steamId);
+
       res.json(data);
     } catch (err) {
       console.error('Failed to update submission:', err);
