@@ -141,7 +141,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       const now = new Date().getTime();
       
       // End date countdown
-      const end = new Date((currentEvent as any).end_date).getTime();
+      const end = getCountdownTarget((currentEvent as any).end_date);
       const diffEnd = end - now;
 
       if (diffEnd <= 0) {
@@ -274,7 +274,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                 <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{currentEvent ? currentEvent.title : 'Inactive'}</span>
                 <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                   {currentEvent 
-                    ? `Ends on ${getVotingFormatted((currentEvent as any).end_date)}`
+                    ? `Ends on ${formatToArgentinaTime((currentEvent as any).end_date)}`
                     : 'Waiting for next event'}
                 </span>
                 
