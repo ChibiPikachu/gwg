@@ -145,11 +145,11 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       const timePart = parts[1];
       const isBareDate = !timePart || timePart.startsWith('00:00:00') || timePart.startsWith('23:59:59');
       if (isBareDate) {
-        return new Date(`${parts[0]}T23:59:59-03:00`).getTime();
+        return new Date(`${parts[0]}T23:59:59`).getTime();
       }
       return new Date(endDateStr).getTime();
     }
-    return new Date(`${endDateStr}T23:59:59-03:00`).getTime();
+    return new Date(`${endDateStr}T23:59:59`).getTime();
   };
 
   const formatToArgentinaTime = (isoStr: string | undefined): string => {
