@@ -17,9 +17,30 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   const { theme } = useAuth();
   const [currentEvent, setCurrentEvent] = useState<CompetitionEvent | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
+  const [votingTimeLeft, setVotingTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
   
   // Desktop-only collapse state
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const getVotingLegend = (isoStr: string | undefined): string => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    
+    const formattedDate = d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+    
+    const formattedTime = d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    return `Voting period begins on ${formattedDate} at ${formattedTime}`;
+  };
 
   useEffect(() => {
     const fetchActiveEvent = () => {
@@ -93,37 +114,54 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   useEffect(() => {
     if (!currentEvent) return;
 
-    const timer = setInterval(() => {
-      const now = new Date().getTime();
-      const end = getCountdownTarget((currentEvent as any).end_date);
-      const diff = end - now;
+    const votingMatch = currentEvent?.description?.match(/<!--VOTING:(.*?)-->/);
+    const votingStartIso = votingMatch ? votingMatch[1] : '';
 
-      if (diff <= 0) {
+    const updateTimers = () => {
+      const now = new Date().getTime();
+      
+      // End date countdown
+      const end = getCountdownTarget((currentEvent as any).end_date);
+      const diffEnd = end - now;
+
+      if (diffEnd <= 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0 });
-        clearInterval(timer);
-        return;
+      } else {
+        setTimeLeft({
+          days: Math.floor(diffEnd / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((diffEnd % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          minutes: Math.floor((diffEnd % (1000 * 60 * 60)) / (1000 * 60))
+        });
       }
 
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      });
-    }, 10000); // Trigger more frequently to stay accurate
+      // Voting start countdown
+      if (votingStartIso) {
+        const vStart = new Date(votingStartIso).getTime();
+        const diffVoting = vStart - now;
 
-    const now = new Date().getTime();
-    const end = getCountdownTarget((currentEvent as any).end_date);
-    const diff = end - now;
-    if (diff > 0) {
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      });
-    }
+        if (diffVoting <= 0) {
+          setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+        } else {
+          setVotingTimeLeft({
+            days: Math.floor(diffVoting / (1000 * 60 * 60 * 24)),
+            hours: Math.floor((diffVoting % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+            minutes: Math.floor((diffVoting % (1000 * 60 * 60)) / (1000 * 60))
+          });
+        }
+      } else {
+        setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      }
+    };
+
+    const timer = setInterval(updateTimers, 10000); // Trigger more frequently to stay accurate
+    updateTimers();
 
     return () => clearInterval(timer);
   }, [currentEvent]);
+
+  const votingMatchStr = currentEvent?.description?.match(/<!--VOTING:(.*?)-->/);
+  const votingStartIsoStr = votingMatchStr ? votingMatchStr[1] : '';
+  const currentEventNumber = (currentEvent as any)?.event_number || 1;
 
   const colors = TEAM_COLORS[userTeam];
   const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
@@ -234,6 +272,32 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                     <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Min</span>
                   </div>
                 </div>
+
+                {votingStartIsoStr && (
+                  <div className="w-full border-t border-black/5 dark:border-white/5 pt-4 mt-4 flex flex-col items-center">
+                    <span className="text-xs font-bold mb-1 dark:text-white text-slate-800 text-center">
+                      Event #{currentEventNumber} voting period
+                    </span>
+                    <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
+                      {getVotingLegend(votingStartIsoStr)}
+                    </span>
+                    
+                    <div className="w-full flex justify-between gap-2">
+                      <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                        <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.days}</span>
+                        <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Days</span>
+                      </div>
+                      <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                        <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.hours}</span>
+                        <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Hrs</span>
+                      </div>
+                      <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                        <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.minutes}</span>
+                        <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Min</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

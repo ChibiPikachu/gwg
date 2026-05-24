@@ -17,6 +17,45 @@ export default function EventsPanel() {
   const [startTime, setStartTime] = React.useState('00:00');
   const [endTime, setEndTime] = React.useState('23:59');
 
+  const [votingDate, setVotingDate] = React.useState('');
+  const [votingTime, setVotingTime] = React.useState('00:00');
+
+  const getCleanDescription = (desc: string | undefined): string => {
+    if (!desc) return '';
+    return desc.replace(/<!--VOTING:.*?-->/g, '').trim();
+  };
+
+  const handleStartEdit = (event: any) => {
+    const rawDesc = event.description || '';
+    const cleanDesc = rawDesc.replace(/<!--VOTING:.*?-->/g, '').trim();
+
+    setEditingEvent({
+      ...event,
+      description: cleanDesc
+    });
+    setStartTime(parseTimeFromDateStr(event.start_date, '00:00'));
+    setEndTime(parseTimeFromDateStr(event.end_date, '23:59'));
+
+    const votingMatch = rawDesc.match(/<!--VOTING:(.*?)-->/);
+    if (votingMatch && votingMatch[1]) {
+      const d = new Date(votingMatch[1]);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        setVotingDate(`${yyyy}-${mm}-${dd}`);
+        setVotingTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+      } else {
+        setVotingDate('');
+        setVotingTime('00:00');
+      }
+    } else {
+      setVotingDate('');
+      setVotingTime('00:00');
+    }
+    setIsEditing(true);
+  };
+
   const isAdmin = user?.isAdmin || user?.role === 'admin' || user?.role === 'admins';
 
   const parseTimeFromDateStr = (dateStr: string | undefined, defaultTime = '00:00'): string => {
@@ -97,12 +136,16 @@ export default function EventsPanel() {
       const finalStartDate = combineDateAndTimeStr(editingEvent.start_date, startTime);
       const finalEndDate = combineDateAndTimeStr(editingEvent.end_date, endTime);
 
+      const cleanDesc = (editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim();
+      const finalVotingStr = votingDate ? combineDateAndTimeStr(votingDate, votingTime) : '';
+      const finalDescription = finalVotingStr ? `${cleanDesc} <!--VOTING:${finalVotingStr}-->` : cleanDesc;
+
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editingEvent.title,
-          description: editingEvent.description,
+          description: finalDescription,
           startDate: finalStartDate,
           endDate: finalEndDate,
           isActive: editingEvent.is_active,
@@ -179,6 +222,8 @@ export default function EventsPanel() {
               setEditingEvent({ title: '', start_date: '', end_date: '', is_active: false, hide_scores: false });
               setStartTime('00:00');
               setEndTime('23:59');
+              setVotingDate('');
+              setVotingTime('00:00');
               setIsEditing(true);
             }}
             className={cn("w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, theme.glow, "text-white")}
@@ -219,7 +264,7 @@ export default function EventsPanel() {
                      {currentEvent.title}
                    </h3>
                    <p className="opacity-60 text-lg dark:text-white text-slate-600">
-                     {(currentEvent as any).description || "Join the seasonal competition and earn points for your team!"}
+                     {getCleanDescription(currentEvent.description) || "Join the seasonal competition and earn points for your team!"}
                    </p>
                    <div className="flex flex-wrap gap-4 pt-4 text-xs md:text-sm">
                      <div className="dark:bg-white/5 bg-slate-50 px-3 py-1.5 md:px-4 md:py-2 rounded-xl flex items-center gap-2 border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
@@ -245,12 +290,7 @@ export default function EventsPanel() {
                     {!isCountdownCollapsed && isAdmin && (
                       <div className="flex flex-col gap-2 w-full">
                         <button 
-                          onClick={() => {
-                            setEditingEvent(currentEvent);
-                            setStartTime(parseTimeFromDateStr(currentEvent.start_date, '00:00'));
-                            setEndTime(parseTimeFromDateStr(currentEvent.end_date, '23:59'));
-                            setIsEditing(true);
-                          }}
+                          onClick={() => handleStartEdit(currentEvent)}
                           className="w-full py-3 dark:bg-white/5 bg-black/5 hover:dark:bg-white/10 hover:bg-black/10 border dark:border-white/10 border-black/10 rounded-xl font-bold dark:text-white text-slate-800 text-xs transition-all flex items-center justify-center gap-2"
                         >
                           <Edit2 size={14} />
@@ -293,12 +333,7 @@ export default function EventsPanel() {
                   </div>
                   {isAdmin && (
                     <button 
-                      onClick={() => {
-                        setEditingEvent(event);
-                        setStartTime(parseTimeFromDateStr(event.start_date, '00:00'));
-                        setEndTime(parseTimeFromDateStr(event.end_date, '23:59'));
-                        setIsEditing(true);
-                      }}
+                      onClick={() => handleStartEdit(event)}
                       className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg dark:text-white/30 text-slate-400 hover:dark:text-white hover:text-slate-900 transition-all"
                     >
                       <Edit2 size={14} />
@@ -306,7 +341,7 @@ export default function EventsPanel() {
                   )}
                 </div>
                 <h4 className={cn("font-bold text-xl mb-2 transition-colors uppercase tracking-tight", theme.text)}>{event.title}</h4>
-                <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{event.description}</p>
+                <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{getCleanDescription(event.description)}</p>
                 <div className="pt-4 border-t dark:border-white/5 border-black/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30 dark:text-white text-slate-500">
                   <span>Timeline</span>
                   <span>{formatEventDateTime(event.end_date)}</span>
@@ -395,6 +430,33 @@ export default function EventsPanel() {
                       className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
                       value={endTime}
                       onChange={e => setEndTime(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-black/5 dark:border-white/5 pt-4 space-y-4">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold uppercase tracking-wider opacity-60 dark:text-white text-slate-800">Voting Period</span>
+                  <span className="text-[9px] opacity-45 dark:text-white text-slate-500">Specify when voting opens for submissions</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Voting Start Date</label>
+                    <input 
+                      type="date"
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
+                      value={votingDate}
+                      onChange={e => setVotingDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">Voting Start Time <span className="opacity-60 font-normal">(User Time)</span></label>
+                    <input 
+                      type="time"
+                      className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none transition-all dark:text-white text-slate-900", theme.border_focus)}
+                      value={votingTime}
+                      onChange={e => setVotingTime(e.target.value)}
                     />
                   </div>
                 </div>
