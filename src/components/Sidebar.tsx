@@ -16,11 +16,16 @@ interface SidebarProps {
 export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, isOpen, onClose }: SidebarProps) {
   const { theme } = useAuth();
   const [currentEvent, setCurrentEvent] = useState<CompetitionEvent | null>(null);
+  const [draftEvent, setDraftEvent] = useState<CompetitionEvent | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
   const [votingTimeLeft, setVotingTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
   
   // Desktop-only collapse state
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const activeEventToUse = draftEvent && (draftEvent.is_active || (currentEvent && draftEvent.id === currentEvent.id))
+    ? draftEvent
+    : currentEvent;
 
   const getVotingLegend = (isoStr: string | undefined): string => {
     if (!isoStr) return '';
@@ -121,6 +126,18 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     };
   }, []);
 
+  useEffect(() => {
+    const handleDraftUpdate = () => {
+      setDraftEvent((window as any).__activeEventDraft || null);
+    };
+    handleDraftUpdate();
+
+    window.addEventListener('active-event-draft-updated', handleDraftUpdate);
+    return () => {
+      window.removeEventListener('active-event-draft-updated', handleDraftUpdate);
+    };
+  }, []);
+
   const getCountdownTarget = (endDateStr: string): number => {
     if (!endDateStr) return 0;
     if (endDateStr.includes('T')) {
@@ -168,16 +185,20 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   };
 
   useEffect(() => {
-    if (!currentEvent) return;
+    if (!activeEventToUse) {
+      setTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      return;
+    }
 
-    const votingMatch = currentEvent?.description?.match(/<!--VOTING:(.*?)-->/);
+    const votingMatch = activeEventToUse?.description?.match(/<!--VOTING:(.*?)-->/);
     const votingStartIso = votingMatch ? votingMatch[1] : '';
 
     const updateTimers = () => {
       const now = new Date().getTime();
       
       // End date countdown
-      const end = (currentEvent as any).end_date ? new Date((currentEvent as any).end_date).getTime() : 0;
+      const end = (activeEventToUse as any).end_date ? new Date((activeEventToUse as any).end_date).getTime() : 0;
       const diffEnd = end - now;
 
       if (diffEnd <= 0) {
@@ -209,15 +230,15 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       }
     };
 
-    const timer = setInterval(updateTimers, 10000); // Trigger more frequently to stay accurate
+    const timer = setInterval(updateTimers, 1000); // 1-second interval for responsive real-time preview updating!
     updateTimers();
 
     return () => clearInterval(timer);
-  }, [currentEvent]);
+  }, [activeEventToUse]);
 
-  const votingMatchStr = currentEvent?.description?.match(/<!--VOTING:(.*?)-->/);
+  const votingMatchStr = activeEventToUse?.description?.match(/<!--VOTING:(.*?)-->/);
   const votingStartIsoStr = votingMatchStr ? votingMatchStr[1] : '';
-  const currentEventNumber = (currentEvent as any)?.event_number || 1;
+  const currentEventNumber = (activeEventToUse as any)?.event_number || 1;
 
   const colors = TEAM_COLORS[userTeam];
   const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
@@ -304,13 +325,13 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
               <div className="p-4 flex flex-col items-center">
                 <div className={cn("w-full aspect-[16/6] rounded-lg flex items-center justify-center mb-4 border", theme.secondary, theme.border)}>
                   <span className={cn("font-bold text-xl uppercase tracking-tighter text-center px-2", theme.text)}>
-                    {currentEvent ? currentEvent.title : 'No Event'}
+                    {activeEventToUse ? activeEventToUse.title : 'No Event'}
                   </span>
                 </div>
-                <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{currentEvent ? currentEvent.title : 'Inactive'}</span>
+                <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{activeEventToUse ? activeEventToUse.title : 'Inactive'}</span>
                 <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
-                  {currentEvent 
-                    ? `Ends on ${getVotingFormatted((currentEvent as any).end_date)}`
+                  {activeEventToUse 
+                    ? `Ends on ${getVotingFormatted((activeEventToUse as any).end_date)}`
                     : 'Waiting for next event'}
                 </span>
                 

@@ -159,6 +159,32 @@ export default function EventsPanel() {
     fetchEvents();
   }, [fetchEvents]);
 
+  React.useEffect(() => {
+    if (isEditing && editingEvent) {
+      const finalStartDate = combineDateAndTimeStr(editingEvent.start_date, startTime);
+      const finalEndDate = combineDateAndTimeStr(editingEvent.end_date, endTime);
+      const cleanDesc = (editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim();
+      const finalVotingStr = votingDate ? combineDateAndTimeStr(votingDate, votingTime) : '';
+      const finalDescription = finalVotingStr ? `${cleanDesc} <!--VOTING:${finalVotingStr}-->` : cleanDesc;
+
+      const draft: CompetitionEvent = {
+        id: editingEvent.id || 'draft',
+        title: editingEvent.title || 'Draft Event',
+        description: finalDescription,
+        start_date: finalStartDate,
+        end_date: finalEndDate,
+        is_active: editingEvent.is_active ?? false,
+        hide_scores: !!editingEvent.hide_scores
+      };
+
+      (window as any).__activeEventDraft = draft;
+      window.dispatchEvent(new Event('active-event-draft-updated'));
+    } else {
+      (window as any).__activeEventDraft = null;
+      window.dispatchEvent(new Event('active-event-draft-updated'));
+    }
+  }, [isEditing, editingEvent, startTime, endTime, votingDate, votingTime]);
+
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEvent) return;
@@ -238,6 +264,21 @@ export default function EventsPanel() {
   const currentEvent = events.find(e => e.is_active);
   const pastEvents = events.filter(e => !e.is_active);
 
+  const draftEvent = isEditing && editingEvent && (editingEvent.is_active || (currentEvent && editingEvent.id === currentEvent.id))
+    ? {
+        ...currentEvent,
+        ...editingEvent,
+        start_date: combineDateAndTimeStr(editingEvent.start_date, startTime),
+        end_date: combineDateAndTimeStr(editingEvent.end_date, endTime),
+        description: (votingDate 
+          ? `${(editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim()} <!--VOTING:${combineDateAndTimeStr(votingDate, votingTime)}-->`
+          : (editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim()
+        )
+      } as CompetitionEvent
+    : null;
+
+  const activeEventToUse = draftEvent || currentEvent;
+
   if (loading) {
     return (
       <div className="p-20 flex justify-center">
@@ -286,7 +327,7 @@ export default function EventsPanel() {
           </button>
         </div>
         
-        {currentEvent ? (
+        {activeEventToUse ? (
           <div className={cn(
             "dark:bg-[#111111] bg-white rounded-3xl border-2 p-6 md:p-8 relative overflow-hidden group shadow-2xl transition-all duration-500",
             theme.border,
@@ -298,16 +339,16 @@ export default function EventsPanel() {
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
                  <div className={cn("space-y-4 max-w-2xl transition-all", isCountdownCollapsed && "opacity-0 scale-95")}>
                    <h3 className={cn("text-3xl md:text-5xl font-black uppercase tracking-tight leading-none group-hover:scale-[1.02] transition-transform origin-left underline underline-offset-8", theme.text)}>
-                     {currentEvent.title}
+                     {activeEventToUse.title}
                    </h3>
                    <p className="opacity-60 text-lg dark:text-white text-slate-600">
-                     {getCleanDescription(currentEvent.description) || "Join the seasonal competition and earn points for your team!"}
+                     {getCleanDescription(activeEventToUse.description) || "Join the seasonal competition and earn points for your team!"}
                    </p>
                    <div className="flex flex-wrap gap-4 pt-4 text-xs md:text-sm">
                      <div className="dark:bg-white/5 bg-slate-50 px-3 py-1.5 md:px-4 md:py-2 rounded-xl flex items-center gap-2 border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
                         <Calendar size={14} className={theme.text} />
                         <span className="font-bold opacity-80 dark:text-white text-slate-700">
-                          {formatEventDateTime(currentEvent.start_date)} - {formatEventDateTime(currentEvent.end_date)}
+                          {formatEventDateTime(activeEventToUse.start_date)} - {formatEventDateTime(activeEventToUse.end_date)}
                         </span>
                      </div>
                    </div>
@@ -327,7 +368,7 @@ export default function EventsPanel() {
                     {!isCountdownCollapsed && isAdmin && (
                       <div className="flex flex-col gap-2 w-full">
                         <button 
-                          onClick={() => handleStartEdit(currentEvent)}
+                          onClick={() => handleStartEdit(activeEventToUse)}
                           className="w-full py-3 dark:bg-white/5 bg-black/5 hover:dark:bg-white/10 hover:bg-black/10 border dark:border-white/10 border-black/10 rounded-xl font-bold dark:text-white text-slate-800 text-xs transition-all flex items-center justify-center gap-2"
                         >
                           <Edit2 size={14} />
