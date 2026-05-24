@@ -2081,13 +2081,18 @@ async function createServer() {
       if (eventError) throw eventError;
 
       // 2. Ensure general system_notification profile exists to satisfy FK constraint if present
-      await supabase.from('profiles').upsert({
+      const { error: systemProfileError } = await supabase.from('profiles').upsert({
         steamid: 'system_notification',
         steam_name: 'System',
         team: 'none',
         points: 0,
         role: 'system'
-      });
+      }, { onConflict: 'steamid' });
+
+      if (systemProfileError) {
+        console.error('Failed to upsert system_notification profile:', systemProfileError);
+        throw systemProfileError;
+      }
 
       // 3. Fetch default game id as fallback if needed for constraint
       const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
@@ -2201,12 +2206,17 @@ async function createServer() {
         };
       } else {
         const dummySteamId = `team_pts_${team}`;
-        await supabase.from('profiles').upsert({
+        const { error: teamProfileError } = await supabase.from('profiles').upsert({
           steamid: dummySteamId,
           steam_name: `Team ${team.toUpperCase()} Adjustments`,
           team: 'none',
           points: 0
-        });
+        }, { onConflict: 'steamid' });
+
+        if (teamProfileError) {
+          console.error('Failed to upsert team profile:', teamProfileError);
+          throw teamProfileError;
+        }
 
         const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
         const defaultGameId = game?.id || null;
