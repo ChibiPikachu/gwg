@@ -2084,7 +2084,7 @@ async function createServer() {
       const { error: systemProfileError } = await supabase.from('profiles').upsert({
         steamid: 'system_notification',
         steam_name: 'System',
-        team: 'none',
+        team: null,
         points: 0,
         role: 'system'
       }, { onConflict: 'steamid' });
@@ -2209,7 +2209,7 @@ async function createServer() {
         const { error: teamProfileError } = await supabase.from('profiles').upsert({
           steamid: dummySteamId,
           steam_name: `Team ${team.toUpperCase()} Adjustments`,
-          team: 'none',
+          team: null,
           points: 0
         }, { onConflict: 'steamid' });
 
