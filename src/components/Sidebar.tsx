@@ -185,70 +185,70 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   };
 
   useEffect(() => {
-  if (!activeEventToUse) {
-    setTimeLeft({ days: 0, hours: 0, minutes: 0 });
-    setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
-    return;
-  }
-
-  const votingMatch = activeEventToUse?.description?.match(//);
-  const votingStartIso = votingMatch ? votingMatch[1] : '';
-
-  const updateTimers = () => {
-    const now = new Date().getTime();
-    
-    // 1. End Date Countdown
-    const endDateStr = (activeEventToUse as any).end_date;
-    let end = 0;
-    if (endDateStr) {
-      // If the incoming string doesn't specify an offset, inject the forced Argentina offset
-      if (endDateStr.includes('T') && !endDateStr.includes('-03:00') && !endDateStr.endsWith('Z')) {
-        end = new Date(`${endDateStr.split('T')[0]}T${endDateStr.split('T')[1].slice(0,8)}-03:00`).getTime();
-      } else {
-        end = new Date(endDateStr).getTime();
-      }
-    }
-    
-    const diffEnd = end - now;
-    if (diffEnd <= 0 || isNaN(diffEnd)) {
+    if (!activeEventToUse) {
       setTimeLeft({ days: 0, hours: 0, minutes: 0 });
-    } else {
-      setTimeLeft({
-        days: Math.floor(diffEnd / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diffEnd % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diffEnd % (1000 * 60 * 60)) / (1000 * 60))
-      });
+      setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      return;
     }
 
-    // 2. Voting Start Countdown
-    if (votingStartIso) {
-      let vStart = 0;
-      if (!votingStartIso.includes('-03:00') && !votingStartIso.endsWith('Z')) {
-        vStart = new Date(`${votingStartIso}-03:00`).getTime();
-      } else {
-        vStart = new Date(votingStartIso).getTime();
+    const votingMatch = activeEventToUse?.description?.match(//);
+    const votingStartIso = votingMatch ? votingMatch[1] : '';
+
+    const updateTimers = () => {
+      const now = new Date().getTime();
+      
+      // 1. End Date Countdown
+      const endDateStr = (activeEventToUse as any).end_date;
+      let end = 0;
+      if (endDateStr) {
+        // If the incoming string doesn't specify an offset, inject the forced Argentina offset
+        if (endDateStr.includes('T') && !endDateStr.includes('-03:00') && !endDateStr.endsWith('Z')) {
+          end = new Date(`${endDateStr.split('T')[0]}T${endDateStr.split('T')[1].slice(0,8)}-03:00`).getTime();
+        } else {
+          end = new Date(endDateStr).getTime();
+        }
       }
       
-      const diffVoting = vStart - now;
-      if (diffVoting <= 0 || isNaN(diffVoting)) {
-        setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      const diffEnd = end - now;
+      if (diffEnd <= 0 || isNaN(diffEnd)) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0 });
       } else {
-        setVotingTimeLeft({
-          days: Math.floor(diffVoting / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diffVoting % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-          minutes: Math.floor((diffVoting % (1000 * 60 * 60)) / (1000 * 60))
+        setTimeLeft({
+          days: Math.floor(diffEnd / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((diffEnd % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          minutes: Math.floor((diffEnd % (1000 * 60 * 60)) / (1000 * 60))
         });
       }
-    } else {
-      setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
-    }
-  };
 
-  const timer = setInterval(updateTimers, 1000);
-  updateTimers();
+      // 2. Voting Start Countdown
+      if (votingStartIso) {
+        let vStart = 0;
+        if (!votingStartIso.includes('-03:00') && !votingStartIso.endsWith('Z')) {
+          vStart = new Date(`${votingStartIso}-03:00`).getTime();
+        } else {
+          vStart = new Date(votingStartIso).getTime();
+        }
+        
+        const diffVoting = vStart - now;
+        if (diffVoting <= 0 || isNaN(diffVoting)) {
+          setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+        } else {
+          setVotingTimeLeft({
+            days: Math.floor(diffVoting / (1000 * 60 * 60 * 24)),
+            hours: Math.floor((diffVoting % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+            minutes: Math.floor((diffVoting % (1000 * 60 * 60)) / (1000 * 60))
+          });
+        }
+      } else {
+        setVotingTimeLeft({ days: 0, hours: 0, minutes: 0 });
+      }
+    };
 
-  return () => clearInterval(timer);
-}, [activeEventToUse]);
+    const timer = setInterval(updateTimers, 1000);
+    updateTimers();
+
+    return () => clearInterval(timer);
+  }, [activeEventToUse]);
 
   const votingMatchStr = activeEventToUse?.description?.match(/<!--VOTING:(.*?)-->/);
   const votingStartIsoStr = votingMatchStr ? votingMatchStr[1] : '';
