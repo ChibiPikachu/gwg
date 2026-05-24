@@ -27,19 +27,37 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '';
     
-    const formattedDate = d.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-    
-    const formattedTime = d.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    
-    return `Voting period begins on ${formattedDate} at ${formattedTime}`;
+    try {
+      const formattedDate = d.toLocaleDateString('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+      
+      const formattedTime = d.toLocaleTimeString('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      return `Voting period begins on ${formattedDate} at ${formattedTime} (GMT-3)`;
+    } catch (err) {
+      const formattedDate = d.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+      
+      const formattedTime = d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      return `Voting period begins on ${formattedDate} at ${formattedTime}`;
+    }
   };
 
   const getVotingFormatted = (isoStr: string | undefined): string => {
@@ -47,19 +65,37 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '';
     
-    const formattedDate = d.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-    
-    const formattedTime = d.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    
-    return `${formattedDate} at ${formattedTime}`;
+    try {
+      const formattedDate = d.toLocaleDateString('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+      
+      const formattedTime = d.toLocaleTimeString('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      return `${formattedDate} at ${formattedTime} (GMT-3)`;
+    } catch (err) {
+      const formattedDate = d.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+      
+      const formattedTime = d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      return `${formattedDate} at ${formattedTime}`;
+    }
   };
 
   useEffect(() => {

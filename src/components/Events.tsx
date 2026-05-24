@@ -25,26 +25,61 @@ export default function EventsPanel() {
     return desc.replace(/<!--VOTING:.*?-->/g, '').trim();
   };
 
+  const parseDateTimeToArgentinaParts = (isoStr: string | undefined) => {
+    if (!isoStr) return null;
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return null;
+    
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      const parts = formatter.formatToParts(d);
+      const year = parts.find(p => p.type === 'year')?.value || '';
+      const month = parts.find(p => p.type === 'month')?.value || '';
+      const day = parts.find(p => p.type === 'day')?.value || '';
+      const hour = parts.find(p => p.type === 'hour')?.value || '00';
+      const minute = parts.find(p => p.type === 'minute')?.value || '00';
+      return { year, month, day, hour, minute };
+    } catch (err) {
+      const year = String(d.getFullYear());
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hour = String(d.getHours()).padStart(2, '0');
+      const minute = String(d.getMinutes()).padStart(2, '0');
+      return { year, month, day, hour, minute };
+    }
+  };
+
   const handleStartEdit = (event: any) => {
     const rawDesc = event.description || '';
     const cleanDesc = rawDesc.replace(/<!--VOTING:.*?-->/g, '').trim();
 
+    const startParts = parseDateTimeToArgentinaParts(event.start_date);
+    const endParts = parseDateTimeToArgentinaParts(event.end_date);
+
     setEditingEvent({
       ...event,
-      description: cleanDesc
+      description: cleanDesc,
+      start_date: startParts ? `${startParts.year}-${startParts.month}-${startParts.day}` : event.start_date,
+      end_date: endParts ? `${endParts.year}-${endParts.month}-${endParts.day}` : event.end_date
     });
-    setStartTime(parseTimeFromDateStr(event.start_date, '00:00'));
-    setEndTime(parseTimeFromDateStr(event.end_date, '23:59'));
+
+    setStartTime(startParts ? `${startParts.hour}:${startParts.minute}` : '00:00');
+    setEndTime(endParts ? `${endParts.hour}:${endParts.minute}` : '23:59');
 
     const votingMatch = rawDesc.match(/<!--VOTING:(.*?)-->/);
     if (votingMatch && votingMatch[1]) {
-      const d = new Date(votingMatch[1]);
-      if (!isNaN(d.getTime())) {
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        setVotingDate(`${yyyy}-${mm}-${dd}`);
-        setVotingTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+      const vParts = parseDateTimeToArgentinaParts(votingMatch[1]);
+      if (vParts) {
+        setVotingDate(`${vParts.year}-${vParts.month}-${vParts.day}`);
+        setVotingTime(`${vParts.hour}:${vParts.minute}`);
       } else {
         setVotingDate('');
         setVotingTime('00:00');
@@ -60,13 +95,9 @@ export default function EventsPanel() {
 
   const parseTimeFromDateStr = (dateStr: string | undefined, defaultTime = '00:00'): string => {
     if (!dateStr) return defaultTime;
-    if (dateStr.includes('T')) {
-      const d = new Date(dateStr);
-      if (!isNaN(d.getTime())) {
-        const hrs = String(d.getHours()).padStart(2, '0');
-        const mins = String(d.getMinutes()).padStart(2, '0');
-        return `${hrs}:${mins}`;
-      }
+    const parts = parseDateTimeToArgentinaParts(dateStr);
+    if (parts) {
+      return `${parts.hour}:${parts.minute}`;
     }
     return defaultTime;
   };
@@ -75,11 +106,10 @@ export default function EventsPanel() {
     if (!datePart) return '';
     const dateOnly = datePart.split('T')[0];
     const [hrs, mins] = timePart.split(':');
-    const [year, month, day] = dateOnly.split('-').map(Number);
-    const hourNum = Number(hrs || 0);
-    const minNum = Number(mins || 0);
-    const d = new Date(year, month - 1, day, hourNum, minNum, 0, 0);
-    return d.toISOString();
+    const formattedHrs = String(hrs || '00').padStart(2, '0');
+    const formattedMins = String(mins || '00').padStart(2, '0');
+    // Force saving as America/Argentina/Buenos_Aires (GMT-3) offset
+    return `${dateOnly}T${formattedHrs}:${formattedMins}:00-03:00`;
   };
 
   const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
@@ -87,19 +117,26 @@ export default function EventsPanel() {
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return fallbackText;
     
-    if (!isoStr.includes('T') || isoStr.includes('T00:00:00') || isoStr.includes('T23:59:59')) {
-      const dateOnly = isoStr.split('T')[0];
-      return dateOnly;
+    try {
+      return d.toLocaleString('en-US', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }) + ' (GMT-3)';
+    } catch (err) {
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
     }
-    
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
   };
 
   // State values are synced on click in the button handlers to avoid race conditions and dependency synchronization loops
