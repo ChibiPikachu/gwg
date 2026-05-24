@@ -42,6 +42,26 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     return `Voting period begins on ${formattedDate} at ${formattedTime}`;
   };
 
+  const getVotingFormatted = (isoStr: string | undefined): string => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    
+    const formattedDate = d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+    
+    const formattedTime = d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    return `${formattedDate} at ${formattedTime}`;
+  };
+
   useEffect(() => {
     const fetchActiveEvent = () => {
       fetch('/api/events')
@@ -120,8 +140,10 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const updateTimers = () => {
       const now = new Date().getTime();
       
-      // End date countdown
-      const end = getCountdownTarget((currentEvent as any).end_date);
+      // End date countdown / Voting period countdown
+      const end = votingStartIso 
+        ? new Date(votingStartIso).getTime() 
+        : getCountdownTarget((currentEvent as any).end_date);
       const diffEnd = end - now;
 
       if (diffEnd <= 0) {
@@ -254,7 +276,9 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                 <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{currentEvent ? currentEvent.title : 'Inactive'}</span>
                 <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                   {currentEvent 
-                    ? `Ends on ${formatToArgentinaTime((currentEvent as any).end_date)}` 
+                    ? (votingStartIsoStr 
+                        ? `Voting starts on ${getVotingFormatted(votingStartIsoStr)}` 
+                        : `Ends on ${formatToArgentinaTime((currentEvent as any).end_date)}`)
                     : 'Waiting for next event'}
                 </span>
                 
