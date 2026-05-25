@@ -311,7 +311,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                     <span className="opacity-60 flex items-center gap-1">
                       🗳️ Voting In
                     </span>
-                    <span className="font-mono font-black text-amber-500">
+                    <span className={cn("font-mono font-black", theme.text)}>
                       {votingStartIsoStr 
                         ? `${votingTimeLeft.days}d ${votingTimeLeft.hours}h ${votingTimeLeft.minutes}m`
                         : 'N/A'
