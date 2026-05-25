@@ -23,6 +23,21 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   // Desktop-only collapse state
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  const [isCountdownCollapsed, setIsCountdownCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sidebar-countdown-collapsed') === 'true';
+    }
+    return false;
+  });
+
+  const handleToggleCollapse = () => {
+    setIsCountdownCollapsed(prev => {
+      const newVal = !prev;
+      localStorage.setItem('sidebar-countdown-collapsed', String(newVal));
+      return newVal;
+    });
+  };
+
   const activeEventToUse = draftEvent && (draftEvent.is_active || (currentEvent && draftEvent.id === currentEvent.id))
     ? draftEvent
     : currentEvent;
@@ -272,64 +287,94 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
           {/* Event Widget */}
           <div className={cn("transition-all duration-300", isCollapsed ? "lg:hidden lg:mb-0 lg:opacity-0 lg:h-0" : "mb-8 opacity-100 h-auto")}>
-            <div className="dark:bg-[#151515] bg-slate-100 rounded-xl border border-black/5 dark:border-white/5">
-              <div className="dark:bg-[#1a1a1a] bg-slate-200/50 px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-center opacity-70">
-                Current event
+            <div className="dark:bg-[#151515] bg-slate-100 rounded-xl border border-black/5 dark:border-white/5 overflow-hidden">
+              <div className="dark:bg-[#1a1a1a] bg-slate-200/50 px-4 py-2 flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-widest font-bold opacity-70">Current event</span>
+                <button
+                  onClick={handleToggleCollapse}
+                  className="text-[10px] uppercase tracking-wider font-extrabold text-blue-500 hover:text-blue-400 select-none cursor-pointer"
+                >
+                  {isCountdownCollapsed ? 'Expand' : 'Collapse'}
+                </button>
               </div>
-              <div className="p-4 flex flex-col items-center">
-                <div className={cn("w-full aspect-[16/6] rounded-lg flex items-center justify-center mb-4 border", theme.secondary, theme.border)}>
-                  <span className={cn("font-bold text-xl uppercase tracking-tighter text-center px-2", theme.text)}>
-                    {activeEventToUse ? activeEventToUse.title : 'No Event'}
+              {isCountdownCollapsed ? (
+                <div className="p-3 flex flex-col gap-2">
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-full text-xs font-bold dark:bg-black/40 bg-white shadow-sm border border-black/5 dark:border-white/5">
+                    <span className="opacity-60 flex items-center gap-1">
+                      ⏱️ Event Ends
+                    </span>
+                    <span className={cn("font-mono font-black", theme.text)}>
+                      {timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-full text-xs font-bold dark:bg-black/40 bg-white shadow-sm border border-black/5 dark:border-white/5">
+                    <span className="opacity-60 flex items-center gap-1">
+                      🗳️ Voting In
+                    </span>
+                    <span className="font-mono font-black text-amber-500">
+                      {votingStartIsoStr 
+                        ? `${votingTimeLeft.days}d ${votingTimeLeft.hours}h ${votingTimeLeft.minutes}m`
+                        : 'N/A'
+                      }
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 flex flex-col items-center">
+                  <div className={cn("w-full aspect-[16/6] rounded-lg flex items-center justify-center mb-4 border", theme.secondary, theme.border)}>
+                    <span className={cn("font-bold text-xl uppercase tracking-tighter text-center px-2", theme.text)}>
+                      {activeEventToUse ? activeEventToUse.title : 'No Event'}
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{activeEventToUse ? activeEventToUse.title : 'Inactive'}</span>
+                  <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
+                    {activeEventToUse 
+                      ? `Ends on ${getVotingFormatted((activeEventToUse as any).end_date)}`
+                      : 'Waiting for next event'}
                   </span>
-                </div>
-                <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{activeEventToUse ? activeEventToUse.title : 'Inactive'}</span>
-                <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
-                  {activeEventToUse 
-                    ? `Ends on ${getVotingFormatted((activeEventToUse as any).end_date)}`
-                    : 'Waiting for next event'}
-                </span>
-                
-                <div className="w-full flex justify-between gap-2 border-t border-black/5 dark:border-white/5 pt-4">
-                  <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
-                    <span className="text-xl font-bold dark:text-white text-slate-800">{timeLeft.days}</span>
-                    <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Days</span>
-                  </div>
-                  <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
-                    <span className="text-xl font-bold dark:text-white text-slate-800">{timeLeft.hours}</span>
-                    <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Hrs</span>
-                  </div>
-                  <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
-                    <span className="text-xl font-bold dark:text-white text-slate-800">{timeLeft.minutes}</span>
-                    <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Min</span>
-                  </div>
-                </div>
-
-                {votingStartIsoStr && (
-                  <div className="w-full border-t border-black/5 dark:border-white/5 pt-4 mt-4 flex flex-col items-center">
-                    <span className="text-xs font-bold mb-1 dark:text-white text-slate-800 text-center">
-                      Event #{currentEventNumber} voting period
-                    </span>
-                    <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
-                      {getVotingLegend(votingStartIsoStr)}
-                    </span>
-                    
-                    <div className="w-full flex justify-between gap-2">
-                      <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
-                        <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.days}</span>
-                        <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Days</span>
-                      </div>
-                      <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
-                        <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.hours}</span>
-                        <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Hrs</span>
-                      </div>
-                      <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
-                        <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.minutes}</span>
-                        <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Min</span>
-                      </div>
+                  
+                  <div className="w-full flex justify-between gap-2 border-t border-black/5 dark:border-white/5 pt-4">
+                    <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                      <span className="text-xl font-bold dark:text-white text-slate-800">{timeLeft.days}</span>
+                      <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Days</span>
+                    </div>
+                    <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                      <span className="text-xl font-bold dark:text-white text-slate-800">{timeLeft.hours}</span>
+                      <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Hrs</span>
+                    </div>
+                    <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                      <span className="text-xl font-bold dark:text-white text-slate-800">{timeLeft.minutes}</span>
+                      <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Min</span>
                     </div>
                   </div>
-                )}
-              </div>
+
+                  {votingStartIsoStr && (
+                    <div className="w-full border-t border-black/5 dark:border-white/5 pt-4 mt-4 flex flex-col items-center">
+                      <span className="text-xs font-bold mb-1 dark:text-white text-slate-800 text-center">
+                        Event #{currentEventNumber} voting period
+                      </span>
+                      <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
+                        {getVotingLegend(votingStartIsoStr)}
+                      </span>
+                      
+                      <div className="w-full flex justify-between gap-2">
+                        <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                          <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.days}</span>
+                          <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Days</span>
+                        </div>
+                        <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                          <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.hours}</span>
+                          <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Hrs</span>
+                        </div>
+                        <div className="flex-1 flex flex-col items-center p-2 dark:bg-black/30 bg-white shadow-sm dark:shadow-none rounded-lg">
+                          <span className="text-xl font-bold dark:text-white text-slate-800">{votingTimeLeft.minutes}</span>
+                          <span className="text-[10px] opacity-40 uppercase dark:text-white text-slate-600">Min</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
