@@ -24,7 +24,8 @@ export default function MySubmissions() {
     hoursBefore: '0',
     completionStatus: 'unfinished' as any,
     platform: 'Steam' as string,
-    notes: ''
+    notes: '',
+    hasNoAchievements: false
   });
   const [verifyingSteam, setVerifyingSteam] = React.useState(false);
   const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
@@ -280,9 +281,16 @@ export default function MySubmissions() {
 
     const earned = parseInt(formData.achievementsEarned) || 0;
     const hours = parseFloat(formData.hoursPlayed) || 0;
+    const isNintendo = formData.platform === 'Nintendo';
+    const hasNoAchievements = formData.hasNoAchievements === true;
 
-    if (earned <= 0) {
-      alert("You must submit at least 1 achievement.");
+    if (earned < 0) {
+      alert("Achievements earned can't be negative.");
+      return;
+    }
+
+    if (earned === 0 && !isNintendo && !hasNoAchievements) {
+      alert("You must submit at least 1 achievement (or check 'Game has no achievements').");
       return;
     }
     if (hours <= 0) {
@@ -348,7 +356,8 @@ export default function MySubmissions() {
       hoursBefore: String(sub.hours_before),
       completionStatus: sub.completion_status || 'beaten',
       platform: sub.platform || 'Steam',
-      notes: sub.notes || ''
+      notes: sub.notes || '',
+      hasNoAchievements: sub.achievements_during === 0
     });
     setSteamVerifyMsg(null);
     setSteamTotalStats(null);
@@ -378,15 +387,16 @@ export default function MySubmissions() {
     setShowForm(false);
     setSelectedGame(null);
     setEditingId(null);
-      setFormData({ 
-        achievementsEarned: '', 
-        hoursPlayed: '', 
-        achievementsBefore: '0', 
-        hoursBefore: '0', 
-        completionStatus: 'unfinished',
-        platform: 'Steam',
-        notes: '' 
-      });
+    setFormData({ 
+      achievementsEarned: '', 
+      hoursPlayed: '', 
+      achievementsBefore: '0', 
+      hoursBefore: '0', 
+      completionStatus: 'unfinished',
+      platform: 'Steam',
+      notes: '',
+      hasNoAchievements: false
+    });
     setSearchResults([]);
     setGameSearch('');
     setSteamVerifyMsg(null);
@@ -576,7 +586,13 @@ export default function MySubmissions() {
                          value={formData.platform}
                          onChange={(e) => {
                            const val = e.target.value;
-                           setFormData({...formData, platform: val});
+                           const isNintendo = val === 'Nintendo';
+                           setFormData(prev => ({
+                             ...prev,
+                             platform: val,
+                             hasNoAchievements: isNintendo ? true : prev.hasNoAchievements,
+                             achievementsEarned: isNintendo ? '0' : prev.achievementsEarned === '0' ? '' : prev.achievementsEarned
+                           }));
                            if (val === 'Steam') {
                              handleVerifySteam();
                            } else {
@@ -698,6 +714,27 @@ export default function MySubmissions() {
                         value={formData.hoursBefore}
                         onChange={(e) => setFormData({...formData, hoursBefore: e.target.value})}
                       />
+                    </div>
+
+                    <div className="col-span-2 flex items-center gap-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl p-3">
+                      <input
+                        type="checkbox"
+                        id="hasNoAchievements"
+                        checked={formData.hasNoAchievements || formData.platform === 'Nintendo'}
+                        disabled={formData.platform === 'Nintendo'}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData(prev => ({
+                            ...prev,
+                            hasNoAchievements: checked,
+                            achievementsEarned: checked ? '0' : prev.achievementsEarned === '0' ? '' : prev.achievementsEarned
+                          }));
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-white/10 text-blue-600 focus:ring-blue-500 dark:bg-black/30 cursor-pointer"
+                      />
+                      <label htmlFor="hasNoAchievements" className="text-xs font-bold dark:text-white/80 text-slate-700 select-none cursor-pointer">
+                        Game has no achievements or is on Nintendo (allows 0 achievements)
+                      </label>
                     </div>
                   </div>
 
