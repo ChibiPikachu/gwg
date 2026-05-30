@@ -955,7 +955,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     {/* Notes */}
                     {sub.notes && (
-                      <div className="p-2 md:p-4 dark:bg-white/5 bg-slate-50 rounded-lg md:rounded-xl border dark:border-white/5 border-black/5 text-xs md:text-sm italic opacity-70 dark:text-white text-slate-600 line-clamp-3 hover:line-clamp-none transition-all cursor-pointer">
+                      <div className="p-2 md:p-4 dark:bg-white/5 bg-slate-50 rounded-lg md:rounded-xl border dark:border-white/5 border-black/5 text-xs md:text-sm italic opacity-70 dark:text-white text-slate-600 max-h-24 md:max-h-32 overflow-y-auto scrollbar-thin dark:scrollbar-track-white/5 dark:scrollbar-thumb-white/20 hover:opacity-100 transition-all select-text">
                         <div className="break-words whitespace-pre-wrap">
                           {sub.notes.split(/(\s+)/).map((part: string, i: number) => {
                             if (part.match(/^https?:\/\//)) {
