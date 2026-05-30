@@ -1303,26 +1303,22 @@ async function createServer() {
       if (eventError) console.error('Error fetching active event:', eventError);
 
       // 1. Check for duplicate submission (same user, game, and event)
+      let existingSubId: string | null = null;
       if (activeEvent) {
         const { data: existingSub } = await supabase
           .from('submissions')
-          .select('id, status, completion_status')
+          .select('id')
           .eq('user_id', steamId)
           .eq('game_id', internalGameId)
           .eq('event_id', activeEvent.id)
-          .neq('status', 'rejected') 
           .maybeSingle();
 
         if (existingSub) {
-          // Exception: If the existing submission is 'verified' AND 'unfinished', allow a NEW submission.
-          // Otherwise, block duplicates.
-          if (!(existingSub.status === 'verified' && existingSub.completion_status === 'unfinished')) {
-            return res.status(400).json({ error: 'You have already submitted progress for this game in the current event.' });
-          }
+          existingSubId = existingSub.id;
         }
       }
 
-      const submissionData = {
+      const submissionData: any = {
         user_id: steamId,
         user_name: currentUser.displayName || currentUser.steam_name,
         user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
@@ -1345,13 +1341,32 @@ async function createServer() {
         created_at: new Date().toISOString()
       };
 
-      console.log('Attempting submission insert:', submissionData);
+      if (existingSubId) {
+        submissionData.rejection_reason = null;
+        submissionData.verifier_id = null;
+      }
 
-      const { data, error } = await supabase
-        .from('submissions')
-        .insert(submissionData)
-        .select()
-        .single();
+      let data, error;
+      if (existingSubId) {
+        console.log(`[Submission] Existing submission found (${existingSubId}). Overwriting/updating instead of duplicating.`);
+        const updateRes = await supabase
+          .from('submissions')
+          .update(submissionData)
+          .eq('id', existingSubId)
+          .select()
+          .single();
+        data = updateRes.data;
+        error = updateRes.error;
+      } else {
+        console.log('Attempting submission insert:', submissionData);
+        const insertRes = await supabase
+          .from('submissions')
+          .insert(submissionData)
+          .select()
+          .single();
+        data = insertRes.data;
+        error = insertRes.error;
+      }
 
       if (error) {
         console.error('Supabase submission insert error:', error);

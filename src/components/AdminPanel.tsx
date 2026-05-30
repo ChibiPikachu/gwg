@@ -398,6 +398,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     const matchesSearch = (sub.game_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                          (sub.user_name || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTeam && matchesStatus && matchesSearch;
+  }).sort((a, b) => {
+    if (subStatusFilter === 'pending') {
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    }
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
   });
 
   if (!isAdmin) {
@@ -859,15 +864,20 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             <img src={sub.user_avatar} className="w-5 h-5 md:w-6 md:h-6 rounded-full shrink-0" alt="" referrerPolicy="no-referrer" />
                             <h3 className="font-bold text-xs md:text-sm truncate">{sub.user_name}</h3>
                           </div>
-                          <a 
-                            href={`https://steamcommunity.com/profiles/${sub.user_id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[9px] md:text-[10px] text-blue-400 hover:underline flex items-center gap-1 mt-1 shrink-0 w-fit"
-                          >
-                            <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-2.5 h-2.5 md:w-3 md:h-3 grayscale" alt="" />
-                            Profile
-                          </a>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 shrink-0">
+                            <a 
+                              href={`https://steamcommunity.com/profiles/${sub.user_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[9px] md:text-[10px] text-blue-400 hover:underline flex items-center gap-1 shrink-0 w-fit"
+                            >
+                              <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-2.5 h-2.5 md:w-3 md:h-3 grayscale" alt="" />
+                              Profile
+                            </a>
+                            <span className="text-[9px] md:text-[10px] opacity-45 dark:text-white/60 text-slate-500 font-mono flex items-center gap-1 shrink-0" title="Submission received timestamp">
+                              📅 {new Date(sub.created_at).toLocaleDateString()} {new Date(sub.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
