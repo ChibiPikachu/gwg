@@ -43,6 +43,34 @@ export function serializeNotesMeta(hasNoAchievements: boolean, level: number | u
   return userNotes;
 }
 
+export function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltb: { hltb_main?: number, hltb_extras?: number }, completionStatus: string): number {
+  const hMain = hltb?.hltb_main && hltb.hltb_main > 0 ? Number(hltb.hltb_main) : 0;
+  const hExtras = hltb?.hltb_extras && hltb.hltb_extras > 0 ? Number(hltb.hltb_extras) : 0;
+  const hltbSum = hMain + hExtras;
+
+  if (level === 0) {
+    return Math.round(hltbSum * 0.1);
+  } else if (level === 1) {
+    const rawTime = hltbSum > 0 ? Math.max(hoursPlayed, hltbSum) : hoursPlayed;
+    return Math.round(rawTime * 0.4);
+  } else { // Level 2
+    let basePoints = 20;
+    if (hoursPlayed >= 50) {
+      basePoints = 200;
+    } else if (hoursPlayed >= 25) {
+      basePoints = 100;
+    } else if (hoursPlayed >= 15) {
+      basePoints = 75;
+    } else if (hoursPlayed >= 8) {
+      basePoints = 40;
+    } else {
+      basePoints = 20;
+    }
+    const bonus = completionStatus === 'completed' ? 20 : 0;
+    return basePoints + bonus;
+  }
+}
+
 export default function MySubmissions() {
   const { user, theme } = useAuth();
   const [submissions, setSubmissions] = React.useState<any[]>([]);
@@ -63,7 +91,8 @@ export default function MySubmissions() {
     completionStatus: 'unfinished' as any,
     platform: 'Steam' as string,
     notes: '',
-    hasNoAchievements: false
+    hasNoAchievements: false,
+    level: 2
   });
   const [verifyingSteam, setVerifyingSteam] = React.useState(false);
   const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
@@ -181,10 +210,18 @@ export default function MySubmissions() {
   }, [pastEventSubmissions, pastEventsPage, pastItemsPerPage]);
 
   const scorePreview = React.useMemo(() => {
+    const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
+    if (isNoAchievements) {
+      const hoursPlayed = parseFloat(formData.hoursPlayed) || 0;
+      const gameTitle = selectedGame?.title || '';
+      const hltb = hltbData[gameTitle] || { hltb_main: 0, hltb_extras: 0 };
+      return calculateNonAchievementPoints(formData.level, hoursPlayed, hltb, formData.completionStatus);
+    }
+
     const earned = parseInt(formData.achievementsEarned) || 0;
     const bonus = formData.completionStatus === 'completed' ? 20 : 0;
     return Math.round(earned * multiplierPreview) + bonus;
-  }, [formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
+  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, selectedGame, hltbData, formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
@@ -337,7 +374,7 @@ export default function MySubmissions() {
     }
 
     const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
-    const serializedNotes = serializeNotesMeta(isNoAchievements, undefined, formData.notes);
+    const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
 
     setSubmitting(true);
     try {
@@ -399,7 +436,8 @@ export default function MySubmissions() {
       completionStatus: sub.completion_status || 'beaten',
       platform: sub.platform || 'Steam',
       notes: meta.userNotes,
-      hasNoAchievements: meta.hasNoAchievements
+      hasNoAchievements: meta.hasNoAchievements,
+      level: meta.level !== undefined ? meta.level : 2
     });
     setSteamVerifyMsg(null);
     setSteamTotalStats(null);
@@ -437,7 +475,8 @@ export default function MySubmissions() {
       completionStatus: 'unfinished',
       platform: 'Steam',
       notes: '',
-      hasNoAchievements: false
+      hasNoAchievements: false,
+      level: 2
     });
     setSearchResults([]);
     setGameSearch('');
@@ -778,12 +817,43 @@ export default function MySubmissions() {
                         Game has no achievements or is on Nintendo (allows 0 achievements)
                       </label>
                     </div>
+
+                    {(formData.hasNoAchievements || formData.platform === 'Nintendo') && (
+                      <div className="col-span-2 space-y-2 bg-[#f8fafc] dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl p-4">
+                        <label className="text-xs font-bold text-amber-500 uppercase tracking-wider block">No Achievements Award Category / Level</label>
+                        <select
+                          className={cn("w-full dark:bg-slate-900 bg-white border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                          value={formData.level}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setFormData(prev => ({ ...prev, level: val }));
+                          }}
+                        >
+                          <option value="2">Level 2 (Time Brackets / Completion Bonus) RECOMMENDED</option>
+                          <option value="1">Level 1 (x0.4 Time: Played vs HLTB Main+Extra)</option>
+                          <option value="0">Level 0 (x0.1 HLTB Main+Extra Time Only)</option>
+                        </select>
+                        <p className="text-[10px] dark:text-white/40 text-slate-500 italic mt-1 leading-snug">
+                          {formData.level === 2 && "Calculates points based on time played: Under 8h (20 pts), 8-15h (40 pts), 15-25h (75 pts), 25-50h (100 pts), 50+h (200 pts) + 20 pts completion bonus."}
+                          {formData.level === 1 && "Calculates points based on whichever is higher: your played hours or HLTB Main+Extra hours, multiplied by x0.4."}
+                          {formData.level === 0 && "Calculates points based strictly on HLTB Main+Extra hours multiplied by x0.1."}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-2xl border dark:border-white/5 border-slate-200 flex items-center justify-between">
                     <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Multiplier</span>
-                      <span className="text-xl font-black text-blue-400">{multiplierPreview.toFixed(1)}x</span>
+                      <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">
+                        {(formData.hasNoAchievements || formData.platform === 'Nintendo') ? "Award Category" : "Multiplier"}
+                      </span>
+                      <span className="text-lg font-black text-blue-400">
+                        {(formData.hasNoAchievements || formData.platform === 'Nintendo') ? (
+                          formData.level === 0 ? "Level 0 (x0.1 HLTB)" : formData.level === 1 ? "Level 1 (x0.4 Time)" : "Level 2 (Full Bracketed)"
+                        ) : (
+                          `${multiplierPreview.toFixed(1)}x`
+                        )}
+                      </span>
                     </div>
                     <div className="flex flex-col items-end">
                       <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Score Preview</span>

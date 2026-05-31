@@ -43,6 +43,34 @@ export function serializeNotesMeta(hasNoAchievements: boolean, level: number | u
   return userNotes;
 }
 
+export function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltb: { hltb_main?: number, hltb_extras?: number }, completionStatus: string): number {
+  const hMain = hltb?.hltb_main && hltb.hltb_main > 0 ? Number(hltb.hltb_main) : 0;
+  const hExtras = hltb?.hltb_extras && hltb.hltb_extras > 0 ? Number(hltb.hltb_extras) : 0;
+  const hltbSum = hMain + hExtras;
+
+  if (level === 0) {
+    return Math.round(hltbSum * 0.1);
+  } else if (level === 1) {
+    const rawTime = hltbSum > 0 ? Math.max(hoursPlayed, hltbSum) : hoursPlayed;
+    return Math.round(rawTime * 0.4);
+  } else { // Level 2
+    let basePoints = 20;
+    if (hoursPlayed >= 50) {
+      basePoints = 200;
+    } else if (hoursPlayed >= 25) {
+      basePoints = 100;
+    } else if (hoursPlayed >= 15) {
+      basePoints = 75;
+    } else if (hoursPlayed >= 8) {
+      basePoints = 40;
+    } else {
+      basePoints = 20;
+    }
+    const bonus = completionStatus === 'completed' ? 20 : 0;
+    return basePoints + bonus;
+  }
+}
+
 type AdminTab = 'users' | 'submissions' | 'team_points';
 
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
@@ -337,14 +365,15 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   };
 
   const calculateReviewPoints = (achievementsVal: string, multiplierVal: number, levelVal: number, sub: any) => {
-    const achs = parseInt(achievementsVal) || 0;
-    const basePoints = Math.round(achs * multiplierVal) + (sub?.completion_status === 'completed' ? 20 : 0);
-    
     const meta = parseNotesMeta(sub?.notes || '');
     if (meta.hasNoAchievements) {
-      const lvlMultiplier = levelVal === 0 ? 0.15 : levelVal === 1 ? 0.40 : 1.00;
-      return String(Math.round(basePoints * lvlMultiplier));
+      const hoursPlayed = parseFloat(editHours) || Number(sub?.hours_during || 0);
+      const hltb = hltbData[sub?.game_name || ''] || { hltb_main: sub?.hltb_main, hltb_extras: sub?.hltb_extras };
+      const nonAchPts = calculateNonAchievementPoints(levelVal, hoursPlayed, hltb, sub?.completion_status);
+      return String(nonAchPts);
     }
+    const achs = parseInt(achievementsVal) || 0;
+    const basePoints = Math.round(achs * multiplierVal) + (sub?.completion_status === 'completed' ? 20 : 0);
     return String(basePoints);
   };
 
@@ -1109,10 +1138,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             }
                             setSelectedLevel(initialLvl);
 
-                            let basePoints = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
+                            let basePoints = 0;
                             if (meta.hasNoAchievements) {
-                              const lvlM = initialLvl === 0 ? 0.15 : initialLvl === 1 ? 0.40 : 1.00;
-                              basePoints = Math.round(basePoints * lvlM);
+                              const hltb = hltbData[sub.game_name] || { hltb_main: sub.hltb_main, hltb_extras: sub.hltb_extras };
+                              basePoints = calculateNonAchievementPoints(initialLvl, hours, hltb, sub.completion_status);
+                            } else {
+                              basePoints = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
                             }
                             setPointsAwarded(String(basePoints));
                             setRejectionReason(sub.rejection_reason || '');
@@ -1200,9 +1231,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                     setPointsAwarded(calculateReviewPoints(editAchievements, editMultiplier, lvl, sub));
                                   }}
                                 >
-                                  <option value="0">Level 0 (x0.15 Points)</option>
-                                  <option value="1">Level 1 (x0.40 Points)</option>
-                                  <option value="2">Level 2 (Full Points)</option>
+                                  <option value="0">Level 0 (x0.1 HLTB)</option>
+                                  <option value="1">Level 1 (x0.4 Time)</option>
+                                  <option value="2">Level 2 (Full Bracketed)</option>
                                 </select>
                               </div>
                             )}

@@ -64,6 +64,34 @@ function parseNotesMeta(notes: string): SubmissionNotesMeta {
   };
 }
 
+function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltbMain: number, hltbExtras: number, completionStatus: string): number {
+  const hMain = hltbMain && hltbMain > 0 ? Number(hltbMain) : 0;
+  const hExtras = hltbExtras && hltbExtras > 0 ? Number(hltbExtras) : 0;
+  const hltbSum = hMain + hExtras;
+
+  if (level === 0) {
+    return Math.round(hltbSum * 0.1);
+  } else if (level === 1) {
+    const rawTime = hltbSum > 0 ? Math.max(hoursPlayed, hltbSum) : hoursPlayed;
+    return Math.round(rawTime * 0.4);
+  } else { // Level 2
+    let basePoints = 20;
+    if (hoursPlayed >= 50) {
+      basePoints = 200;
+    } else if (hoursPlayed >= 25) {
+      basePoints = 100;
+    } else if (hoursPlayed >= 15) {
+      basePoints = 75;
+    } else if (hoursPlayed >= 8) {
+      basePoints = 40;
+    } else {
+      basePoints = 20;
+    }
+    const bonus = completionStatus === 'completed' ? 20 : 0;
+    return basePoints + bonus;
+  }
+}
+
 // Helper for Steam API calls with database caching
 async function fetchSteamOwnedGames(steamId: string, supabase: any) {
   if (!supabase) return null;
@@ -1564,7 +1592,7 @@ async function createServer() {
       
       const [profileRes, gamesRes] = await Promise.all([
         supabase.from('profiles').select('steamid, team').in('steamid', userIds),
-        supabase.from('games').select('id, total_achievements').in('id', gameIds)
+        supabase.from('games').select('id, total_achievements, hltb_main, hltb_extras, hltb_completionist').in('id', gameIds)
       ]);
 
       const teamMap: Record<string, string> = {};
@@ -1573,14 +1601,23 @@ async function createServer() {
       });
 
       const totalAchMap: Record<string, number> = {};
+      const hltbMainMap: Record<string, number> = {};
+      const hltbExtrasMap: Record<string, number> = {};
+      const hltbCompMap: Record<string, number> = {};
       (gamesRes.data || []).forEach((g: any) => {
         totalAchMap[g.id] = g.total_achievements || 0;
+        hltbMainMap[g.id] = g.hltb_main || 0;
+        hltbExtrasMap[g.id] = g.hltb_extras || 0;
+        hltbCompMap[g.id] = g.hltb_completionist || 0;
       });
 
       const enriched = submissions.map((s: any) => ({
         ...s,
         userTeam: teamMap[s.user_id] || 'none',
-        totalAchievements: totalAchMap[s.game_id] || 0
+        totalAchievements: totalAchMap[s.game_id] || 0,
+        hltb_main: hltbMainMap[s.game_id] || 0,
+        hltb_extras: hltbExtrasMap[s.game_id] || 0,
+        hltb_completionist: hltbCompMap[s.game_id] || 0
       }));
 
       console.log(`[Admin] Successfully returning ${enriched.length} submissions.`);
@@ -1671,6 +1708,13 @@ async function createServer() {
 
       console.log(`[Admin] Recalculating points for ${subs.length} submissions...`);
 
+      const gameIds = Array.from(new Set(subs.map((s: any) => s.game_id)));
+      const { data: games } = await supabase.from('games').select('id, hltb_main, hltb_extras').in('id', gameIds);
+      const gameMap: Record<string, any> = {};
+      (games || []).forEach((g: any) => {
+        gameMap[g.id] = g;
+      });
+
       for (const sub of subs) {
         // Redetermine multiplier based on CORRECTED math (1x, 2x, 3x, 4x)
         let multiplier = 1.0;
@@ -1684,9 +1728,9 @@ async function createServer() {
         
         const meta = parseNotesMeta(sub.notes || '');
         if (meta.hasNoAchievements) {
+          const gameMeta = gameMap[sub.game_id] || { hltb_main: 0, hltb_extras: 0 };
           const levelVal = meta.level !== undefined ? meta.level : 2;
-          const lvlMultiplier = levelVal === 0 ? 0.15 : levelVal === 1 ? 0.40 : 1.00;
-          correctPoints = Math.round(correctPoints * lvlMultiplier);
+          correctPoints = calculateNonAchievementPoints(levelVal, hours, gameMeta.hltb_main, gameMeta.hltb_extras, sub.completion_status || 'unfinished');
         }
         
         console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours}, achievements=${sub.achievements_during} -> multiplier=${multiplier}, points=${correctPoints}`);
