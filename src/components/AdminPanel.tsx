@@ -368,8 +368,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     const meta = parseNotesMeta(sub?.notes || '');
     if (meta.hasNoAchievements) {
       const hoursPlayed = parseFloat(editHours) || Number(sub?.hours_during || 0);
+      const hoursBefore = Number(sub?.hours_before || 0);
+      const finalPlayTime = Math.max(0, hoursPlayed - hoursBefore);
       const hltb = hltbData[sub?.game_name || ''] || { hltb_main: sub?.hltb_main, hltb_extras: sub?.hltb_extras };
-      const nonAchPts = calculateNonAchievementPoints(levelVal, hoursPlayed, hltb, sub?.completion_status);
+      const nonAchPts = calculateNonAchievementPoints(levelVal, finalPlayTime, hltb, sub?.completion_status);
       return String(nonAchPts);
     }
     const achs = parseInt(achievementsVal) || 0;
@@ -1141,7 +1143,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             let basePoints = 0;
                             if (meta.hasNoAchievements) {
                               const hltb = hltbData[sub.game_name] || { hltb_main: sub.hltb_main, hltb_extras: sub.hltb_extras };
-                              basePoints = calculateNonAchievementPoints(initialLvl, hours, hltb, sub.completion_status);
+                              const hoursBefore = Number(sub.hours_before || 0);
+                              const finalPlayTime = Math.max(0, hours - hoursBefore);
+                              basePoints = calculateNonAchievementPoints(initialLvl, finalPlayTime, hltb, sub.completion_status);
                             } else {
                               basePoints = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
                             }

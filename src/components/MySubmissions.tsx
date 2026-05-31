@@ -213,15 +213,17 @@ export default function MySubmissions() {
     const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
     if (isNoAchievements) {
       const hoursPlayed = parseFloat(formData.hoursPlayed) || 0;
+      const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+      const finalHours = Math.max(0, hoursPlayed - hoursBefore);
       const gameTitle = selectedGame?.title || '';
       const hltb = hltbData[gameTitle] || { hltb_main: 0, hltb_extras: 0 };
-      return calculateNonAchievementPoints(formData.level, hoursPlayed, hltb, formData.completionStatus);
+      return calculateNonAchievementPoints(formData.level, finalHours, hltb, formData.completionStatus);
     }
 
     const earned = parseInt(formData.achievementsEarned) || 0;
     const bonus = formData.completionStatus === 'completed' ? 20 : 0;
     return Math.round(earned * multiplierPreview) + bonus;
-  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, selectedGame, hltbData, formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
+  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {

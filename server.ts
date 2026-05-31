@@ -1357,6 +1357,18 @@ async function createServer() {
         serverPoints += 20;
       }
 
+      // Check if this is a game with no achievements
+      const meta = parseNotesMeta(notes || '');
+      if (meta.hasNoAchievements) {
+        const { data: syncedGame } = await supabase.from('games').select('hltb_main, hltb_extras').eq('id', internalGameId).maybeSingle();
+        const gameHltbMain = syncedGame?.hltb_main || 0;
+        const gameHltbExtras = syncedGame?.hltb_extras || 0;
+        const levelVal = meta.level !== undefined ? meta.level : 2;
+        const hoursBeforeNum = parseFloat(hoursBefore) || 0;
+        const finalPlayTime = Math.max(0, numHours - hoursBeforeNum);
+        serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, completionStatus || 'unfinished');
+      }
+
       // Find active event
       const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
       if (eventError) console.error('Error fetching active event:', eventError);
@@ -1487,6 +1499,18 @@ async function createServer() {
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
       if (completionStatus === 'completed') {
         serverPoints += 20;
+      }
+
+      // Check if this is a game with no achievements
+      const meta = parseNotesMeta(notes || '');
+      if (meta.hasNoAchievements) {
+        const { data: syncedGame } = await supabase.from('games').select('hltb_main, hltb_extras').eq('id', sub.game_id).maybeSingle();
+        const gameHltbMain = syncedGame?.hltb_main || 0;
+        const gameHltbExtras = syncedGame?.hltb_extras || 0;
+        const levelVal = meta.level !== undefined ? meta.level : 2;
+        const hoursBeforeNum = parseFloat(hoursBefore) || 0;
+        const finalPlayTime = Math.max(0, numHours - hoursBeforeNum);
+        serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, completionStatus || 'unfinished');
       }
 
       const { data, error } = await supabase
@@ -1730,7 +1754,9 @@ async function createServer() {
         if (meta.hasNoAchievements) {
           const gameMeta = gameMap[sub.game_id] || { hltb_main: 0, hltb_extras: 0 };
           const levelVal = meta.level !== undefined ? meta.level : 2;
-          correctPoints = calculateNonAchievementPoints(levelVal, hours, gameMeta.hltb_main, gameMeta.hltb_extras, sub.completion_status || 'unfinished');
+          const hoursBeforeNum = Number(sub.hours_before || 0);
+          const finalPlayTime = Math.max(0, hours - hoursBeforeNum);
+          correctPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameMeta.hltb_main, gameMeta.hltb_extras, sub.completion_status || 'unfinished');
         }
         
         console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours}, achievements=${sub.achievements_during} -> multiplier=${multiplier}, points=${correctPoints}`);
