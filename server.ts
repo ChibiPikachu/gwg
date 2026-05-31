@@ -65,15 +65,10 @@ function parseNotesMeta(notes: string): SubmissionNotesMeta {
 }
 
 function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltbMain: number, hltbExtras: number, completionStatus: string): number {
-  const hMain = hltbMain && hltbMain > 0 ? Number(hltbMain) : 0;
-  const hExtras = hltbExtras && hltbExtras > 0 ? Number(hltbExtras) : 0;
-  const hltbSum = hMain + hExtras;
-
   if (level === 0) {
-    return Math.round(hltbSum * 0.1);
+    return Math.round(hoursPlayed * 0.1);
   } else if (level === 1) {
-    const rawTime = hltbSum > 0 ? Math.max(hoursPlayed, hltbSum) : hoursPlayed;
-    return Math.round(rawTime * 0.4);
+    return Math.round(hoursPlayed * 0.4);
   } else { // Level 2
     let basePoints = 20;
     if (hoursPlayed >= 50) {
