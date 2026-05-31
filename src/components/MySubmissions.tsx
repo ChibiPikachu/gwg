@@ -816,7 +816,7 @@ export default function MySubmissions() {
                         className="w-4 h-4 rounded border-slate-300 dark:border-white/10 text-blue-600 focus:ring-blue-500 dark:bg-black/30 cursor-pointer"
                       />
                       <label htmlFor="hasNoAchievements" className="text-xs font-bold dark:text-white/80 text-slate-700 select-none cursor-pointer">
-                        Game has no achievements or is on Nintendo (allows 0 achievements)
+                        Game has no achievements or is on Nintendo.
                       </label>
                     </div>
 
@@ -827,7 +827,7 @@ export default function MySubmissions() {
                           Estimated Class: <span className="font-bold">Level 2 (Full Brackets)</span>
                         </p>
                         <p className="text-[10px] dark:text-white/40 text-slate-500 italic leading-normal">
-                          The preview is calculated using Level 2 playtime brackets. The final award level (Level 0, 1, or 2) is assessed and set by Admins during verification.
+                          The preview is calculated using Level 2 playtime brackets. The final award level (Level 0, 1, or 2) is assessed and set by Admins during verification. Remember to send all the proof required on Discord, and link the message in the notes to help speed up the verification process!
                         </p>
                       </div>
                     )}
