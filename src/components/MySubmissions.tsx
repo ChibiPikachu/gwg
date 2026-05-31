@@ -819,24 +819,13 @@ export default function MySubmissions() {
                     </div>
 
                     {(formData.hasNoAchievements || formData.platform === 'Nintendo') && (
-                      <div className="col-span-2 space-y-2 bg-[#f8fafc] dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-                        <label className="text-xs font-bold text-amber-500 uppercase tracking-wider block">No Achievements Award Category / Level</label>
-                        <select
-                          className={cn("w-full dark:bg-slate-900 bg-white border dark:border-white/10 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
-                          value={formData.level}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value);
-                            setFormData(prev => ({ ...prev, level: val }));
-                          }}
-                        >
-                          <option value="2">Level 2 (Time Brackets / Completion Bonus) RECOMMENDED</option>
-                          <option value="1">Level 1 (x0.4 Time: Played vs HLTB Main+Extra)</option>
-                          <option value="0">Level 0 (x0.1 HLTB Main+Extra Time Only)</option>
-                        </select>
-                        <p className="text-[10px] dark:text-white/40 text-slate-500 italic mt-1 leading-snug">
-                          {formData.level === 2 && "Calculates points based on time played: Under 8h (20 pts), 8-15h (40 pts), 15-25h (75 pts), 25-50h (100 pts), 50+h (200 pts) + 20 pts completion bonus."}
-                          {formData.level === 1 && "Calculates points based on whichever is higher: your played hours or HLTB Main+Extra hours, multiplied by x0.4."}
-                          {formData.level === 0 && "Calculates points based strictly on HLTB Main+Extra hours multiplied by x0.1."}
+                      <div className="col-span-2 space-y-1.5 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 dark:border-amber-500/20 rounded-xl p-4">
+                        <label className="text-xs font-bold text-amber-500 uppercase tracking-wider block font-sans">No Achievements Category</label>
+                        <p className="text-xs dark:text-amber-100/90 text-amber-900 font-medium">
+                          Estimated Class: <span className="font-bold">Level 2 (Full Brackets)</span>
+                        </p>
+                        <p className="text-[10px] dark:text-white/40 text-slate-500 italic leading-normal">
+                          The preview is calculated using Level 2 playtime brackets. The final award level (Level 0, 1, or 2) is assessed and set by Admins during verification.
                         </p>
                       </div>
                     )}
