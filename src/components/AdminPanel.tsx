@@ -897,7 +897,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                 return (
                   <div key={sub.id} className={cn(
-                    "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-center relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:z-10",
+                    "p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border flex flex-col md:flex-row gap-4 md:gap-8 items-stretch md:items-start relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:z-10",
                     outerGlowClass // Apply the custom glow here instead of TEAM_COLORS
                   )}>
                     
@@ -965,6 +965,21 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-2.5 h-2.5 md:w-3 md:h-3 grayscale" alt="" />
                               Profile
                             </a>
+                            {sub.steam_appid && (
+                              <a 
+                                href={
+                                  String(sub.user_id).match(/^\d+$/)
+                                    ? `https://steamcommunity.com/profiles/${sub.user_id}/stats/${sub.steam_appid}`
+                                    : `https://steamcommunity.com/id/${sub.user_id}/stats/appid/${sub.steam_appid}`
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] md:text-[10px] text-amber-500 dark:text-amber-400 hover:underline flex items-center gap-1 shrink-0 w-fit inline-flex items-center"
+                                title="View User Steam Achievements"
+                              >
+                                <span className="scale-75 select-none font-sans">🏆</span> Achievements
+                              </a>
+                            )}
                             <span className="text-[9px] md:text-[10px] opacity-45 dark:text-white/60 text-slate-500 font-mono flex items-center gap-1 shrink-0" title="Submission received timestamp">
                               📅 {new Date(sub.created_at).toLocaleDateString()} {new Date(sub.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
@@ -1029,7 +1044,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                  )}
                          </div>
 
-                         <div className="bg-black/5 dark:bg-white/5 px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center gap-3 md:gap-6 border border-black/5 dark:border-white/5 shrink-0 w-full sm:w-auto justify-between sm:justify-start">
+                         <div className="hidden bg-black/5 dark:bg-white/5 px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center gap-3 md:gap-6 border border-black/5 dark:border-white/5 shrink-0 w-full sm:w-auto justify-between sm:justify-start">
                           <div className="flex flex-col">
                             <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
                             <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">
@@ -1052,6 +1067,71 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     {/* Game Title */}
                     <div className="flex flex-col min-w-0">
                        <h4 className="text-base sm:text-lg md:text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
+                    </div>
+
+                    {/* Detailed Stats Tracking Grid (Slightly bigger per user request) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full bg-slate-50 dark:bg-white/[0.04] p-4 rounded-xl border border-black/5 dark:border-white/5 opacity-90">
+                      {/* Achievements section */}
+                      <div className="space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">🏆</span>
+                          <span className="text-[10px] md:text-xs font-bold text-slate-500 dark:text-white/45 uppercase tracking-widest">Achievements</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5 text-center font-mono rounded-lg">
+                          <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
+                            <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Before</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{sub.achievements_before || 0}</span>
+                          </div>
+                          <div className="p-2 rounded-xl border bg-emerald-500/10 border-emerald-500/20">
+                            <span className="block text-[8px] uppercase tracking-tighter text-emerald-600 dark:text-emerald-400 font-bold font-sans">During</span>
+                            <span className="text-xs md:text-sm font-black text-emerald-600 dark:text-emerald-400">+{sub.achievements_during}</span>
+                          </div>
+                          <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
+                            <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Current</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">
+                              {(sub.achievements_before || 0) + sub.achievements_during}
+                              {sub.totalAchievements > 0 && <span className="text-[9.5px] opacity-40">/{sub.totalAchievements}</span>}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Play Time section - with deduction! */}
+                      <div className="space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">🕒</span>
+                          <span className="text-[10px] md:text-xs font-bold text-slate-500 dark:text-white/45 uppercase tracking-widest">Play Time</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5 text-center font-mono rounded-lg">
+                          <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
+                            <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Before</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{sub.hours_before || 0}h</span>
+                          </div>
+                          <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
+                            <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Reported</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{sub.hours_during}h</span>
+                          </div>
+                          <div className="p-2 rounded-xl border bg-blue-500/10 border-blue-500/20">
+                            <span className="block text-[8px] uppercase tracking-tighter text-blue-600 dark:text-blue-400 font-bold font-sans">Adjusted</span>
+                            <span className="text-xs md:text-sm font-black text-blue-600 dark:text-blue-400">{(Math.max(0, sub.hours_during - (sub.hours_before || 0))).toFixed(1)}h</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Points & Multiplier Badge */}
+                      <div className="flex sm:flex-col justify-between sm:justify-center items-center bg-blue-500/5 dark:bg-blue-500/10 border border-blue-500/10 dark:border-blue-500/20 rounded-xl px-4 py-3 sm:py-2 w-full col-span-1 sm:col-span-2 md:col-span-1">
+                        <div className="text-left sm:text-center w-full sm:w-auto">
+                          <span className="text-[8px] text-slate-500 dark:text-blue-300 uppercase tracking-widest block leading-none">Multiplier</span>
+                          <span className="text-[11px] md:text-xs font-black text-blue-400 mt-1 block">
+                            {parseNotesMeta(sub.notes).hasNoAchievements ? "Non-Ach Bracket" : `${sub.multiplier || 1.0}x`}
+                          </span>
+                        </div>
+                        <div className="h-px w-full dark:bg-white/10 bg-black/10 my-1.5 hidden sm:block" />
+                        <div className="text-right sm:text-center w-full sm:w-auto mt-0 sm:mt-1">
+                          <span className="text-[8px] text-slate-500 dark:text-blue-300 uppercase tracking-widest block leading-none font-sans">Awarded</span>
+                          <span className={cn("text-base md:text-lg font-black mt-0.5 block", theme.text)}>{sub.calculated_score || 0} pts</span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Notes */}
@@ -1113,7 +1193,24 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           )}
                         </div>
 
-                      <div className="flex gap-2 w-full sm:w-auto">
+                      <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                        {sub.steam_appid && (
+                          <a 
+                            href={
+                              String(sub.user_id).match(/^\d+$/)
+                                ? `https://steamcommunity.com/profiles/${sub.user_id}/stats/${sub.steam_appid}`
+                                : `https://steamcommunity.com/id/${sub.user_id}/stats/appid/${sub.steam_appid}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(
+                              "flex-1 sm:flex-none px-3 md:px-4 py-2 rounded-lg md:rounded-xl font-bold text-[10px] md:text-xs transition-all border shrink-0 flex items-center justify-center gap-1.5",
+                              "bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                            )}
+                          >
+                            🏆 Achievements Page
+                          </a>
+                        )}
                         <button 
                           onClick={() => {
                             setReviewingId(sub.id);
