@@ -5,6 +5,44 @@ import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, P
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
+export interface SubmissionNotesMeta {
+  hasNoAchievements: boolean;
+  level?: number;
+  userNotes: string;
+}
+
+export function parseNotesMeta(notes: string): SubmissionNotesMeta {
+  if (notes && notes.startsWith('__META_START__')) {
+    const endIdx = notes.indexOf('__META_END__');
+    if (endIdx !== -1) {
+      try {
+        const jsonStr = notes.slice('__META_START__'.length, endIdx);
+        const meta = JSON.parse(jsonStr);
+        const userNotes = notes.slice(endIdx + '__META_END__'.length);
+        return {
+          hasNoAchievements: !!meta.hasNoAchievements,
+          level: meta.level,
+          userNotes
+        };
+      } catch (e) {
+        // Fallback
+      }
+    }
+  }
+  return {
+    hasNoAchievements: false,
+    level: undefined,
+    userNotes: notes || ''
+  };
+}
+
+export function serializeNotesMeta(hasNoAchievements: boolean, level: number | undefined, userNotes: string): string {
+  if (hasNoAchievements) {
+    return `__META_START__${JSON.stringify({ hasNoAchievements, level })}__META_END__${userNotes}`;
+  }
+  return userNotes;
+}
+
 type AdminTab = 'users' | 'submissions' | 'team_points';
 
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
@@ -35,6 +73,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('pending');
   const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
+  const [selectedLevel, setSelectedLevel] = React.useState<number>(2);
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = React.useState(false);
@@ -297,11 +336,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
+  const calculateReviewPoints = (achievementsVal: string, multiplierVal: number, levelVal: number, sub: any) => {
+    const achs = parseInt(achievementsVal) || 0;
+    const basePoints = Math.round(achs * multiplierVal) + (sub?.completion_status === 'completed' ? 20 : 0);
+    
+    const meta = parseNotesMeta(sub?.notes || '');
+    if (meta.hasNoAchievements) {
+      const lvlMultiplier = levelVal === 0 ? 0.15 : levelVal === 1 ? 0.40 : 1.00;
+      return String(Math.round(basePoints * lvlMultiplier));
+    }
+    return String(basePoints);
+  };
+
   const handleVerify = async (status: 'verified' | 'rejected') => {
     if (!reviewingId) return;
     setUpdating(reviewingId);
     
     try {
+      const sub = submissions.find(s => s.id === reviewingId);
+      const meta = parseNotesMeta(sub?.notes || '');
+      let updatedNotes = sub?.notes || '';
+      if (meta.hasNoAchievements) {
+        updatedNotes = serializeNotesMeta(true, selectedLevel, meta.userNotes);
+      }
+
       const res = await fetch('/api/admin/verify-submission', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -312,7 +370,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           rejectionReason: status === 'rejected' ? rejectionReason : '',
           hours: parseFloat(editHours),
           achievements: parseInt(editAchievements),
-          multiplier: editMultiplier
+          multiplier: editMultiplier,
+          notes: updatedNotes
         })
       });
 
@@ -325,7 +384,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           rejection_reason: status === 'rejected' ? rejectionReason : '',
           hours_during: parseFloat(editHours),
           achievements_during: parseInt(editAchievements),
-          multiplier: editMultiplier
+          multiplier: editMultiplier,
+          notes: updatedNotes
         } : s));
         setReviewingId(null);
         setRejectionReason('');
@@ -964,18 +1024,37 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     </div>
 
                     {/* Notes */}
-                    {sub.notes && (
-                      <div className="p-2 md:p-4 dark:bg-white/5 bg-slate-50 rounded-lg md:rounded-xl border dark:border-white/5 border-black/5 text-xs md:text-sm italic opacity-70 dark:text-white text-slate-600 max-h-24 md:max-h-32 overflow-y-auto scrollbar-thin dark:scrollbar-track-white/5 dark:scrollbar-thumb-white/20 hover:opacity-100 transition-all select-text">
-                        <div className="break-words whitespace-pre-wrap">
-                          {sub.notes.split(/(\s+)/).map((part: string, i: number) => {
-                            if (part.match(/^https?:\/\//)) {
-                               return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{part}</a>;
-                            }
-                            return part;
-                          })}
+                    {(() => {
+                      const meta = parseNotesMeta(sub.notes);
+                      return (
+                        <div className="space-y-2 mt-2">
+                          {meta.hasNoAchievements && (
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="text-[10px] font-bold uppercase bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                                No Achievements/Nintendo Game
+                              </span>
+                              {meta.level !== undefined && (
+                                <span className="text-[10px] font-bold uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-md">
+                                  Award Level: {meta.level === 0 ? 'Level 0 (x0.15)' : meta.level === 1 ? 'Level 1 (x0.40)' : 'Level 2 (Full)'}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {meta.userNotes && (
+                            <div className="p-2 md:p-4 dark:bg-white/5 bg-slate-50 rounded-lg md:rounded-xl border dark:border-white/5 border-black/5 text-xs md:text-sm italic opacity-70 dark:text-white text-slate-600 max-h-24 md:max-h-32 overflow-y-auto scrollbar-thin dark:scrollbar-track-white/5 dark:scrollbar-thumb-white/20 hover:opacity-100 transition-all select-text">
+                              <div className="break-words whitespace-pre-wrap">
+                                {meta.userNotes.split(/(\s+)/).map((part: string, i: number) => {
+                                  if (part.match(/^https?:\/\//)) {
+                                     return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{part}</a>;
+                                  }
+                                  return part;
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Actions footer */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4 mt-1 w-full">
@@ -1023,8 +1102,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
  
                             setEditMultiplier(m);
                             
-                            const calculated = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
-                            setPointsAwarded(String(calculated));
+                            const meta = parseNotesMeta(sub.notes);
+                            let initialLvl = 2;
+                            if (meta.hasNoAchievements) {
+                              initialLvl = meta.level !== undefined ? meta.level : 2;
+                            }
+                            setSelectedLevel(initialLvl);
+
+                            let basePoints = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
+                            if (meta.hasNoAchievements) {
+                              const lvlM = initialLvl === 0 ? 0.15 : initialLvl === 1 ? 0.40 : 1.00;
+                              basePoints = Math.round(basePoints * lvlM);
+                            }
+                            setPointsAwarded(String(basePoints));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
                           className={cn(
@@ -1081,61 +1171,83 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                        <div className="space-y-1 md:space-y-2">
-                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆 {sub.totalAchievements > 0 && `(Total: ${sub.totalAchievements})`}</label>
-                          <input 
-                            type="number"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
-                            value={editAchievements}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setEditAchievements(val);
-                              // Points are now based on achievements * multiplier
-                              setPointsAwarded(String(Math.round((parseInt(val) || 0) * editMultiplier) + (sub.completion_status === 'completed' ? 20 : 0)));
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1 md:space-y-2">
-                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Play Time (h)</label>
-                          <input 
-                            type="number"
-                            step="0.1"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
-                            value={editHours}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setEditHours(e.target.value);
-                              
-                              let m = 1.0;
-                              if (val >= 25) m = 4.0;
-                              else if (val >= 15) m = 3.0;
-                              else if (val >= 8) m = 2.0;
-                              
-                              setEditMultiplier(m);
-                              setPointsAwarded(String(Math.round((parseInt(editAchievements) || 0) * m) + (sub.completion_status === 'completed' ? 20 : 0)));
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1 md:space-y-2">
-                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Final Points</label>
-                          <input 
-                            type="number"
-                            className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
-                            value={pointsAwarded}
-                            onChange={(e) => setPointsAwarded(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1 md:space-y-2">
-                          <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 text-red-100">Rejection Reason</label>
-                          <input 
-                            placeholder="Reason for rejection"
-                            className="w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none focus:border-red-500 dark:text-white text-white text-sm"
-                            value={rejectionReason}
-                            onChange={(e) => setRejectionReason(e.target.value)}
-                          />
-                        </div>
-                      </div>
+                      {(() => {
+                        const reviewingMeta = parseNotesMeta(sub.notes);
+                        return (
+                          <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4", reviewingMeta.hasNoAchievements ? "md:grid-cols-5" : "md:grid-cols-4")}>
+                            <div className="space-y-1 md:space-y-2">
+                              <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆 {sub.totalAchievements > 0 && `(Total: ${sub.totalAchievements})`}</label>
+                              <input 
+                                type="number"
+                                className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
+                                value={editAchievements}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setEditAchievements(val);
+                                  setPointsAwarded(calculateReviewPoints(val, editMultiplier, selectedLevel, sub));
+                                }}
+                              />
+                            </div>
+                            {reviewingMeta.hasNoAchievements && (
+                              <div className="space-y-1 md:space-y-2">
+                                <label className="text-[9px] md:text-[10px] uppercase font-bold text-amber-400">Award Level</label>
+                                <select
+                                  className={cn("w-full bg-slate-900 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none text-white text-sm focus:border-amber-500")}
+                                  value={selectedLevel}
+                                  onChange={(e) => {
+                                    const lvl = parseInt(e.target.value);
+                                    setSelectedLevel(lvl);
+                                    setPointsAwarded(calculateReviewPoints(editAchievements, editMultiplier, lvl, sub));
+                                  }}
+                                >
+                                  <option value="0">Level 0 (x0.15 Points)</option>
+                                  <option value="1">Level 1 (x0.40 Points)</option>
+                                  <option value="2">Level 2 (Full Points)</option>
+                                </select>
+                              </div>
+                            )}
+                            <div className="space-y-1 md:space-y-2">
+                              <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Play Time (h)</label>
+                              <input 
+                                type="number"
+                                step="0.1"
+                                className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
+                                value={editHours}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setEditHours(e.target.value);
+                                  
+                                  let m = 1.0;
+                                  if (val >= 25) m = 4.0;
+                                  else if (val >= 15) m = 3.0;
+                                  else if (val >= 8) m = 2.0;
+                                  
+                                  setEditMultiplier(m);
+                                  setPointsAwarded(calculateReviewPoints(editAchievements, m, selectedLevel, sub));
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1 md:space-y-2">
+                              <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Final Points</label>
+                              <input 
+                                type="number"
+                                className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}
+                                value={pointsAwarded}
+                                onChange={(e) => setPointsAwarded(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1 md:space-y-2">
+                              <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 text-red-100">Rejection Reason</label>
+                              <input 
+                                placeholder="Reason for rejection"
+                                className="w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none focus:border-red-500 dark:text-white text-white text-sm"
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mt-2">
                         <button 

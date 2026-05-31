@@ -5,6 +5,44 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
+export interface SubmissionNotesMeta {
+  hasNoAchievements: boolean;
+  level?: number;
+  userNotes: string;
+}
+
+export function parseNotesMeta(notes: string): SubmissionNotesMeta {
+  if (notes && notes.startsWith('__META_START__')) {
+    const endIdx = notes.indexOf('__META_END__');
+    if (endIdx !== -1) {
+      try {
+        const jsonStr = notes.slice('__META_START__'.length, endIdx);
+        const meta = JSON.parse(jsonStr);
+        const userNotes = notes.slice(endIdx + '__META_END__'.length);
+        return {
+          hasNoAchievements: !!meta.hasNoAchievements,
+          level: meta.level,
+          userNotes
+        };
+      } catch (e) {
+        // Fallback
+      }
+    }
+  }
+  return {
+    hasNoAchievements: false,
+    level: undefined,
+    userNotes: notes || ''
+  };
+}
+
+export function serializeNotesMeta(hasNoAchievements: boolean, level: number | undefined, userNotes: string): string {
+  if (hasNoAchievements) {
+    return `__META_START__${JSON.stringify({ hasNoAchievements, level })}__META_END__${userNotes}`;
+  }
+  return userNotes;
+}
+
 export default function MySubmissions() {
   const { user, theme } = useAuth();
   const [submissions, setSubmissions] = React.useState<any[]>([]);
@@ -298,6 +336,9 @@ export default function MySubmissions() {
       return;
     }
 
+    const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
+    const serializedNotes = serializeNotesMeta(isNoAchievements, undefined, formData.notes);
+
     setSubmitting(true);
     try {
       const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';
@@ -318,7 +359,7 @@ export default function MySubmissions() {
           completionStatus: formData.completionStatus,
           platform: formData.platform,
           calculatedScore: scorePreview,
-          notes: formData.notes,
+          notes: serializedNotes,
           steam_appid: selectedGame.steam_appid || null
         })
       });
@@ -349,6 +390,7 @@ export default function MySubmissions() {
       image: sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image,
       steam_appid: sub.steam_appid || null
     });
+    const meta = parseNotesMeta(sub.notes || '');
     setFormData({
       achievementsEarned: String(sub.achievements_during),
       hoursPlayed: String(sub.hours_during),
@@ -356,8 +398,8 @@ export default function MySubmissions() {
       hoursBefore: String(sub.hours_before),
       completionStatus: sub.completion_status || 'beaten',
       platform: sub.platform || 'Steam',
-      notes: sub.notes || '',
-      hasNoAchievements: sub.achievements_during === 0
+      notes: meta.userNotes,
+      hasNoAchievements: meta.hasNoAchievements
     });
     setSteamVerifyMsg(null);
     setSteamTotalStats(null);

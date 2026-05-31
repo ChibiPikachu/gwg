@@ -33,6 +33,37 @@ import util from 'util';
 import { execFile } from 'child_process';
 const execFilePromise = util.promisify(execFile);
 
+interface SubmissionNotesMeta {
+  hasNoAchievements: boolean;
+  level?: number;
+  userNotes: string;
+}
+
+function parseNotesMeta(notes: string): SubmissionNotesMeta {
+  if (notes && notes.startsWith('__META_START__')) {
+    const endIdx = notes.indexOf('__META_END__');
+    if (endIdx !== -1) {
+      try {
+        const jsonStr = notes.slice('__META_START__'.length, endIdx);
+        const meta = JSON.parse(jsonStr);
+        const userNotes = notes.slice(endIdx + '__META_END__'.length);
+        return {
+          hasNoAchievements: !!meta.hasNoAchievements,
+          level: meta.level,
+          userNotes
+        };
+      } catch (e) {
+        // Fallback
+      }
+    }
+  }
+  return {
+    hasNoAchievements: false,
+    level: undefined,
+    userNotes: notes || ''
+  };
+}
+
 // Helper for Steam API calls with database caching
 async function fetchSteamOwnedGames(steamId: string, supabase: any) {
   if (!supabase) return null;
@@ -1584,7 +1615,8 @@ async function createServer() {
         hours_during: req.body.hours !== undefined ? req.body.hours : sub.hours_during,
         achievements_during: req.body.achievements !== undefined ? req.body.achievements : sub.achievements_during,
         multiplier: req.body.multiplier !== undefined ? req.body.multiplier : sub.multiplier,
-        calculated_score: status === 'verified' ? points : 0
+        calculated_score: status === 'verified' ? points : 0,
+        notes: req.body.notes !== undefined ? req.body.notes : sub.notes
       }).eq('id', submissionId);
 
       if (updateSubError) throw updateSubError;
@@ -1648,7 +1680,14 @@ async function createServer() {
         else if (hours < 25) multiplier = 3.0;
         else multiplier = 4.0;
 
-        const correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier) + (sub.completion_status === 'completed' ? 20 : 0);
+        let correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier) + (sub.completion_status === 'completed' ? 20 : 0);
+        
+        const meta = parseNotesMeta(sub.notes || '');
+        if (meta.hasNoAchievements) {
+          const levelVal = meta.level !== undefined ? meta.level : 2;
+          const lvlMultiplier = levelVal === 0 ? 0.15 : levelVal === 1 ? 0.40 : 1.00;
+          correctPoints = Math.round(correctPoints * lvlMultiplier);
+        }
         
         console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours}, achievements=${sub.achievements_during} -> multiplier=${multiplier}, points=${correctPoints}`);
 
