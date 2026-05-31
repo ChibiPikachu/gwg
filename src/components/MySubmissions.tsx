@@ -44,23 +44,24 @@ export function serializeNotesMeta(hasNoAchievements: boolean, level: number | u
 }
 
 export function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltb: { hltb_main?: number, hltb_extras?: number }, completionStatus: string): number {
+  let basePoints = 20;
+  if (hoursPlayed >= 50) {
+    basePoints = 200;
+  } else if (hoursPlayed >= 25) {
+    basePoints = 100;
+  } else if (hoursPlayed >= 15) {
+    basePoints = 75;
+  } else if (hoursPlayed >= 8) {
+    basePoints = 40;
+  } else {
+    basePoints = 20;
+  }
+
   if (level === 0) {
-    return Math.round(hoursPlayed * 0.1);
+    return Math.round(basePoints * 0.1);
   } else if (level === 1) {
-    return Math.round(hoursPlayed * 0.4);
+    return Math.round(basePoints * 0.4);
   } else { // Level 2
-    let basePoints = 20;
-    if (hoursPlayed >= 50) {
-      basePoints = 200;
-    } else if (hoursPlayed >= 25) {
-      basePoints = 100;
-    } else if (hoursPlayed >= 15) {
-      basePoints = 75;
-    } else if (hoursPlayed >= 8) {
-      basePoints = 40;
-    } else {
-      basePoints = 20;
-    }
     const bonus = completionStatus === 'completed' ? 20 : 0;
     return basePoints + bonus;
   }
@@ -815,17 +816,39 @@ export default function MySubmissions() {
                       </label>
                     </div>
 
-                    {(formData.hasNoAchievements || formData.platform === 'Nintendo') && (
-                      <div className="col-span-2 space-y-1.5 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 dark:border-amber-500/20 rounded-xl p-4">
-                        <label className="text-xs font-bold text-amber-500 uppercase tracking-wider block font-sans">No Achievements Category</label>
-                        <p className="text-xs dark:text-amber-100/90 text-amber-900 font-medium">
-                          Estimated Class: <span className="font-bold">Level 2 (Full Brackets)</span>
-                        </p>
-                        <p className="text-[10px] dark:text-white/40 text-slate-500 italic leading-normal">
-                          The preview is calculated using Level 2 playtime brackets. The final award level (Level 0, 1, or 2) is assessed and set by Admins during verification. Remember to send all the proof required on Discord, and link the message in the notes to help speed up the verification process!
-                        </p>
-                      </div>
-                    )}
+                    {(formData.hasNoAchievements || formData.platform === 'Nintendo') && (() => {
+                      const hp = parseFloat(formData.hoursPlayed) || 0;
+                      const hb = parseFloat(formData.hoursBefore) || 0;
+                      const fh = Math.max(0, hp - hb);
+                      const gTitle = selectedGame?.title || '';
+                      const hVal = hltbData[gTitle] || { hltb_main: 0, hltb_extras: 0 };
+                      const s0 = calculateNonAchievementPoints(0, fh, hVal, formData.completionStatus);
+                      const s1 = calculateNonAchievementPoints(1, fh, hVal, formData.completionStatus);
+                      const s2 = calculateNonAchievementPoints(2, fh, hVal, formData.completionStatus);
+
+                      return (
+                        <div className="col-span-2 space-y-3 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 dark:border-amber-500/20 rounded-xl p-4">
+                          <label className="text-xs font-bold text-amber-500 uppercase tracking-wider block font-sans">No Achievements Category</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="dark:bg-black/30 bg-white/50 border border-slate-200 dark:border-white/5 rounded-lg p-2.5 text-center">
+                              <span className="block text-[9px] uppercase tracking-wider text-slate-500 dark:text-white/40">Level 0 (x0.1)</span>
+                              <span className="text-xs sm:text-sm font-black dark:text-white text-slate-800">{s0} pts</span>
+                            </div>
+                            <div className="dark:bg-black/30 bg-white/50 border border-slate-200 dark:border-white/5 rounded-lg p-2.5 text-center">
+                              <span className="block text-[9px] uppercase tracking-wider text-slate-500 dark:text-white/40">Level 1 (x0.4)</span>
+                              <span className="text-xs sm:text-sm font-black dark:text-white text-slate-800">{s1} pts</span>
+                            </div>
+                            <div className="bg-amber-500/10 dark:bg-amber-500/25 border border-amber-500/20 rounded-lg p-2.5 text-center">
+                              <span className="block text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-bold">Level 2 (Full)</span>
+                              <span className="text-xs sm:text-sm font-black text-amber-700 dark:text-amber-300">{s2} pts</span>
+                            </div>
+                          </div>
+                          <p className="text-[10px] dark:text-white/40 text-slate-500 italic leading-normal">
+                            Level 0 gives 10% base points (no completion bonus). Level 1 gives 40% base points (no completion bonus). Level 2 gives 100% base points + 20 pts completion bonus (if completed). The final level is set by admins. Remember to send all required proof on Discord, and link the message in the notes!
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="p-4 dark:bg-white/5 bg-slate-50 rounded-2xl border dark:border-white/5 border-slate-200 flex items-center justify-between">

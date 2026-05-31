@@ -44,23 +44,24 @@ export function serializeNotesMeta(hasNoAchievements: boolean, level: number | u
 }
 
 export function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltb: { hltb_main?: number, hltb_extras?: number }, completionStatus: string): number {
+  let basePoints = 20;
+  if (hoursPlayed >= 50) {
+    basePoints = 200;
+  } else if (hoursPlayed >= 25) {
+    basePoints = 100;
+  } else if (hoursPlayed >= 15) {
+    basePoints = 75;
+  } else if (hoursPlayed >= 8) {
+    basePoints = 40;
+  } else {
+    basePoints = 20;
+  }
+
   if (level === 0) {
-    return Math.round(hoursPlayed * 0.1);
+    return Math.round(basePoints * 0.1);
   } else if (level === 1) {
-    return Math.round(hoursPlayed * 0.4);
+    return Math.round(basePoints * 0.4);
   } else { // Level 2
-    let basePoints = 20;
-    if (hoursPlayed >= 50) {
-      basePoints = 200;
-    } else if (hoursPlayed >= 25) {
-      basePoints = 100;
-    } else if (hoursPlayed >= 15) {
-      basePoints = 75;
-    } else if (hoursPlayed >= 8) {
-      basePoints = 40;
-    } else {
-      basePoints = 20;
-    }
     const bonus = completionStatus === 'completed' ? 20 : 0;
     return basePoints + bonus;
   }
