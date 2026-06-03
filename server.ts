@@ -1037,23 +1037,40 @@ async function createServer() {
   async function syncUserPoints(supabase: any, steamid: string) {
     try {
       console.log(`[Sync] Starting sync for user ${steamid}`);
-      // We want to sum ALL verified submissions for the user's total points profile
-      const { data: verifiedSubmissions, error: subError } = await supabase
-        .from('submissions')
-        .select('points, id, status, user_id')
-        .eq('user_id', steamid)
-        .eq('status', 'verified');
+      
+      const { data: activeEvent, error: eventError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (subError) {
-        console.error(`[Sync] Error fetching submissions for ${steamid}:`, subError);
-        throw subError;
+      if (eventError) {
+        console.error(`[Sync] Error fetching active event during sync for ${steamid}:`, eventError);
       }
 
-      console.log(`[Sync] Found ${verifiedSubmissions?.length || 0} verified submissions for ${steamid}`);
-      
       let totalPoints = 0;
-      for (const sub of (verifiedSubmissions || [])) {
-        totalPoints += Math.round(Number(sub.points || 0));
+
+      if (activeEvent) {
+        // We want to sum verified submissions for the user's active event points profile
+        const { data: verifiedSubmissions, error: subError } = await supabase
+          .from('submissions')
+          .select('points, id, status, user_id, event_id')
+          .eq('user_id', steamid)
+          .eq('status', 'verified')
+          .eq('event_id', activeEvent.id);
+
+        if (subError) {
+          console.error(`[Sync] Error fetching submissions for ${steamid}:`, subError);
+          throw subError;
+        }
+
+        console.log(`[Sync] Found ${verifiedSubmissions?.length || 0} verified submissions in active event ${activeEvent.id} for ${steamid}`);
+        
+        for (const sub of (verifiedSubmissions || [])) {
+          totalPoints += Math.round(Number(sub.points || 0));
+        }
+      } else {
+        console.log(`[Sync] No active event found, resetting points to 0 for user ${steamid}`);
       }
       
       console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
@@ -2145,6 +2162,25 @@ async function createServer() {
         .single();
 
       if (error) throw error;
+
+      if (isActive) {
+        // Deactivate all OTHER events
+        await supabase
+          .from('events')
+          .update({ is_active: false })
+          .neq('id', data.id);
+
+        // Reset points to 0 for all users
+        const { error: resetError } = await supabase
+          .from('profiles')
+          .update({ points: 0 })
+          .neq('steamid', 'system_notification');
+
+        if (resetError) {
+          console.error('[Create Event] Failed to reset points:', resetError);
+        }
+      }
+
       res.json(data);
     } catch (err) {
       console.error('Failed to create event:', err);
@@ -2174,6 +2210,25 @@ async function createServer() {
         .single();
 
       if (error) throw error;
+
+      if (isActive) {
+        // Deactivate all OTHER events
+        await supabase
+          .from('events')
+          .update({ is_active: false })
+          .neq('id', id);
+
+        // Reset points to 0 for all users
+        const { error: resetError } = await supabase
+          .from('profiles')
+          .update({ points: 0 })
+          .neq('steamid', 'system_notification');
+
+        if (resetError) {
+          console.error('[Update Event] Failed to reset points:', resetError);
+        }
+      }
+
       res.json(data);
     } catch (err) {
       console.error('Failed to update event:', err);
@@ -2199,6 +2254,16 @@ async function createServer() {
         .single();
 
       if (eventError) throw eventError;
+
+      // 1.5. Reset all users' points to 0 on profiles
+      const { error: resetError } = await supabase
+        .from('profiles')
+        .update({ points: 0 })
+        .neq('steamid', 'system_notification');
+
+      if (resetError) {
+        console.error('[Close Event] Failed to reset user points:', resetError);
+      }
 
       // 2. Ensure general system_notification profile exists to satisfy FK constraint if present
       const { error: systemProfileError } = await supabase.from('profiles').upsert({
