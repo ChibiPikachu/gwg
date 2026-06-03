@@ -2271,7 +2271,7 @@ async function createServer() {
         steam_name: 'System',
         team: null,
         points: 0,
-        role: 'system'
+        role: 'member'
       }, { onConflict: 'steamid' });
 
       if (systemProfileError) {
