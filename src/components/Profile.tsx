@@ -185,7 +185,11 @@ export default function Profile({ steamId }: { steamId?: string }) {
               )}
 
               {/* Accolades & Badges */}
-              {(hasSurvivedMigration || (events.length > 0 && events.some(e => !e.is_active && e.winner_team && targetUser.team === e.winner_team))) && (
+              {(hasSurvivedMigration || (events.length > 0 && events.some(e => {
+                if (e.is_active || !e.winner_team) return false;
+                const userTeamForEvent = (targetUser?.eventTeams?.[e.id]) || targetUser?.team;
+                return userTeamForEvent === e.winner_team;
+              }))) && (
                 <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2 mb-1 animate-in fade-in duration-300">
                   {hasSurvivedMigration && (
                     <div 
@@ -213,7 +217,11 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   )}
 
                   {events
-                    .filter(e => !e.is_active && e.winner_team && targetUser.team === e.winner_team)
+                    .filter(e => {
+                      if (e.is_active || !e.winner_team) return false;
+                      const userTeamForEvent = (targetUser?.eventTeams?.[e.id]) || targetUser?.team;
+                      return userTeamForEvent === e.winner_team;
+                    })
                     .map(e => (
                       <span
                         key={e.id}

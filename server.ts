@@ -13,6 +13,119 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let supabaseClient: any = null;
+
+async function backfillEventTeams(supabase: any) {
+  if (!supabase) return;
+  try {
+    console.log('[Backfill] Checking if user_event_teams needs backfilling...');
+
+    // First do a quick check query to see if the table exists
+    const { error: tableCheckErr } = await supabase
+      .from('user_event_teams')
+      .select('steamid')
+      .limit(1);
+
+    if (tableCheckErr) {
+      if (String(tableCheckErr.message || '').includes('does not exist') || tableCheckErr.code === '42P01') {
+        console.warn('⚠️ [Backfill Warning] Table "user_event_teams" does not exist in Supabase yet. Please execute the SQL creation script in your Supabase SQL Editor.');
+        return;
+      }
+      console.error('[Backfill] Error during table presence check:', tableCheckErr);
+      return;
+    }
+
+    // 1. Fetch all submissions to map user_id -> event_id
+    const { data: subs, error: subsError } = await supabase
+      .from('submissions')
+      .select('user_id, event_id');
+      
+    if (subsError) {
+      console.error('[Backfill] Error fetching submissions:', subsError);
+      return;
+    }
+    
+    // 2. Fetch all profiles to get their current team as the initial default
+    const { data: profiles, error: profsError } = await supabase
+      .from('profiles')
+      .select('steamid, team');
+      
+    if (profsError) {
+      console.error('[Backfill] Error fetching profiles:', profsError);
+      return;
+    }
+    
+    const profileTeamMap = new Map<string, string>();
+    (profiles || []).forEach((p: any) => {
+      if (p.steamid && p.team) {
+        profileTeamMap.set(p.steamid, p.team);
+      }
+    });
+
+    // 3. For each unique combination of user_id and event_id in submissions, upsert into user_event_teams
+    const uniqueUserEvents = new Set<string>();
+    const toInsert: any[] = [];
+    
+    (subs || []).forEach((sub: any) => {
+      if (!sub.user_id || !sub.event_id) return;
+      if (sub.user_id.startsWith('team_pts_') || sub.user_id === 'system_notification') return;
+      
+      const key = `${sub.user_id}_${sub.event_id}`;
+      if (!uniqueUserEvents.has(key)) {
+        uniqueUserEvents.add(key);
+        const currentTeam = profileTeamMap.get(sub.user_id);
+        if (currentTeam) {
+          toInsert.push({
+            steamid: sub.user_id,
+            event_id: sub.event_id,
+            team: currentTeam
+          });
+        }
+      }
+    });
+    
+    // 4. Also map current profiles to the active event if they don't have submissions yet
+    const { data: activeEvent } = await supabase
+      .from('events')
+      .select('id')
+      .eq('is_active', true)
+      .maybeSingle();
+      
+    if (activeEvent) {
+      (profiles || []).forEach((p: any) => {
+        if (!p.steamid || !p.team) return;
+        const key = `${p.steamid}_${activeEvent.id}`;
+        if (!uniqueUserEvents.has(key)) {
+          uniqueUserEvents.add(key);
+          toInsert.push({
+            steamid: p.steamid,
+            event_id: activeEvent.id,
+            team: p.team
+          });
+        }
+      });
+    }
+
+    if (toInsert.length > 0) {
+      console.log(`[Backfill] Preparing to upsert ${toInsert.length} user event-team relations...`);
+      for (let i = 0; i < toInsert.length; i += 100) {
+        const chunk = toInsert.slice(i, i + 100);
+        const { error: upsertErr } = await supabase
+          .from('user_event_teams')
+          .upsert(chunk, { onConflict: 'steamid,event_id' });
+          
+        if (upsertErr) {
+          console.error('[Backfill] Batch upsert error:', upsertErr);
+        }
+      }
+      console.log('[Backfill] Completed successfully.');
+    } else {
+      console.log('[Backfill] Nothing to backfill.');
+    }
+  } catch (err) {
+    console.error('[Backfill] Unexpected error running backfill:', err);
+  }
+}
+
 function getSupabase() {
   if (!supabaseClient) {
     const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -25,6 +138,13 @@ function getSupabase() {
     
     console.log('Initializing Supabase client with URL:', url.substring(0, 10) + '...');
     supabaseClient = createClient(url, key);
+
+    // Run backfill asynchronously
+    setTimeout(() => {
+      backfillEventTeams(supabaseClient).catch(err => {
+        console.error('[Backfill] Failed:', err);
+      });
+    }, 1000);
   }
   return supabaseClient;
 }
@@ -800,11 +920,44 @@ async function createServer() {
             .single();
             
           if (data && !error) {
+            let eventTeams: Record<string, string> = {};
+            try {
+              const { data: eventTeamsData } = await supabase
+                .from('user_event_teams')
+                .select('event_id, team')
+                .eq('steamid', steamId);
+
+              (eventTeamsData || []).forEach((row: any) => {
+                eventTeams[row.event_id] = row.team;
+              });
+
+              // Auto-lock into active event if not present yet and active event exists
+              const { data: activeEvent } = await supabase
+                .from('events')
+                .select('id')
+                .eq('is_active', true)
+                .maybeSingle();
+
+              if (activeEvent && data.team && !eventTeams[activeEvent.id]) {
+                await supabase
+                  .from('user_event_teams')
+                  .upsert({
+                    steamid: steamId,
+                    event_id: activeEvent.id,
+                    team: data.team
+                  }, { onConflict: 'steamid,event_id' });
+                eventTeams[activeEvent.id] = data.team;
+              }
+            } catch (uetError) {
+              console.warn('[Session Me] Could not fetch/update user_event_teams:', uetError);
+            }
+
             // Merge database data with session data for the frontend
             return res.json({
               ...user,
               ...data,
-              isAdmin: data.role === 'admin' || data.role === 'admins' // Ensure isAdmin is correctly set based on role
+              isAdmin: data.role === 'admin' || data.role === 'admins', // Ensure isAdmin is correctly set based on role
+              eventTeams: eventTeams
             });
           }
         } catch (err) {
@@ -1231,6 +1384,20 @@ async function createServer() {
       .single();
 
     if (error) return res.status(404).json({ error: 'User not found' });
+
+    let eventTeams: Record<string, string> = {};
+    try {
+      const { data: eventTeamsData } = await supabase
+        .from('user_event_teams')
+        .select('event_id, team')
+        .eq('steamid', steamid);
+
+      (eventTeamsData || []).forEach((row: any) => {
+        eventTeams[row.event_id] = row.team;
+      });
+    } catch (uetError) {
+      console.warn('[Get User] Could not fetch user_event_teams:', uetError);
+    }
     
     // Transform to frontend format
     const transformedUser = {
@@ -1246,7 +1413,8 @@ async function createServer() {
       points: profile.points,
       role: profile.role,
       isAdmin: profile.role === 'admin' || profile.role === 'admins',
-      createdAt: profile.created_at
+      createdAt: profile.created_at,
+      eventTeams: eventTeams
     };
     
     res.json(transformedUser);
@@ -1282,6 +1450,30 @@ async function createServer() {
           details: error.details,
           hint: error.hint 
         });
+      }
+
+      // ALSO record user team assignment for the active event
+      if (dbTeam) {
+        try {
+          const { data: activeEvent } = await supabase
+            .from('events')
+            .select('id')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (activeEvent?.id) {
+            await supabase
+              .from('user_event_teams')
+              .upsert({
+                steamid: String(targetSteamId),
+                event_id: activeEvent.id,
+                team: dbTeam
+              }, { onConflict: 'steamid,event_id' });
+            console.log(`[Admin] Successfully recorded team ${dbTeam} for event ${activeEvent.id} in user_event_teams`);
+          }
+        } catch (ueErr) {
+          console.error('[Admin] Error updating user_event_teams:', ueErr);
+        }
       }
       
       console.log('[Admin] Successfully updated team for:', targetSteamId, 'Result:', updateData);
@@ -2115,6 +2307,19 @@ async function createServer() {
         if (p.steamid) profileTeamMap.set(p.steamid, p.team || 'none');
       });
 
+      // Gather historical event team allocations
+      let userEventTeamMap = new Map<string, string>();
+      try {
+        const { data: userEventTeams } = await supabase
+          .from('user_event_teams')
+          .select('steamid, event_id, team');
+        (userEventTeams || []).forEach((uet: any) => {
+          userEventTeamMap.set(`${uet.steamid}_${uet.event_id}`, uet.team);
+        });
+      } catch (uetErr) {
+        console.warn('⚠️ user_event_teams table check failed inside /api/events endpoint, falling back to current profile teams.');
+      }
+
       // Gather verified submissions & adjustments
       const { data: verifiedSubs } = await supabase
         .from('submissions')
@@ -2146,7 +2351,7 @@ async function createServer() {
             if (sub.user_id.startsWith('team_pts_')) {
               team = sub.user_id.substring('team_pts_'.length);
             } else {
-              team = profileTeamMap.get(sub.user_id) || null;
+              team = userEventTeamMap.get(`${sub.user_id}_${event.id}`) || profileTeamMap.get(sub.user_id) || null;
             }
 
             if (team && teamPoints[team] !== undefined) {
