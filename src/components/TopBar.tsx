@@ -43,28 +43,18 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
     };
   }, []);
 
-  const getCountdownTarget = (endDateStr: string): number => {
+  const getCountdownTarget = (endDateStr: string | number | undefined): number => {
     if (!endDateStr) return 0;
-    const cleanStr = endDateStr.replace(' ', 'T');
-    if (cleanStr.includes('T')) {
-      const [datePart, timePart] = cleanStr.split('T');
-      const dateParts = datePart.split('-');
-      if (dateParts.length === 3) {
-        const year = Number(dateParts[0]);
-        const month = Number(dateParts[1]);
-        const day = Number(dateParts[2]);
-        
-        const cleanTimePart = timePart.split(/[Z+-]/)[0];
-        const timeParts = cleanTimePart.split(':');
-        const hour = Number(timeParts[0] || 0);
-        const minute = Number(timeParts[1] || 0);
-        const second = Number(timeParts[2] || 0);
-        
-        const d = new Date(year, month - 1, day, hour, minute, second, 0);
-        return d.getTime();
-      }
+    if (typeof endDateStr === 'number') {
+      return endDateStr * 1000;
     }
-    return new Date(endDateStr).getTime();
+    const num = Number(endDateStr);
+    if (!isNaN(num) && num > 100000) {
+      return num * 1000;
+    }
+    const parsed = Date.parse(endDateStr);
+    if (!isNaN(parsed)) return parsed;
+    return 0;
   };
 
   React.useEffect(() => {
@@ -98,7 +88,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
 
     const updateTimer = () => {
       const now = new Date().getTime();
-      const end = getCountdownTarget(activeEventToUse.end_date || activeEventToUse.endDate);
+      const end = getCountdownTarget(activeEventToUse.end_timestamp || activeEventToUse.end_date || activeEventToUse.endDate);
       const diff = end - now;
 
       if (diff <= 0 || isNaN(diff)) {

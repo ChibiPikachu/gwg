@@ -885,6 +885,30 @@ async function createServer() {
         }
       }
 
+      // Check for exact match in local DB 'games' first
+      let exactLocalResults: any[] = [];
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          const { data: exactMatches } = await supabase
+            .from('games')
+            .select('*')
+            .ilike('title', queryStr);
+            
+          if (exactMatches && exactMatches.length > 0) {
+            exactLocalResults = exactMatches.map((g: any) => ({
+              id: g.id,
+              title: g.title,
+              image: g.image_url || 'https://via.placeholder.com/264x352?text=No+Cover',
+              summary: g.summary || "Existing game in system.",
+              steam_appid: g.steam_appid
+            }));
+          }
+        } catch (dbErr) {
+          console.error('[Search] Failed to check exact match in local DB:', dbErr);
+        }
+      }
+
       console.log(`[IGDB Search] Querying for: ${queryStr}`);
       const token = await getIGDBToken();
       
@@ -898,8 +922,8 @@ async function createServer() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'text/plain'
         },
-        // Simplified query to ensure reliability
-        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 15;`
+        // Simplified query to ensure reliability with limit 25
+        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 25;`
       });
 
       if (!response.ok) {
@@ -955,7 +979,25 @@ async function createServer() {
         };
       });
 
-      res.json(results);
+      // Merge local exact matches and IGDB search results
+      const finalResults = [...exactLocalResults];
+      for (const item of results) {
+        if (!finalResults.some(fr => String(fr.id) === String(item.id))) {
+          finalResults.push(item);
+        }
+      }
+
+      // Sort so exact text matches always rise to the very top (case-insensitive)
+      const queryLower = queryStr.toLowerCase().trim();
+      finalResults.sort((a, b) => {
+        const aExact = a.title.toLowerCase().trim() === queryLower;
+        const bExact = b.title.toLowerCase().trim() === queryLower;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+        return 0;
+      });
+
+      res.json(finalResults);
     } catch (err) {
       console.error('[IGDB Search] Crash:', err);
       res.status(500).json({ error: 'Search crashed', details: String(err) });
@@ -2124,10 +2166,16 @@ async function createServer() {
           winnerTeam = bestTeam;
         }
 
+        const votingMatch = event.description?.match(/<!--VOTING:(.*?)-->/);
+        const votingTimestamp = votingMatch && votingMatch[1] ? Math.floor(new Date(votingMatch[1]).getTime() / 1000) : null;
+
         return {
           ...event,
           event_number: eventNum,
-          winner_team: winnerTeam
+          winner_team: winnerTeam,
+          start_timestamp: Math.floor(new Date(event.start_date).getTime() / 1000),
+          end_timestamp: Math.floor(new Date(event.end_date).getTime() / 1000),
+          voting_timestamp: votingTimestamp
         };
       });
 
@@ -2324,11 +2372,25 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
     try {
-      const { data, error } = await supabase
+      const { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      let query = supabase
         .from('submissions')
         .select('*')
-        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points')
-        .order('created_at', { ascending: false });
+        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points');
+
+      if (activeEvent) {
+        query = query.eq('event_id', activeEvent.id);
+      } else {
+        // Return dummy/unmatching event ID to prevent leak of older adjustments
+        query = query.eq('event_id', '99999999-9999-9999-9999-999999999999');
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
       res.json(data || []);
     } catch (err) {

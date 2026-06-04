@@ -110,31 +110,21 @@ export default function EventsPanel() {
     return `${dateOnly}T${formattedHrs}:${formattedMins}:00`;
   };
 
-  const formatEventDateTime = (isoStr: string | undefined, fallbackText = 'Unknown'): string => {
+  const formatEventDateTime = (isoStr: string | number | undefined, fallbackText = 'Unknown'): string => {
     if (!isoStr) return fallbackText;
     
-    const cleanStr = isoStr.replace(' ', 'T');
-    
-    // Attempt literal parsing to prevent any timezone shifts
-    if (cleanStr.includes('T')) {
-      const [datePart, timePart] = cleanStr.split('T');
-      const dateParts = datePart.split('-');
-      if (dateParts.length === 3) {
-        const year = dateParts[0];
-        const monthNum = parseInt(dateParts[1], 10);
-        const day = dateParts[2];
-        const timeParts = timePart.split(':');
-        const hour = timeParts[0] || '00';
-        const minute = timeParts[1] || '00';
-        
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const monthName = monthNames[monthNum - 1] || 'Jan';
-        
-        return `${monthName} ${parseInt(day, 10)}, ${year}, ${hour}:${minute}`;
+    let d: Date;
+    if (typeof isoStr === 'number') {
+      d = new Date(isoStr * 1000);
+    } else {
+      const num = Number(isoStr);
+      if (!isNaN(num) && num > 100000) {
+        d = new Date(num * 1000);
+      } else {
+        d = new Date(isoStr);
       }
     }
-    
-    const d = new Date(isoStr);
+
     if (isNaN(d.getTime())) return fallbackText;
     
     return d.toLocaleString(undefined, {
@@ -356,7 +346,7 @@ export default function EventsPanel() {
                      <div className="dark:bg-white/5 bg-slate-50 px-3 py-1.5 md:px-4 md:py-2 rounded-xl flex items-center gap-2 border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none">
                         <Calendar size={14} className={theme.text} />
                         <span className="font-bold opacity-80 dark:text-white text-slate-700">
-                          {formatEventDateTime(activeEventToUse.start_date)} - {formatEventDateTime(activeEventToUse.end_date)}
+                          {formatEventDateTime((activeEventToUse as any).start_timestamp || activeEventToUse.start_date)} - {formatEventDateTime((activeEventToUse as any).end_timestamp || activeEventToUse.end_date)}
                         </span>
                      </div>
                    </div>
@@ -430,7 +420,7 @@ export default function EventsPanel() {
                 <p className="text-xs opacity-50 mb-6 line-clamp-2 dark:text-white text-slate-500">{getCleanDescription(event.description)}</p>
                 <div className="pt-4 border-t dark:border-white/5 border-black/5 flex items-center justify-between text-[10px] uppercase font-bold tracking-widest opacity-30 dark:text-white text-slate-500">
                   <span>Timeline</span>
-                  <span>{formatEventDateTime(event.end_date)}</span>
+                  <span>{formatEventDateTime((event as any).end_timestamp || event.end_date)}</span>
                 </div>
               </div>
             ))}

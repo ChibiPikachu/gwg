@@ -42,28 +42,20 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     ? draftEvent
     : currentEvent;
 
-  const formatLiteralDateTime = (isoStr: string | undefined): string => {
+  const formatLiteralDateTime = (isoStr: string | number | undefined): string => {
     if (!isoStr) return '';
-    const cleanStr = isoStr.replace(' ', 'T');
-    if (cleanStr.includes('T')) {
-      const [datePart, timePart] = cleanStr.split('T');
-      const dateParts = datePart.split('-');
-      if (dateParts.length === 3) {
-        const year = dateParts[0];
-        const monthNum = parseInt(dateParts[1], 10);
-        const day = dateParts[2];
-        const timeParts = timePart.split(':');
-        const hour = timeParts[0] || '00';
-        const minute = timeParts[1] || '00';
-        
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const monthName = monthNames[monthNum - 1] || 'Jan';
-        
-        return `${monthName} ${parseInt(day, 10)}, ${year} at ${hour}:${minute}`;
+    let d: Date;
+    if (typeof isoStr === 'number') {
+      d = new Date(isoStr * 1000);
+    } else {
+      const num = Number(isoStr);
+      if (!isNaN(num) && num > 100000) {
+        d = new Date(num * 1000);
+      } else {
+        d = new Date(isoStr);
       }
     }
-    
-    const d = new Date(isoStr);
+
     if (isNaN(d.getTime())) return '';
     const formattedDate = d.toLocaleDateString(undefined, {
       year: 'numeric',
@@ -124,31 +116,21 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     };
   }, []);
 
-  const getCountdownTarget = (endDateStr: string): number => {
+  const getCountdownTarget = (endDateStr: string | number | undefined): number => {
     if (!endDateStr) return 0;
-    const cleanStr = endDateStr.replace(' ', 'T');
-    if (cleanStr.includes('T')) {
-      const [datePart, timePart] = cleanStr.split('T');
-      const dateParts = datePart.split('-');
-      if (dateParts.length === 3) {
-        const year = Number(dateParts[0]);
-        const month = Number(dateParts[1]);
-        const day = Number(dateParts[2]);
-        
-        const cleanTimePart = timePart.split(/[Z+-]/)[0];
-        const timeParts = cleanTimePart.split(':');
-        const hour = Number(timeParts[0] || 0);
-        const minute = Number(timeParts[1] || 0);
-        const second = Number(timeParts[2] || 0);
-        
-        const d = new Date(year, month - 1, day, hour, minute, second, 0);
-        return d.getTime();
-      }
+    if (typeof endDateStr === 'number') {
+      return endDateStr * 1000;
     }
-    return new Date(endDateStr).getTime();
+    const num = Number(endDateStr);
+    if (!isNaN(num) && num > 100000) {
+      return num * 1000;
+    }
+    const parsed = Date.parse(endDateStr);
+    if (!isNaN(parsed)) return parsed;
+    return 0;
   };
 
-  const formatToLocalTime = (isoStr: string | undefined): string => {
+  const formatToLocalTime = (isoStr: string | number | undefined): string => {
     return formatLiteralDateTime(isoStr);
   };
 
@@ -166,8 +148,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       const now = new Date().getTime();
       
       // 1. End Date Countdown
-      const endDateStr = (activeEventToUse as any).end_date;
-      const end = endDateStr ? getCountdownTarget(endDateStr) : 0;
+      const endVal = (activeEventToUse as any).end_timestamp || (activeEventToUse as any).end_date;
+      const end = endVal ? getCountdownTarget(endVal) : 0;
       
       const diffEnd = end - now;
       if (diffEnd <= 0 || isNaN(diffEnd)) {
@@ -181,8 +163,9 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
       }
 
       // 2. Voting Start Countdown
-      if (votingStartIso) {
-        const vStart = getCountdownTarget(votingStartIso);
+      const votingStartVal = (activeEventToUse as any).voting_timestamp || votingStartIso;
+      if (votingStartVal) {
+        const vStart = getCountdownTarget(votingStartVal);
         
         const diffVoting = vStart - now;
         if (diffVoting <= 0 || isNaN(diffVoting)) {
@@ -206,7 +189,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   }, [activeEventToUse]);
 
   const votingMatchStr = activeEventToUse?.description?.match(/<!--VOTING:(.*?)-->/);
-  const votingStartIsoStr = votingMatchStr ? votingMatchStr[1] : '';
+  const votingStartIsoStr = (activeEventToUse as any)?.voting_timestamp || (votingMatchStr ? votingMatchStr[1] : '');
   const currentEventNumber = (activeEventToUse as any)?.event_number || 1;
 
   const colors = TEAM_COLORS[userTeam];
@@ -329,7 +312,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                   <span className="text-sm font-bold mb-1 dark:text-white text-slate-800 text-center">{activeEventToUse ? activeEventToUse.title : 'Inactive'}</span>
                   <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                     {activeEventToUse 
-                      ? `Ends on ${getVotingFormatted((activeEventToUse as any).end_date)}`
+                      ? `Ends on ${getVotingFormatted((activeEventToUse as any).end_timestamp || (activeEventToUse as any).end_date)}`
                       : 'Waiting for next event'}
                   </span>
                   
