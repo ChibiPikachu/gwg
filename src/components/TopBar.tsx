@@ -131,7 +131,11 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
     localStorage.setItem('read_notification_ids', JSON.stringify(Array.from(readIds)));
   }, [readIds]);
 
-  const unreadCount = notifications.filter(n => !readIds.has(n.id)).length;
+  const unreadNotifications = React.useMemo(() => {
+    return notifications.filter(n => !readIds.has(n.id));
+  }, [notifications, readIds]);
+
+  const unreadCount = unreadNotifications.length;
 
   const markAllRead = () => {
     setReadIds(new Set(notifications.map(n => n.id)));
@@ -290,16 +294,16 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                     <X size={16} />
                   </button>
                 </div>
-                <div className="max-h-[400px] overflow-y-auto">
-                  {notifications.length === 0 ? (
+                <div className="max-h-[400px] overflow-y-auto w-full">
+                  {unreadNotifications.length === 0 ? (
                     <div className="p-8 text-center opacity-30 text-xs italic dark:text-white text-slate-500">No recent updates</div>
                   ) : (
-                    notifications.map((n) => (
+                    unreadNotifications.map((n) => (
                       <div 
                         key={n.id} 
                         className={cn(
                           "p-5 border-b border-black/5 dark:border-white/5 dark:hover:bg-white/5 hover:bg-slate-50 transition-colors group relative",
-                          !readIds.has(n.id) && "dark:bg-white/[0.02] bg-blue-50/30"
+                          "dark:bg-white/[0.02] bg-blue-50/30"
                         )}
                         onClick={() => {
                           setReadIds(prev => {
@@ -372,7 +376,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                     ))
                   )}
                 </div>
-                {notifications.length > 0 && (
+                {unreadNotifications.length > 0 && (
                   <button 
                     onClick={markAllReadAndClose}
                     className="w-full py-3 dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-all border-t border-black/5 dark:border-white/5 dark:text-white text-slate-600"

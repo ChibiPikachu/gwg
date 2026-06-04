@@ -157,12 +157,13 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed]);
 
   const filteredSubmissions = React.useMemo(() => {
-    let result = submissions;
+    // Filter out "Event Update" (system notification) and "Screenshot Points" (adjustments) from entries
+    let result = submissions.filter(s => s.game_name !== 'Event Update' && s.game_name !== 'Screenshot Points');
     if (completionFilter !== 'all') {
       if (completionFilter === 'pending') {
-        result = submissions.filter(s => s.status === 'pending');
+        result = result.filter(s => s.status === 'pending');
       } else {
-        result = submissions.filter(s => s.completion_status === completionFilter);
+        result = result.filter(s => s.completion_status === completionFilter);
       }
     }
     if (submissionsSearchQuery.trim()) {

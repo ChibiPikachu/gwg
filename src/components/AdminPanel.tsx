@@ -480,6 +480,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   });
 
   const filteredSubmissions = submissions.filter(sub => {
+    if (sub.game_name === 'Event Update' || sub.game_name === 'Screenshot Points') return false;
     const matchesTeam = filterTeam === 'all' || (sub.userTeam || 'none') === filterTeam;
     const matchesStatus = subStatusFilter === 'all' || sub.status === subStatusFilter;
     const matchesSearch = (sub.game_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
