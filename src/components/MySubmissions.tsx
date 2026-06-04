@@ -542,12 +542,12 @@ export default function MySubmissions() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
           <div className={cn(
-            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 mt-20 mb-20",
+            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 my-auto",
             theme.glow
           )}>
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
               <div className="flex justify-between items-start mb-8">
                 <div>
                   <h2 className="text-2xl font-bold dark:text-white text-slate-900">New Submission</h2>

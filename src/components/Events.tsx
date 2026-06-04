@@ -434,8 +434,8 @@ export default function EventsPanel() {
 
       {/* Management Modal */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="dark:bg-[#111111] bg-white w-full max-w-lg rounded-3xl border dark:border-white/10 border-slate-200 p-8 shadow-2xl space-y-8 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-start md:items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+          <div className="dark:bg-[#111111] bg-white w-full max-w-lg rounded-3xl border dark:border-white/10 border-slate-200 p-5 md:p-8 shadow-2xl space-y-6 md:space-y-8 animate-in zoom-in-95 duration-200 my-auto">
             <header className="flex justify-between items-center">
               <h3 className="text-2xl font-black uppercase dark:text-white text-slate-900">{editingEvent?.id ? 'Edit Event' : 'Create Event'}</h3>
               <button onClick={() => setIsEditing(false)} className="opacity-40 hover:opacity-100 transition-all text-2xl dark:text-white text-slate-900">×</button>
