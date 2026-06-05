@@ -320,9 +320,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       const data = await res.json();
       
       if (res.ok) {
-        setUsers(prev => prev.map(u => 
-          (u.steamid === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u
-        ));
+        setUsers(prev => prev.map(u => {
+          const uId = u.steamid || u.steamId;
+          return (uId && uId === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u;
+        }));
       } else {
         alert(`Failed to update team: ${data.error || 'Unknown error'}`);
       }
@@ -346,7 +347,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       
       if (res.ok) {
         setUsers(prev => prev.map(u => {
-          if (u.steamid === targetSteamId) {
+          const uId = u.steamid || u.steamId;
+          if (uId && uId === targetSteamId) {
             const updatedEventTeams = { ...u.eventTeams, [eventId]: team === 'none' ? null : team };
             const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
             return {
@@ -359,14 +361,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         }));
 
         setEditingUserEventTeams(prev => {
-          if (prev && prev.steamid === targetSteamId) {
-            const updatedEventTeams = { ...prev.eventTeams, [eventId]: team === 'none' ? null : team };
-            const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
-            return {
-              ...prev,
-              team: isEventActive ? (team === 'none' ? null : team) : prev.team,
-              eventTeams: updatedEventTeams
-            };
+          if (prev) {
+            const prevId = prev.steamid || prev.steamId;
+            if (prevId && prevId === targetSteamId) {
+              const updatedEventTeams = { ...prev.eventTeams, [eventId]: team === 'none' ? null : team };
+              const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
+              return {
+                ...prev,
+                team: isEventActive ? (team === 'none' ? null : team) : prev.team,
+                eventTeams: updatedEventTeams
+              };
+            }
           }
           return prev;
         });
@@ -392,7 +397,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
 
       if (res.ok) {
-        setUsers(prev => prev.filter(u => u.steamid !== steamId));
+        setUsers(prev => prev.filter(u => {
+          const uId = u.steamid || u.steamId;
+          return uId !== steamId;
+        }));
         setSettingsUserId(null);
       } else {
         const data = await res.json();
@@ -415,7 +423,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
       
       if (res.ok) {
-        setUsers(prev => prev.map(u => u.steamid === targetSteamId ? { ...u, role } : u));
+        setUsers(prev => prev.map(u => {
+          const uId = u.steamid || u.steamId;
+          return (uId && uId === targetSteamId) ? { ...u, role } : u;
+        }));
       } else {
         const data = await res.json();
         alert(`Failed to update role: ${data.error}`);
