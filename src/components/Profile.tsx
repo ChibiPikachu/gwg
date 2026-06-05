@@ -22,6 +22,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
 
+  const sortedEvents = React.useMemo(() => {
+    return [...events].sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
+  }, [events]);
+
+  const filteredSubmissions = React.useMemo(() => {
+    if (selectedEventId === 'all') return submissions;
+    return submissions.filter((s: any) => s.event_id === selectedEventId);
+  }, [submissions, selectedEventId]);
+
   React.useEffect(() => {
     fetch('/api/events')
       .then(res => res.json())
@@ -60,20 +69,27 @@ export default function Profile({ steamId }: { steamId?: string }) {
     } else {
       setLoading(true);
       fetch(`/api/users/${steamId}`)
-        .then(res => res.json())
+        .then(async res => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Failed to fetch user');
+          }
+          return res.json();
+        })
         .then(data => {
           setTargetUser(data);
           setLoading(false);
         })
         .catch(err => {
           console.error('Failed to fetch user:', err);
+          setTargetUser({ error: err.message || 'Failed to load user profile' });
           setLoading(false);
         });
     }
   }, [steamId, currentUser, isOwnProfile]);
 
   React.useEffect(() => {
-    if (targetUser) {
+    if (targetUser && !targetUser.error) {
       setStatus(targetUser.status || '');
       setDisplayName(targetUser.steamName || '');
     }
@@ -87,9 +103,16 @@ export default function Profile({ steamId }: { steamId?: string }) {
     );
   }
 
-  if (!targetUser) return (
-    <div className="p-20 text-center opacity-30 text-white">User not found</div>
-  );
+  if (!targetUser || targetUser.error) {
+    return (
+      <div className="p-20 text-center text-white/50 font-bold flex flex-col items-center justify-center gap-4">
+        <div className="text-red-500/80 animate-pulse">
+          <Shield size={48} />
+        </div>
+        <span>{targetUser?.error || 'User profile not found'}</span>
+      </div>
+    );
+  }
 
   const handleSave = async () => {
     if (!isOwnProfile) return;
@@ -104,7 +127,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   };
 
   const handleCancel = () => {
-    if (targetUser) {
+    if (targetUser && !targetUser.error) {
       setStatus(targetUser.status || '');
       setDisplayName(targetUser.steamName || '');
     }
@@ -142,15 +165,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const activeEvent = Array.isArray(events) ? events.find((e: any) => e.is_active) : null;
   const hideScores = !!activeEvent?.hide_scores;
   const hideUserScores = hideScores && !isOwnProfile;
-
-  const sortedEvents = React.useMemo(() => {
-    return [...events].sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
-  }, [events]);
-
-  const filteredSubmissions = React.useMemo(() => {
-    if (selectedEventId === 'all') return submissions;
-    return submissions.filter((s: any) => s.event_id === selectedEventId);
-  }, [submissions, selectedEventId]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">

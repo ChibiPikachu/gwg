@@ -66,7 +66,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     const formattedTime = d.toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      hour12: false,
+      timeZoneName: 'short'
     });
     return `${formattedDate} at ${formattedTime}`;
   };
@@ -192,7 +193,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   const votingStartIsoStr = (activeEventToUse as any)?.voting_timestamp || (votingMatchStr ? votingMatchStr[1] : '');
   const currentEventNumber = (activeEventToUse as any)?.event_number || 1;
 
-  const colors = TEAM_COLORS[userTeam];
+  const colors = TEAM_COLORS[userTeam] || TEAM_COLORS['none'];
   const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
                     userTeam === 'green' ? 'bg-green-accent' : 
                     userTeam === 'purple' ? 'bg-purple-accent' : 
