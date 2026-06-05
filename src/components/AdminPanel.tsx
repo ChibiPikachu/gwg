@@ -67,7 +67,7 @@ export function calculateNonAchievementPoints(level: number, hoursPlayed: number
   }
 }
 
-type AdminTab = 'users' | 'submissions' | 'team_points';
+type AdminTab = 'users' | 'submissions' | 'previous_submissions' | 'team_points';
 
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
   const { user: currentUser, theme } = useAuth();
@@ -95,6 +95,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [selectedUser, setSelectedUser] = React.useState<any | null>(null);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('pending');
+  const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned'>('all');
   const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [selectedLevel, setSelectedLevel] = React.useState<number>(2);
@@ -102,6 +103,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = React.useState(false);
   const [backfillProgress, setBackfillProgress] = React.useState<{ processed: number, remaining: number, total: number } | null>(null);
+
+  const [events, setEvents] = React.useState<any[]>([]);
+  const [activeEvent, setActiveEvent] = React.useState<any | null>(null);
 
   const [awardTeam, setAwardTeam] = React.useState<'blue' | 'purple' | 'green' | 'red'>('blue');
   const [awardPoints, setAwardPoints] = React.useState('');
@@ -120,6 +124,21 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       }
     } catch (err) {
       console.error('Failed to fetch team adjustments:', err);
+    }
+  }, []);
+
+  const fetchEvents = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/events');
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        setEvents(list);
+        const active = list.find((e: any) => e.is_active);
+        setActiveEvent(active || null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch events inside AdminPanel:', err);
     }
   }, []);
 
@@ -250,9 +269,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments()]);
+    await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents()]);
     setLoading(false);
-  }, [fetchUsers, fetchSubmissions, fetchTeamAdjustments]);
+  }, [fetchUsers, fetchSubmissions, fetchTeamAdjustments, fetchEvents]);
 
   React.useEffect(() => {
     if (activeAdminTab) {
@@ -481,11 +500,18 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const filteredSubmissions = submissions.filter(sub => {
     if (sub.game_name === 'Event Update' || sub.game_name === 'Screenshot Points') return false;
+
+    // Distinguish based on activeTab: 'submissions' (current event specs) vs 'previous_submissions' (archive)
+    const isCurrent = activeEvent ? (sub.event_id === activeEvent.id) : false;
+    if (activeTab === 'submissions' && !isCurrent) return false;
+    if (activeTab === 'previous_submissions' && isCurrent) return false;
+
     const matchesTeam = filterTeam === 'all' || (sub.userTeam || 'none') === filterTeam;
     const matchesStatus = subStatusFilter === 'all' || sub.status === subStatusFilter;
+    const matchesCompletion = completionFilter === 'all' || sub.completion_status === completionFilter || (completionFilter === 'unfinished' && !sub.completion_status);
     const matchesSearch = (sub.game_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                          (sub.user_name || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesTeam && matchesStatus && matchesSearch;
+    return matchesTeam && matchesStatus && matchesCompletion && matchesSearch;
   }).sort((a, b) => {
     if (subStatusFilter === 'pending') {
       return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
@@ -553,12 +579,27 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
         >
           Game Submissions
-          {submissions.filter(s => s.status === 'pending').length > 0 && (
+          {submissions.filter(s => s.status === 'pending' && (activeEvent ? s.event_id === activeEvent.id : false)).length > 0 && (
             <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0", theme.bg)}>
-              {submissions.filter(s => s.status === 'pending').length}
+              {submissions.filter(s => s.status === 'pending' && (activeEvent ? s.event_id === activeEvent.id : false)).length}
             </span>
           )}
           {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('previous_submissions')}
+          className={cn(
+            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+            activeTab === 'previous_submissions' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+          )}
+        >
+          Submissions Archive
+          {submissions.filter(s => s.status === 'pending' && (!activeEvent || s.event_id !== activeEvent.id)).length > 0 && (
+            <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0 bg-amber-500")}>
+              {submissions.filter(s => s.status === 'pending' && (!activeEvent || s.event_id !== activeEvent.id)).length}
+            </span>
+          )}
+          {activeTab === 'previous_submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
         </button>
         <button 
           onClick={() => setActiveTab('team_points')}
@@ -853,26 +894,76 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         </>
       ) : (
         <section className="flex flex-col gap-6 md:gap-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6">
-            <h2 className="text-lg md:text-xl font-bold">Review Submissions</h2>
-            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 md:gap-4 w-full sm:w-auto">
-              <div className="flex overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0 scrollbar-hide dark:bg-[#111111] bg-slate-100 rounded-xl border dark:border-white/5 border-black/5 p-1 shrink-0">
-                {(['all', 'pending', 'verified', 'rejected'] as const).map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setSubStatusFilter(status)}
-                    className={cn(
-                      "px-3 md:px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap",
-                      subStatusFilter === status ? theme.bg + " text-white" : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
-                    )}
-                  >
-                    {status}
-                  </button>
-                ))}
+          <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 md:gap-6">
+            <div>
+              <h2 className="text-lg md:text-xl font-bold dark:text-white text-slate-900">
+                {activeTab === 'submissions' ? 'Review Submissions (Current Event)' : 'Submissions Archive (Previous Events)'}
+              </h2>
+              {activeTab === 'submissions' && activeEvent && (
+                <p className="text-xs text-slate-500 dark:text-white/40 mt-1">Active Event: <span className={cn("font-black", theme.text)}>{activeEvent.title}</span></p>
+              )}
+            </div>
+            
+            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-end gap-4 w-full xl:w-auto">
+              {/* Review Status Filter */}
+              <div className="flex flex-col gap-1 w-full sm:w-auto">
+                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 dark:text-white/30 ml-1">Review Status</span>
+                <div className="flex overflow-x-auto w-full sm:w-auto scrollbar-hide dark:bg-[#111111] bg-slate-100 rounded-xl border dark:border-white/5 border-black/5 p-1 shrink-0">
+                  {(['all', 'pending', 'verified', 'rejected'] as const).map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setSubStatusFilter(status)}
+                      className={cn(
+                        "px-3 md:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap",
+                        subStatusFilter === status ? theme.bg + " text-white" : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+                      )}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-3 md:gap-4 text-[10px] uppercase tracking-widest font-bold opacity-30">
-                <span className="flex items-center gap-1"><Clock size={12} /> {submissions.filter(s => s.status === 'pending').length} Pending</span>
-                <span className="flex items-center gap-1"><CheckCircle2 size={12} /> {submissions.filter(s => s.status === 'verified').length} Verified</span>
+
+              {/* Completion Status Filter */}
+              <div className="flex flex-col gap-1 w-full sm:w-auto">
+                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 dark:text-white/30 ml-1">Completion Status</span>
+                <div className="flex overflow-x-auto w-full sm:w-auto scrollbar-hide dark:bg-[#111111] bg-slate-100 rounded-xl border dark:border-white/5 border-black/5 p-1 shrink-0">
+                  {(['all', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((comp) => (
+                    <button
+                      key={comp}
+                      onClick={() => setCompletionFilter(comp)}
+                      className={cn(
+                        "px-3 md:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap",
+                        completionFilter === comp ? theme.bg + " text-white" : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+                      )}
+                    >
+                      {comp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 md:gap-4 text-[10px] uppercase tracking-widest font-bold opacity-40 sm:mb-2 ml-1">
+                <span className="flex items-center gap-1">
+                  <Clock size={12} /> 
+                  {
+                    submissions.filter(s => {
+                      const isCurrent = activeEvent ? (s.event_id === activeEvent.id) : false;
+                      const matchesTab = activeTab === 'submissions' ? isCurrent : !isCurrent;
+                      return s.status === 'pending' && matchesTab;
+                    }).length
+                  } Pending
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 size={12} /> 
+                  {
+                    submissions.filter(s => {
+                      const isCurrent = activeEvent ? (s.event_id === activeEvent.id) : false;
+                      const matchesTab = activeTab === 'submissions' ? isCurrent : !isCurrent;
+                      return s.status === 'verified' && matchesTab;
+                    }).length
+                  } Verified
+                </span>
               </div>
             </div>
           </div>
@@ -880,7 +971,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           <div className="grid grid-cols-1 gap-4 md:gap-6">
             {filteredSubmissions.length === 0 ? (
               <div className="p-8 md:p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
-                <p className="opacity-30 dark:text-white text-slate-500 text-sm">No {subStatusFilter !== 'all' ? subStatusFilter : ''} submissions found.</p>
+                <p className="opacity-30 dark:text-white text-slate-500 text-sm">
+                  No {subStatusFilter !== 'all' ? subStatusFilter : ''} {completionFilter !== 'all' ? `(${completionFilter})` : ''} submissions found.
+                </p>
               </div>
             ) : (
               filteredSubmissions.map(sub => {
@@ -1188,6 +1281,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               {sub.completion_status}
                             </div>
                           )}
+
+                          {(() => {
+                            const subEvent = events.find((e: any) => e.id === sub.event_id);
+                            if (!subEvent) return null;
+                            return (
+                              <div className="text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full border bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border-zinc-500/20 flex items-center gap-1">
+                                📅 {subEvent.title}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                       <div className="flex flex-wrap gap-2 w-full sm:w-auto">
