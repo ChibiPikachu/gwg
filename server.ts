@@ -993,10 +993,90 @@ async function createServer() {
 
   // IGDB Game Search
   app.get('/api/games/search', async (req, res) => {
-    const { query } = req.query;
-    if (!query) return res.json([]);
+    const { query, igdbId } = req.query;
+    if (!query && !igdbId) return res.json([]);
 
     try {
+      if (igdbId) {
+        const idStr = String(igdbId).trim();
+        const localSupabase = getSupabase();
+        if (localSupabase && idStr) {
+          try {
+            const { data: matchedGame } = await localSupabase
+              .from('games')
+              .select('*')
+              .eq('id', idStr)
+              .maybeSingle();
+
+            if (matchedGame) {
+              console.log(`[IGDB ID Search] Found exact local DB game with ID: ${idStr}`);
+              return res.json([{
+                id: matchedGame.id,
+                title: matchedGame.title,
+                image: matchedGame.image_url || 'https://via.placeholder.com/264x352?text=No+Cover',
+                summary: matchedGame.summary || "Existing game in system.",
+                steam_appid: matchedGame.steam_appid
+              }]);
+            }
+          } catch (dbErr) {
+            console.error('[IGDB ID Search] Failed to check IGDB ID match in local DB:', dbErr);
+          }
+        }
+
+        // Fetch from IGDB by explicit ID if not found in local DB!
+        try {
+          console.log(`[IGDB ID Search Web] Querying IGDB by ID: ${idStr}`);
+          const token = await getIGDBToken();
+          const response = await fetch('https://api.igdb.com/v4/games', {
+            method: 'POST',
+            headers: {
+              'Client-ID': process.env.IGDB_CLIENT_ID!,
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'text/plain'
+            },
+            body: `where id = ${idStr}; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category;`
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            console.error('[IGDB ID Search Web] API Error:', response.status, errText);
+            if (response.status === 401) {
+              igdbToken = null;
+            }
+            return res.status(response.status).json({ error: 'IGDB API rejected request', details: errText });
+          }
+
+          const data: any = await response.json();
+          if (!Array.isArray(data) || data.length === 0) {
+            return res.json([]);
+          }
+
+          const results = data.map((game: any) => {
+            let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
+            if (!steamId) {
+              const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url?.includes('store.steampowered.com/app/'));
+              if (steamWebsite) {
+                const match = steamWebsite.url.match(/\/app\/(\d+)/);
+                if (match) steamId = match[1];
+              }
+            }
+
+            return {
+              id: game.id,
+              title: game.name,
+              image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+              summary: game.summary,
+              steam_appid: steamId
+            };
+          });
+
+          return res.json(results);
+        } catch (err) {
+          console.error('[IGDB ID Search Web] Crash:', err);
+          return res.status(500).json({ error: 'Search by ID crashed', details: String(err) });
+        }
+      }
+
       const queryStr = String(query).trim();
 
       // Check if the query is an IGDB ID (or game ID string) matching a game in our local database first

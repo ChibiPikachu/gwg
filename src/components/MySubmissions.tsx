@@ -74,6 +74,7 @@ export default function MySubmissions() {
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [showForm, setShowForm] = React.useState(false);
   const [gameSearch, setGameSearch] = React.useState('');
+  const [igdbIdSearch, setIgdbIdSearch] = React.useState('');
   const [searching, setSearching] = React.useState(false);
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [searchError, setSearchError] = React.useState<string | null>(null);
@@ -301,7 +302,7 @@ export default function MySubmissions() {
 
   // Debounced real-time search
   React.useEffect(() => {
-    if (!gameSearch.trim()) {
+    if (!gameSearch.trim() && !igdbIdSearch.trim()) {
       setSearchResults([]);
       return;
     }
@@ -310,7 +311,14 @@ export default function MySubmissions() {
       setSearching(true);
       setSearchError(null);
       try {
-        const res = await fetch(`/api/games/search?query=${encodeURIComponent(gameSearch)}`);
+        let url = '';
+        if (igdbIdSearch.trim()) {
+          url = `/api/games/search?igdbId=${encodeURIComponent(igdbIdSearch.trim())}`;
+        } else {
+          url = `/api/games/search?query=${encodeURIComponent(gameSearch.trim())}`;
+        }
+
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data);
@@ -327,7 +335,7 @@ export default function MySubmissions() {
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timer);
-  }, [gameSearch]);
+  }, [gameSearch, igdbIdSearch]);
 
   // Handle Escape key
   React.useEffect(() => {
@@ -492,6 +500,7 @@ export default function MySubmissions() {
     });
     setSearchResults([]);
     setGameSearch('');
+    setIgdbIdSearch('');
     setSteamVerifyMsg(null);
     setSteamTotalStats(null);
   };
@@ -576,23 +585,51 @@ export default function MySubmissions() {
                 <div className="space-y-6">
                   <div className="space-y-4">
                     <label className="text-xs uppercase font-bold opacity-30 tracking-widest dark:text-white text-slate-500">Search Game</label>
-                    <div className="relative group">
-                      <Search className={cn(
-                        "absolute left-4 top-1/2 -translate-y-1/2 transition-colors",
-                        searching ? theme.text : `text-slate-300 dark:text-white/20 group-focus-within:${theme.text}`
-                      )} size={18} />
-                      <input 
-                        type="text"
-                        placeholder="Start typing a game title..."
-                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
-                        value={gameSearch}
-                        onChange={(e) => setGameSearch(e.target.value)}
-                      />
-                      {searching && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                          <Loader2 className={cn("animate-spin", theme.text)} size={18} />
-                        </div>
-                      )}
+                    <div className="flex gap-3">
+                      <div className="relative flex-1 group">
+                        <Search className={cn(
+                          "absolute left-4 top-1/2 -translate-y-1/2 transition-colors",
+                          searching && !igdbIdSearch.trim() ? theme.text : `text-slate-300 dark:text-white/20 group-focus-within:${theme.text}`
+                        )} size={18} />
+                        <input 
+                          type="text"
+                          placeholder="Start typing a game title..."
+                          className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                          value={gameSearch}
+                          onChange={(e) => {
+                            setGameSearch(e.target.value);
+                            if (e.target.value.trim()) {
+                              setIgdbIdSearch('');
+                            }
+                          }}
+                        />
+                        {searching && !igdbIdSearch.trim() && (
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                            <Loader2 className={cn("animate-spin", theme.text)} size={18} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="relative w-36 group">
+                        <input 
+                          type="text"
+                          placeholder="IGDB ID"
+                          className={cn("w-full text-center dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 px-3 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                          value={igdbIdSearch}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setIgdbIdSearch(val);
+                            if (val.trim()) {
+                              setGameSearch('');
+                            }
+                          }}
+                        />
+                        {searching && igdbIdSearch.trim() && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className={cn("animate-spin", theme.text)} size={14} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
