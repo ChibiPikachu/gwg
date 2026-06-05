@@ -226,7 +226,12 @@ export default function MySubmissions() {
     }
 
     const earned = parseInt(formData.achievementsEarned) || 0;
-    const bonus = formData.completionStatus === 'completed' ? 20 : 0;
+    let bonus = 0;
+    if (formData.completionStatus === 'completed') {
+      bonus = 30;
+    } else if (formData.completionStatus === 'beaten') {
+      bonus = 15;
+    }
     return Math.round(earned * multiplierPreview) + bonus;
   }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
 

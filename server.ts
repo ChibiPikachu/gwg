@@ -1654,9 +1654,11 @@ async function createServer() {
 
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
       
-      // Completion Bonus: +20 for 'completed'
+      // Completion Bonus: +30 for 'completed', +15 for 'beaten' in games with achievements
       if (completionStatus === 'completed') {
-        serverPoints += 20;
+        serverPoints += 30;
+      } else if (completionStatus === 'beaten') {
+        serverPoints += 15;
       }
 
       // Check if this is a game with no achievements
@@ -1800,7 +1802,9 @@ async function createServer() {
 
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
       if (completionStatus === 'completed') {
-        serverPoints += 20;
+        serverPoints += 30;
+      } else if (completionStatus === 'beaten') {
+        serverPoints += 15;
       }
 
       // Check if this is a game with no achievements
@@ -2050,7 +2054,12 @@ async function createServer() {
         else if (hours < 25) multiplier = 3.0;
         else multiplier = 4.0;
 
-        let correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier) + (sub.completion_status === 'completed' ? 20 : 0);
+        let correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier);
+        if (sub.completion_status === 'completed') {
+          correctPoints += 30;
+        } else if (sub.completion_status === 'beaten') {
+          correctPoints += 15;
+        }
         
         const meta = parseNotesMeta(sub.notes || '');
         if (meta.hasNoAchievements) {

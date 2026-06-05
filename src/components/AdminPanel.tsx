@@ -449,7 +449,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       return String(nonAchPts);
     }
     const achs = parseInt(achievementsVal) || 0;
-    const basePoints = Math.round(achs * multiplierVal) + (sub?.completion_status === 'completed' ? 20 : 0);
+    let bonus = 0;
+    if (sub?.completion_status === 'completed') {
+      bonus = 30;
+    } else if (sub?.completion_status === 'beaten') {
+      bonus = 15;
+    }
+    const basePoints = Math.round(achs * multiplierVal) + bonus;
     return String(basePoints);
   };
 
@@ -1439,7 +1445,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               const finalPlayTime = Math.max(0, hours - hoursBefore);
                               basePoints = calculateNonAchievementPoints(initialLvl, finalPlayTime, hltb, sub.completion_status);
                             } else {
-                              basePoints = Math.round(achievements * m) + (sub.completion_status === 'completed' ? 20 : 0);
+                              let bonus = 0;
+                              if (sub.completion_status === 'completed') {
+                                bonus = 30;
+                              } else if (sub.completion_status === 'beaten') {
+                                bonus = 15;
+                              }
+                              basePoints = Math.round(achievements * m) + bonus;
                             }
                             setPointsAwarded(String(basePoints));
                             setRejectionReason(sub.rejection_reason || '');
