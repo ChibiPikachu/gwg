@@ -182,16 +182,24 @@ export default function MySubmissions() {
   }, [events]);
 
   const currentEventSubmissions = React.useMemo(() => {
+    const active = events.find(e => e.is_active);
+    const startTime = active ? new Date(active.start_date || active.start_date).getTime() : Infinity;
     return filteredSubmissions.filter(sub => {
       if (events.length === 0) return true;
+      const subTime = new Date(sub.created_at || 0).getTime();
+      if (subTime >= startTime) return true;
       if (!sub.event_id) return true;
       return activeEventIds.has(sub.event_id);
     });
   }, [filteredSubmissions, events, activeEventIds]);
 
   const pastEventSubmissions = React.useMemo(() => {
+    const active = events.find(e => e.is_active);
+    const startTime = active ? new Date(active.start_date || active.start_date).getTime() : Infinity;
     return filteredSubmissions.filter(sub => {
       if (events.length === 0) return false;
+      const subTime = new Date(sub.created_at || 0).getTime();
+      if (subTime >= startTime) return false;
       if (!sub.event_id) return false;
       return inactiveEventIds.has(sub.event_id);
     });

@@ -529,6 +529,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
+  const checkIsCurrentSub = React.useCallback((s: any) => {
+    if (!activeEvent) return false;
+    if (s.event_id === activeEvent.id) return true;
+    const subTime = new Date(s.created_at || 0).getTime();
+    const eventStartTime = new Date(activeEvent.start_date || activeEvent.startDate).getTime();
+    return subTime >= eventStartTime;
+  }, [activeEvent]);
+
   const safeUsers = Array.isArray(users) ? users : [];
   const teamsFilter: Team[] = ['blue', 'green', 'purple', 'red', 'none'];
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -562,7 +570,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     if (sub.game_name === 'Event Update' || sub.game_name === 'Screenshot Points') return false;
 
     // Distinguish based on activeTab: 'submissions' (current event specs) vs 'previous_submissions' (archive)
-    const isCurrent = activeEvent ? (sub.event_id === activeEvent.id) : false;
+    const isCurrent = checkIsCurrentSub(sub);
     if (activeTab === 'submissions' && !isCurrent) return false;
     if (activeTab === 'previous_submissions' && isCurrent) return false;
 
@@ -640,9 +648,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
         >
           Game Submissions
-          {submissions.filter(s => s.status === 'pending' && (activeEvent ? s.event_id === activeEvent.id : false)).length > 0 && (
+          {submissions.filter(s => s.status === 'pending' && checkIsCurrentSub(s)).length > 0 && (
             <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0", theme.bg)}>
-              {submissions.filter(s => s.status === 'pending' && (activeEvent ? s.event_id === activeEvent.id : false)).length}
+              {submissions.filter(s => s.status === 'pending' && checkIsCurrentSub(s)).length}
             </span>
           )}
           {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
@@ -655,9 +663,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
         >
           Submissions Archive
-          {submissions.filter(s => s.status === 'pending' && (!activeEvent || s.event_id !== activeEvent.id)).length > 0 && (
+          {submissions.filter(s => s.status === 'pending' && !checkIsCurrentSub(s)).length > 0 && (
             <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0 bg-amber-500")}>
-              {submissions.filter(s => s.status === 'pending' && (!activeEvent || s.event_id !== activeEvent.id)).length}
+              {submissions.filter(s => s.status === 'pending' && !checkIsCurrentSub(s)).length}
             </span>
           )}
           {activeTab === 'previous_submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
@@ -1035,7 +1043,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   <Clock size={12} /> 
                   {
                     submissions.filter(s => {
-                      const isCurrent = activeEvent ? (s.event_id === activeEvent.id) : false;
+                      const isCurrent = checkIsCurrentSub(s);
                       const matchesTab = activeTab === 'submissions' ? isCurrent : !isCurrent;
                       return s.status === 'pending' && matchesTab;
                     }).length
@@ -1045,7 +1053,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   <CheckCircle2 size={12} /> 
                   {
                     submissions.filter(s => {
-                      const isCurrent = activeEvent ? (s.event_id === activeEvent.id) : false;
+                      const isCurrent = checkIsCurrentSub(s);
                       const matchesTab = activeTab === 'submissions' ? isCurrent : !isCurrent;
                       return s.status === 'verified' && matchesTab;
                     }).length

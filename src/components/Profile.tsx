@@ -18,6 +18,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [events, setEvents] = useState<any[]>([]);
   const [showSurvivorTooltip, setShowSurvivorTooltip] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>('all');
+  const [hoveredBadgeEventId, setHoveredBadgeEventId] = useState<string | null>(null);
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
 
@@ -236,18 +237,53 @@ export default function Profile({ steamId }: { steamId?: string }) {
                         : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
                       return userTeamForEvent === e.winner_team;
                     })
-                    .map(e => (
-                      <span
-                        key={e.id}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider select-none",
-                          getTeamBadgeClasses(e.winner_team)
-                        )}
-                      >
-                        <Trophy size={11} />
-                        <span>Event #{e.event_number} Winner</span>
-                      </span>
-                    ))}
+                    .map(e => {
+                      const userTeamForEvent = e.event_number === 3 
+                        ? targetUser?.eventTeams?.[e.id] 
+                        : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
+                      return (
+                        <div
+                          key={e.id}
+                          className="relative group/badge-tooltip"
+                          onMouseEnter={() => setHoveredBadgeEventId(e.id)}
+                          onMouseLeave={() => setHoveredBadgeEventId(null)}
+                        >
+                          <span
+                            className={cn(
+                              "flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider select-none cursor-help transition-all duration-150 hover:scale-[1.02]",
+                              getTeamBadgeClasses(e.winner_team)
+                            )}
+                          >
+                            <Trophy size={11} className="text-amber-500" />
+                            <span>Event #{e.event_number} Winner</span>
+                          </span>
+                          
+                          {hoveredBadgeEventId === e.id && (
+                            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-[9999] bg-zinc-950 border border-white/10 text-white p-3 rounded-xl shadow-2xl min-w-[240px] max-w-[280px] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-150">
+                              <div className="text-xs font-black text-amber-400 uppercase tracking-widest mb-1 select-none">
+                                Event #{e.event_number} Details
+                              </div>
+                              <div className="text-sm font-bold text-white leading-tight mb-1 select-none">
+                                {e.title || `Event #${e.event_number}`}
+                              </div>
+                              {e.description && (
+                                <p className="text-[11px] text-zinc-300 leading-normal line-clamp-3 select-none italic font-medium">
+                                  {e.description.replace(/<!--VOTING:.*?-->/g, '')}
+                                </p>
+                              )}
+                              <div className="mt-2 pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px] text-zinc-400 font-bold select-none">
+                                <span>Winner Team:</span>
+                                <span className="uppercase tracking-wider text-amber-400">{e.winner_team}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold select-none mt-0.5">
+                                <span>User's Team:</span>
+                                <span className="uppercase tracking-wider text-emerald-400">{userTeamForEvent || 'none'}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               )}
 
@@ -573,7 +609,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                         {/* Points pill dynamically themed to user's team */}
                         {sub.status === 'verified' && (
                           <div className={cn("px-3 py-1.5 rounded-xl text-xs font-mono font-black border uppercase tracking-wider shadow-inner text-center shrink-0 min-w-[70px]", 
-                            targetUser.team && targetUser.team !== 'none' 
+                            targetUser.team && TEAM_COLORS[targetUser.team as Team] && targetUser.team !== 'none' 
                               ? `${TEAM_COLORS[targetUser.team as Team].secondary} ${TEAM_COLORS[targetUser.team as Team].primary} dark:border-${targetUser.team}-500/30 border-${targetUser.team}-500/20` 
                               : "bg-slate-50 dark:bg-zinc-900 border-black/5 dark:border-white/5 dark:text-white text-slate-800"
                           )}>
