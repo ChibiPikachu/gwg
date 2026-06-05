@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -494,7 +494,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const filteredUsers = safeUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
     const matchesSearch = (u.steam_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         (u.discord_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+                          (u.discord_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          String(u.steamid || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTeam && matchesSearch;
   });
 
@@ -510,7 +511,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     const matchesStatus = subStatusFilter === 'all' || sub.status === subStatusFilter;
     const matchesCompletion = completionFilter === 'all' || sub.completion_status === completionFilter || (completionFilter === 'unfinished' && !sub.completion_status);
     const matchesSearch = (sub.game_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         (sub.user_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+                          (sub.user_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          String(sub.user_id || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTeam && matchesStatus && matchesCompletion && matchesSearch;
   }).sort((a, b) => {
     if (subStatusFilter === 'pending') {
@@ -614,179 +616,183 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       </div>
 
       {activeTab !== 'team_points' && (
-        <section className="flex flex-col lg:flex-row gap-4 md:gap-6 justify-between items-start lg:items-center">
-        <div className="flex-1 w-full flex flex-col gap-4 md:gap-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-            <div className="w-full sm:max-w-md">
-              <h2 className="text-lg md:text-xl font-bold mb-2 md:mb-4 dark:text-white text-slate-900">Search & Filters</h2>
+        <section className="dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex-1 w-full max-w-xl">
+              <span className="text-[10px] uppercase font-black tracking-widest opacity-40 block mb-2 dark:text-white text-slate-500">Query Database</span>
               <div className="relative group">
                 <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 dark:text-white/20 text-slate-300 transition-colors", `group-focus-within:${theme.text}`)} size={18} />
                 <input 
                   type="text"
-                  placeholder={activeTab === 'users' ? "Search users by name..." : "Search by game or user name..."}
-                  className={cn("w-full dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-xl py-3 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                  placeholder={activeTab === 'users' ? "Search users by name, Discord or Steam ID..." : "Search by game title, player name or Steam ID..."}
+                  className={cn("w-full dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-2xl py-3.5 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:ring-1 focus:${theme.border}/50`)}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
             </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2">
-            <button 
-              onClick={() => setFilterTeam('all')}
-              className={cn(
-                  "px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-bold transition-all dark:bg-white/5 bg-black/5 dark:border-transparent border-black/5 hover:dark:bg-white/10 hover:bg-black/10 dark:text-white text-slate-700",
-                  filterTeam === 'all' && "dark:bg-white/10 bg-black/10 ring-1 dark:ring-white/20 ring-black/10 border-white/10"
-              )}
-            >
-              All Teams
-            </button>
-            {teamsFilter.map(team => (
-              <button
-                key={team}
-                onClick={() => setFilterTeam(team)}
-                className={cn(
-                    "px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-bold transition-all",
-                    filterTeam === team 
-                      ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
-                      : "dark:bg-white/5 bg-black/5 dark:text-white text-slate-700 opacity-50 border border-transparent hover:opacity-100"
-                )}
-              >
-                {team.charAt(0).toUpperCase() + team.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-        
-        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto relative">
-          <div className="dark:bg-white/5 bg-white px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 shadow-sm dark:shadow-none h-12 md:h-14 flex items-center justify-center w-full sm:w-auto order-last sm:order-first">
-            <span className={cn("text-xl md:text-2xl font-mono font-bold", theme.text)}>
-              {activeTab === 'users' ? filteredUsers.length : filteredSubmissions.length}
-            </span>
-            <span className="text-[10px] uppercase font-bold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">
-              {activeTab === 'users' ? 'Users' : 'Submissions'} Found
-            </span>
-          </div>
 
-          {activeTab === 'users' && (
-            <div className="relative">
-              <button 
-                onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
-                className={cn(
-                  "p-3 rounded-xl transition-all border flex items-center justify-center",
-                  "dark:bg-white/5 bg-white dark:border-white/10 border-black/10 hover:dark:bg-white/10 hover:bg-slate-50",
-                  isAdminMenuOpen ? theme.text + " " + theme.border : "dark:text-white/40 text-slate-500"
-                )}
-                title="Global Admin Actions"
-              >
-                <Settings size={20} className={cn(isAdminMenuOpen && "animate-spin-slow")} />
-              </button>
+            <div className="flex flex-col sm:flex-row items-center gap-4 shrink-0">
+              <div className="dark:bg-[#181818] bg-slate-50 px-6 py-3 rounded-2xl border dark:border-white/5 border-black/5 h-12 flex items-center justify-center w-full sm:w-auto">
+                <span className={cn("text-xl font-mono font-bold leading-none", theme.text)}>
+                  {activeTab === 'users' ? filteredUsers.length : filteredSubmissions.length}
+                </span>
+                <span className="text-[9px] uppercase font-extrabold opacity-30 ml-2 tracking-widest dark:text-white text-slate-500">
+                  {activeTab === 'users' ? 'Users' : 'Submissions'} Found
+                </span>
+              </div>
 
-              {isAdminMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setIsAdminMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-3 w-64 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-2 flex flex-col gap-1">
-                    <div className="px-3 py-2">
-                       <span className="text-[10px] font-black uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Global Actions</span>
-                    </div>
+              {activeTab === 'users' && (
+                <div className="relative w-full sm:w-auto">
+                  <button 
+                    onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
+                    className={cn(
+                      "w-full sm:w-12 h-12 rounded-2xl transition-all border flex items-center justify-center gap-2 font-bold uppercase text-[10px] sm:text-transparent",
+                      "dark:bg-[#181818] bg-slate-50 dark:border-white/5 border-black/5 hover:dark:bg-white/5 hover:bg-slate-100",
+                      isAdminMenuOpen ? theme.text + " " + theme.border : "dark:text-white/40 text-slate-500"
+                    )}
+                    title="Global Admin Actions"
+                  >
+                    <Settings size={18} className={cn(isAdminMenuOpen && "animate-spin-slow")} />
+                    <span className="sm:hidden">Global Config Menu</span>
+                  </button>
 
-                    <button 
-                      onClick={async () => {
-                        if (!window.confirm('Search IGDB for missing IDs?')) return;
-                        setIsAdminMenuOpen(false);
-                        setLoading(true);
-                        try {
-                          const res = await fetch('/api/admin/repair-submissions', { method: 'POST' });
-                          const result = await res.json();
-                          alert(res.ok ? `Repair complete! Updated ${result.updatedCount} items.` : `Error: ${result.error}`);
-                          fetchData();
-                        } catch (err) { alert('Failed to trigger repair'); } finally { setLoading(false); }
-                      }}
-                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-emerald-400 text-emerald-600 hover:dark:bg-emerald-500/10 hover:bg-emerald-50 rounded-xl transition-colors text-left"
-                    >
-                      <Settings size={14} />
-                      Repair Missing IDs
-                    </button>
+                  {isAdminMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsAdminMenuOpen(false)} />
+                      <div className="absolute right-0 top-full mt-3 w-64 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-2 flex flex-col gap-1">
+                        <div className="px-3 py-1.5 border-b dark:border-white/5 border-black/5 mb-1">
+                           <span className="text-[9px] font-extrabold uppercase tracking-widest opacity-30 dark:text-white text-slate-500">Global Actions</span>
+                        </div>
 
-                    <button 
-                      onClick={async () => {
-                        if (!window.confirm('Backfill HLTB times in batches? (Limited to games with existing submissions)')) return;
-                        setIsAdminMenuOpen(false);
-                        setBackfillProgress({ processed: 0, remaining: 1, total: 0 });
-                        
-                        let remaining = 1; 
-                        let totalProcessed = 0;
-                        let totalUpdated = 0;
-                        let isFirst = true;
+                        <button 
+                          onClick={async () => {
+                            if (!window.confirm('Search IGDB for missing IDs?')) return;
+                            setIsAdminMenuOpen(false);
+                            setLoading(true);
+                            try {
+                              const res = await fetch('/api/admin/repair-submissions', { method: 'POST' });
+                              const result = await res.json();
+                              alert(res.ok ? `Repair complete! Updated ${result.updatedCount} items.` : `Error: ${result.error}`);
+                              fetchData();
+                            } catch (err) { alert('Failed to trigger repair'); } finally { setLoading(false); }
+                          }}
+                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold uppercase dark:text-emerald-400 text-emerald-600 hover:dark:bg-emerald-500/10 hover:bg-emerald-50 rounded-xl transition-colors text-left"
+                        >
+                          <Settings size={14} />
+                          Repair Missing IDs
+                        </button>
 
-                        try {
-                          while (remaining > 0) {
-                            const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
-                            const data = await res.json();
-                            if (data.error) throw new Error(data.error);
+                        <button 
+                          onClick={async () => {
+                            if (!window.confirm('Backfill HLTB times in batches? (Limited to games with existing submissions)')) return;
+                            setIsAdminMenuOpen(false);
+                            setBackfillProgress({ processed: 0, remaining: 1, total: 0 });
                             
-                            if (isFirst) {
-                              const total = (data.processedCount || 0) + (data.remaining || 0);
-                              setBackfillProgress({ processed: 0, remaining: total, total: total });
-                              isFirst = false;
+                            let remaining = 1; 
+                            let totalProcessed = 0;
+                            let totalUpdated = 0;
+                            let isFirst = true;
+
+                            try {
+                              while (remaining > 0) {
+                                const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
+                                const data = await res.json();
+                                if (data.error) throw new Error(data.error);
+                                
+                                if (isFirst) {
+                                  const total = (data.processedCount || 0) + (data.remaining || 0);
+                                  setBackfillProgress({ processed: 0, remaining: total, total: total });
+                                  isFirst = false;
+                                }
+
+                                remaining = data.remaining || 0;
+                                totalProcessed += (data.processedCount || 0);
+                                totalUpdated += (data.updated || 0);
+                                
+                                setBackfillProgress(prev => prev ? ({ ...prev, processed: totalProcessed, remaining }) : null);
+
+                                if (remaining > 0) await new Promise(r => setTimeout(r, 1000));
+                              }
+                              alert(`HLTB Backfill Complete! Successfully updated ${totalUpdated} games. Total processed: ${totalProcessed}`);
+                              fetchSubmissions(); // Refresh the submissions list as HLTB data might have changed
+                            } catch (err: any) { 
+                              alert(`Backfill stopped: ${err.message}`); 
+                            } finally { 
+                              setBackfillProgress(null);
                             }
+                          }}
+                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold uppercase dark:text-blue-400 text-blue-600 hover:dark:bg-blue-500/10 hover:bg-blue-50 rounded-xl transition-colors text-left"
+                        >
+                          <Search size={14} />
+                          Backfill HLTB Cache
+                        </button>
 
-                            remaining = data.remaining || 0;
-                            totalProcessed += (data.processedCount || 0);
-                            totalUpdated += (data.updated || 0);
-                            
-                            setBackfillProgress(prev => prev ? ({ ...prev, processed: totalProcessed, remaining }) : null);
-
-                            if (remaining > 0) await new Promise(r => setTimeout(r, 1000));
-                          }
-                          alert(`HLTB Backfill Complete! Successly updated ${totalUpdated} games. Total processed: ${totalProcessed}`);
-                          fetchSubmissions(); // Refresh the submissions list as HLTB data might have changed
-                        } catch (err: any) { 
-                          alert(`Backfill stopped: ${err.message}`); 
-                        } finally { 
-                          setBackfillProgress(null);
-                        }
-                      }}
-                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-blue-400 text-blue-600 hover:dark:bg-blue-500/10 hover:bg-blue-50 rounded-xl transition-colors text-left"
-                    >
-                      <Search size={14} />
-                      Backfill HLTB Cache
-                    </button>
-
-                    <button 
-                      onClick={async () => {
-                        if (!window.confirm('Recalculate ALL points?')) return;
-                        setIsAdminMenuOpen(false);
-                        setLoading(true);
-                        try {
-                          const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
-                          if (res.ok) { alert('Recalculated successfully!'); fetchData(); }
-                          else { const d = await res.json(); alert(`Error: ${d.error}`); }
-                        } catch (err) { alert('Failed to recalculate'); } finally { setLoading(false); }
-                      }}
-                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-purple-400 text-purple-600 hover:dark:bg-purple-500/10 hover:bg-purple-50 rounded-xl transition-colors text-left"
-                    >
-                      <Clock size={14} />
-                      Recalculate All
-                    </button>
-                    
-                    <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
-                    
-                    <button 
-                      onClick={() => { setIsAdminMenuOpen(false); fetchData(); }}
-                      className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900 hover:dark:bg-white/5 hover:bg-black/5 rounded-xl transition-colors text-left"
-                    >
-                      <CheckCircle2 size={14} />
-                      Refresh Data
-                    </button>
-                  </div>
-                </>
+                        <button 
+                          onClick={async () => {
+                            if (!window.confirm('Recalculate ALL points?')) return;
+                            setIsAdminMenuOpen(false);
+                            setLoading(true);
+                            try {
+                              const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
+                              if (res.ok) { alert('Recalculated successfully!'); fetchData(); }
+                              else { const d = await res.json(); alert(`Error: ${d.error}`); }
+                            } catch (err) { alert('Failed to recalculate'); } finally { setLoading(false); }
+                          }}
+                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold uppercase dark:text-purple-400 text-purple-600 hover:dark:bg-purple-500/10 hover:bg-purple-50 rounded-xl transition-colors text-left"
+                        >
+                          <Clock size={14} />
+                          Recalculate All
+                        </button>
+                        
+                        <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
+                        
+                        <button 
+                          onClick={() => { setIsAdminMenuOpen(false); fetchData(); }}
+                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold uppercase dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900 hover:dark:bg-white/5 hover:bg-black/5 rounded-xl transition-colors text-left"
+                        >
+                          <CheckCircle2 size={14} />
+                          Refresh Data
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
-      </section>
+          </div>
+
+          <div className="h-[1px] dark:bg-white/5 bg-black/5 w-full -my-1" />
+
+          <div className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase font-bold tracking-widest opacity-40 dark:text-white text-slate-500">Filter by Team Allocation</span>
+            <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={() => setFilterTeam('all')}
+                className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all border dark:bg-[#181818] bg-slate-50 dark:border-white/5 border-black/5 hover:dark:bg-white/5 hover:bg-black/5 dark:text-white text-slate-700",
+                    filterTeam === 'all' && `dark:bg-white/10 bg-black/10 ring-1 dark:ring-white/20 ring-black/10 ${theme.border}`
+                )}
+              >
+                All Teams
+              </button>
+              {teamsFilter.map(team => (
+                <button
+                  key={team}
+                  onClick={() => setFilterTeam(team)}
+                  className={cn(
+                      "px-4 py-2 rounded-xl text-xs font-bold transition-all border dark:border-white/5 border-black/5",
+                      filterTeam === team 
+                        ? `${TEAM_COLORS[team].primary} ${TEAM_COLORS[team].secondary} ring-1 ring-${team === 'none' ? 'white/20' : team + '-accent'}`
+                        : "dark:bg-[#181818] bg-slate-50 dark:text-white/60 text-slate-500 opacity-65 hover:opacity-100"
+                  )}
+                >
+                  {team.charAt(0).toUpperCase() + team.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
       {activeTab !== 'team_points' ? (
@@ -800,93 +806,107 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           />
 
           <section>
-            <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-8">User Directory</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 md:gap-y-12">
+            <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-8 dark:text-white text-slate-900">User Directory</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
               {filteredUsers.map((u) => (
-                <div key={u.steamid} className="flex flex-col gap-4 md:gap-5 p-4 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm dark:shadow-none min-w-0">
-                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                <div key={u.steamid} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm hover:dark:border-white/10 hover:border-black/10 transition-all min-w-0">
+                  <div className="flex items-center gap-4 min-w-0">
                       <button 
                         onClick={() => onViewProfile?.(u.steamid)}
                         className={cn(
-                          "w-12 h-12 md:w-14 md:h-14 rounded-full border-2 p-1 shrink-0 transition-transform hover:scale-110 active:scale-95",
+                          "w-12 h-12 md:w-14 md:h-14 rounded-full border-2 p-1 shrink-0 transition-all hover:scale-105 active:scale-95",
                           u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "dark:border-white/10 border-black/10"
                         )}
+                        title="View Profile"
                       >
                         <img src={u.steam_avatar} alt="" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
                       </button>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                             <span className="text-sm font-black text-blue-400 truncate">{u.steam_name}</span>
+                            {u.role === 'admin' && (
+                              <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 border border-red-500/20">Admin</span>
+                            )}
                             {u.discord_name && (
                               <span className="text-[10px] font-bold dark:text-white/40 text-slate-400 truncate">
                                 ({u.discord_name})
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] uppercase tracking-widest font-bold opacity-30 dark:text-white text-slate-500">Points:</span>
-                            <span className={cn("text-xs font-mono font-bold", theme.text)}>{u.points || 0}</span>
+                        <div className="flex items-center gap-3 mt-1 shrink-0">
+                          <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Points:</span>
+                              <span className={cn("text-xs font-mono font-bold", theme.text)}>{u.points || 0}</span>
+                          </div>
+                          <span className="text-slate-300 dark:text-white/10">|</span>
+                          <span className="text-[10px] font-mono opacity-40 dark:text-white/40 text-slate-400 select-all" title="Click to select Steam ID">ID: {u.steamid}</span>
                         </div>
                       </div>
                   </div>
 
-                      <div className="flex flex-col gap-2 md:gap-3">
-                        <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Assign to team:</span>
-                        <div className="flex flex-wrap md:flex-nowrap gap-2">
-                          {teamsFilter.map(team => (
-                              <button 
-                                key={team}
-                                disabled={updating === u.steamid}
-                                onClick={() => assignTeam(u.steamid, team)}
-                                className={cn(
-                                    "flex-1 py-2 px-1 rounded-lg text-[9px] md:text-[10px] font-bold uppercase transition-all",
-                                    (u.team === team || (!u.team && team === 'none')) 
-                                      ? `${TEAM_COLORS[team].secondary} ${TEAM_COLORS[team].primary} ring-1 ring-${team}-accent`
-                                      : "dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:bg-white/10 hover:bg-slate-100",
-                                    updating === u.steamid && "opacity-50 cursor-not-allowed"
-                                )}
-                              >
-                                {team}
-                              </button>
-                          ))}
-                          
-                          <div className="relative group/settings shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
-                             <button
-                               onClick={() => setSettingsUserId(settingsUserId === u.steamid ? null : u.steamid)}
-                               className="h-full w-full py-2 sm:py-0 px-3 dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-slate-900 rounded-lg transition-colors flex items-center justify-center border dark:border-transparent border-black/5"
-                             >
-                               <Settings size={14} className={cn(settingsUserId === u.steamid && theme.text)} />
-                             </button>
-                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-[10px] font-bold rounded opacity-0 sm:group-hover/settings:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-30 hidden sm:block">
-                               Settings
-                             </div>
-                             
-                             {settingsUserId === u.steamid && (
-                               <div className="absolute right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 bottom-full mb-3 w-48 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                                 <div className="p-2 flex flex-col gap-1">
-                                   <button 
-                                     onClick={() => handleUpdateRole(u.steamid, u.role === 'admin' ? 'member' : 'admin')}
-                                     disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
-                                     className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase dark:text-white text-slate-700 hover:dark:bg-white/5 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
-                                   >
-                                     <Shield size={14} className={u.role === 'admin' ? 'text-red-500' : 'text-emerald-500'} />
-                                     {u.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
-                                   </button>
-                                   <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
-                                   <button 
-                                     onClick={() => handleKickUser(u.steamid, u.steam_name)}
-                                     disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
-                                     className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                                   >
-                                     <XCircle size={14} />
-                                     Kick Member
-                                   </button>
-                                 </div>
-                               </div>
-                             )}
-                          </div>
+                  <div className="flex items-center gap-3 self-end sm:self-auto shrink-0 w-full sm:w-auto justify-end">
+                    <div className="flex flex-col gap-1 w-32 md:w-36">
+                      <span className="text-[9px] uppercase font-extrabold opacity-30 dark:text-white text-slate-500 tracking-wider">Assign Team</span>
+                      <div className="relative">
+                        <select
+                          value={u.team || 'none'}
+                          disabled={updating === u.steamid}
+                          onChange={(e) => assignTeam(u.steamid, e.target.value as Team)}
+                          className={cn(
+                            "appearance-none dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-3 py-1.5 pr-8 text-[11px] font-bold uppercase tracking-wider focus:outline-none transition-all w-full cursor-pointer h-9",
+                            u.team && u.team !== 'none' 
+                              ? `${TEAM_COLORS[u.team as Team].secondary} ${TEAM_COLORS[u.team as Team].primary} dark:border-${u.team}-500/30 border-${u.team}-500/20` 
+                              : "dark:text-white/60 text-slate-600"
+                          )}
+                        >
+                          <option value="none" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">None/Unassigned</option>
+                          <option value="blue" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Blue Team</option>
+                          <option value="green" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Green Team</option>
+                          <option value="purple" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Purple Team</option>
+                          <option value="red" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Red Team</option>
+                        </select>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
+                          <ChevronDown size={12} />
                         </div>
                       </div>
+                    </div>
+
+                    <div className="relative mt-4">
+                       <button
+                         onClick={() => setSettingsUserId(settingsUserId === u.steamid ? null : u.steamid)}
+                         className="h-9 w-9 dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-slate-900 rounded-xl transition-colors flex items-center justify-center border dark:border-transparent border-black/5 hover:border-black/10 shrink-0"
+                         title="Account Actions"
+                       >
+                         <Settings size={14} className={cn(settingsUserId === u.steamid && theme.text)} />
+                       </button>
+                       {settingsUserId === u.steamid && (
+                         <>
+                           <div className="fixed inset-0 z-30" onClick={() => setSettingsUserId(null)} />
+                           <div className="absolute right-0 bottom-full mb-2 w-48 dark:bg-[#1c1c1c] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                             <div className="p-1.5 flex flex-col gap-0.5">
+                               <button 
+                                 onClick={() => { handleUpdateRole(u.steamid, u.role === 'admin' ? 'member' : 'admin'); setSettingsUserId(null); }}
+                                 disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
+                                 className="flex items-center gap-2 w-full px-3 py-2 text-left text-[10px] font-bold uppercase dark:text-white text-slate-700 hover:dark:bg-white/10 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
+                               >
+                                 <Shield size={14} className={u.role === 'admin' ? 'text-red-500' : 'text-emerald-500'} />
+                                 {u.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                               </button>
+                               <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
+                               <button 
+                                 onClick={() => { handleKickUser(u.steamid, u.steam_name); setSettingsUserId(null); }}
+                                 disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
+                                 className="flex items-center gap-2 w-full px-3 py-2 text-left text-[10px] font-bold uppercase text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                               >
+                                 <XCircle size={14} />
+                                 Kick Member
+                               </button>
+                             </div>
+                           </div>
+                         </>
+                       )}
+                     </div>
+                  </div>
                 </div>
               ))}
             </div>
