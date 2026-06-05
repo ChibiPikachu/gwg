@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TEAM_COLORS } from '@/types';
+import { Team, TEAM_COLORS } from '@/types';
 
 export default function Profile({ steamId }: { steamId?: string }) {
   const { user: currentUser, theme, syncWithDiscord, updateProfile } = useAuth();
@@ -17,6 +17,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [loadingSubmissions, setLoadingSubmissions] = useState(true);
   const [events, setEvents] = useState<any[]>([]);
   const [showSurvivorTooltip, setShowSurvivorTooltip] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string>('all');
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
 
@@ -140,6 +141,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const activeEvent = Array.isArray(events) ? events.find((e: any) => e.is_active) : null;
   const hideScores = !!activeEvent?.hide_scores;
   const hideUserScores = hideScores && !isOwnProfile;
+
+  const sortedEvents = React.useMemo(() => {
+    return [...events].sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
+  }, [events]);
+
+  const filteredSubmissions = React.useMemo(() => {
+    if (selectedEventId === 'all') return submissions;
+    return submissions.filter((s: any) => s.event_id === selectedEventId);
+  }, [submissions, selectedEventId]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
@@ -392,58 +402,190 @@ export default function Profile({ steamId }: { steamId?: string }) {
             <div className={cn("w-8 h-8 border-2 border-t-transparent rounded-full animate-spin", theme.border)}></div>
           </div>
         ) : submissions.length === 0 ? (
-          <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 opacity-30 italic">
+          <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 opacity-35 italic font-bold">
             No submissions found for this user.
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {submissions.map((sub) => (
-              <div 
-                key={sub.id} 
-                className="group p-4 dark:bg-[#111111] bg-white rounded-xl border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
+          <div className="flex flex-col gap-6">
+            {/* Horizontal event-submissions tabs scroll */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b dark:border-white/5 border-black/5 scrollbar-thin scrollbar-thumb-rounded">
+              <button
+                type="button"
+                onClick={() => setSelectedEventId('all')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-150 shrink-0 border flex items-center gap-2",
+                  selectedEventId === 'all'
+                    ? "dark:bg-white dark:text-zinc-950 bg-slate-900 text-white border-transparent shadow-md"
+                    : "dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/60 text-slate-600"
+                )}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-16 rounded overflow-hidden bg-white/5 shrink-0 border border-white/5 relative">
-                    {sub.game_image ? (
-                      <img src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} alt={sub.game_name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center opacity-20">
-                        <Gamepad2 size={24} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-lg dark:text-white text-slate-800">{sub.game_name}</h3>
-                      {sub.steam_appid && (
-                        <a 
-                          href={`https://store.steampowered.com/app/${sub.steam_appid}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 hover:bg-white/5 rounded text-blue-400 opacity-60 hover:opacity-100 transition-all"
-                          title="View on Steam"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs opacity-60 flex-wrap">
-                       <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 uppercase font-bold tracking-wider text-[10px]">
-                         {sub.platform}
-                       </span>
-                    </div>
-                  </div>
-                </div>
+                <History size={13} />
+                <span>All Events</span>
+                <span className={cn(
+                  "px-1.5 py-0.5 rounded-full text-[10px] font-black leading-none",
+                  selectedEventId === 'all'
+                    ? "dark:bg-black/10 bg-white/20 dark:text-zinc-950 text-white"
+                    : "dark:bg-white/10 bg-slate-200/50 dark:text-white text-slate-500"
+                )}>
+                  {submissions.length}
+                </span>
+              </button>
 
-                <div className="flex items-center justify-between md:justify-end gap-4">
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-[10px] opacity-40 uppercase font-black">
-                      {sub.completion_status}
+              {sortedEvents.map((evt) => {
+                const count = submissions.filter((s: any) => s.event_id === evt.id).length;
+                const isActiveTab = selectedEventId === evt.id;
+
+                return (
+                  <button
+                    key={evt.id}
+                    type="button"
+                    onClick={() => setSelectedEventId(evt.id)}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-150 shrink-0 border flex items-center gap-2",
+                      isActiveTab
+                        ? "dark:bg-white dark:text-zinc-950 bg-slate-900 text-white border-transparent shadow-md"
+                        : "dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 dark:border-white/5 border-black/5 dark:text-white/60 text-slate-600"
+                    )}
+                  >
+                    {evt.is_active ? (
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                    ) : (
+                      <Trophy size={13} className={cn(isActiveTab ? "text-amber-500 dark:text-amber-600" : "text-slate-400")} />
+                    )}
+                    <span>Event #{evt.event_number || 1}</span>
+                    <span className={cn(
+                      "px-1.5 py-0.5 rounded-full text-[10px] font-black leading-none",
+                      isActiveTab
+                        ? "dark:bg-black/10 bg-white/20 dark:text-zinc-950 text-white"
+                        : "dark:bg-white/10 bg-slate-200/50 dark:text-white text-slate-500"
+                    )}>
+                      {count}
                     </span>
-                  </div>
-                </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Filtered submissions grid */}
+            {filteredSubmissions.length === 0 ? (
+              <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 dark:text-white/40 text-slate-400 opacity-60 italic font-bold text-xs uppercase tracking-wider">
+                No submissions found for this event.
               </div>
-            ))}
+            ) : (
+              <div className="flex flex-col gap-3">
+                {filteredSubmissions.map((sub: any) => {
+                  const subEvent = events.find((e: any) => e.id === sub.event_id);
+
+                  return (
+                    <div 
+                      key={sub.id} 
+                      className="group p-4 dark:bg-[#111111] bg-white rounded-xl border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-16 rounded overflow-hidden bg-white/5 shrink-0 border border-black/10 dark:border-white/5 relative shadow-sm">
+                          {sub.game_image ? (
+                            <img 
+                              src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} 
+                              alt={sub.game_name} 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center opacity-20 bg-slate-200 dark:bg-white/5">
+                              <Gamepad2 size={24} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-base dark:text-white text-slate-800 leading-snug">{sub.game_name}</h3>
+                            {sub.steam_appid && (
+                              <a 
+                                href={`https://store.steampowered.com/app/${sub.steam_appid}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-blue-400 opacity-60 hover:opacity-100 transition-all"
+                                title="View on Steam"
+                              >
+                                <ExternalLink size={13} />
+                              </a>
+                            )}
+                          </div>
+                          
+                          {/* Stats and metadata rows */}
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] opacity-80">
+                            <span className="px-2 py-0.5 rounded-full dark:bg-white/5 bg-slate-100 border dark:border-white/5 border-black/5 uppercase font-extrabold tracking-wider text-[9px] dark:text-white/60 text-slate-500">
+                              {sub.platform}
+                            </span>
+
+                            {selectedEventId === 'all' && subEvent && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 font-extrabold tracking-wider text-[9px] uppercase">
+                                Event #{subEvent.event_number}
+                              </span>
+                            )}
+
+                            {sub.hours_during !== undefined && sub.hours_during !== null && (
+                              <span className="px-2 py-0.5 rounded-full dark:bg-white/5 bg-slate-100 border dark:border-white/5 border-black/5 font-extrabold tracking-wider text-[9px] dark:text-white/60 text-slate-500 flex items-center gap-1">
+                                🕒 {sub.hours_during}h
+                              </span>
+                            )}
+
+                            {sub.platform === 'Steam' && sub.achievements_during !== undefined && sub.achievements_during !== null && (
+                              <span className="px-2 py-0.5 rounded-full dark:bg-white/5 bg-slate-100 border dark:border-white/5 border-black/5 font-extrabold tracking-wider text-[9px] dark:text-white/60 text-slate-500 flex items-center gap-1">
+                                🏆 {sub.achievements_during} Ach
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right-aligned verification status and points cards */}
+                      <div className="flex items-center justify-between md:justify-end gap-3.5 flex-wrap shrink-0">
+                        {/* Tags container */}
+                        <div className="flex items-center gap-1.5">
+                          {sub.status === 'pending' && (
+                            <span className="px-2 py-1 rounded-full bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20 uppercase font-black tracking-wider text-[9px] flex items-center gap-1 shadow-sm">
+                              <Clock size={10} className="animate-pulse" /> Pending
+                            </span>
+                          )}
+                          {sub.status === 'verified' && (
+                            <span className="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 border border-emerald-500/20 uppercase font-black tracking-wider text-[9px] flex items-center gap-1 shadow-sm">
+                              <CheckCircle2 size={10} /> Verified
+                            </span>
+                          )}
+                          {sub.status === 'rejected' && (
+                            <span 
+                              className="px-2 py-1 rounded-full bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/20 uppercase font-black tracking-wider text-[9px] flex items-center gap-1 shadow-sm cursor-help" 
+                              title={sub.rejection_reason || 'Rejected (no reason provided)'}
+                            >
+                              <XCircle size={10} /> Rejected
+                            </span>
+                          )}
+
+                          <span className="px-2 py-1 rounded-full bg-purple-500/10 text-purple-500 dark:text-purple-400 border border-purple-500/20 uppercase font-black tracking-wider text-[9px] shadow-sm">
+                            {sub.completion_status || 'Beaten'}
+                          </span>
+                        </div>
+
+                        {/* Points pill dynamically themed to user's team */}
+                        {sub.status === 'verified' && (
+                          <div className={cn("px-3 py-1.5 rounded-xl text-xs font-mono font-black border uppercase tracking-wider shadow-inner text-center shrink-0 min-w-[70px]", 
+                            targetUser.team && targetUser.team !== 'none' 
+                              ? `${TEAM_COLORS[targetUser.team as Team].secondary} ${TEAM_COLORS[targetUser.team as Team].primary} dark:border-${targetUser.team}-500/30 border-${targetUser.team}-500/20` 
+                              : "bg-slate-50 dark:bg-zinc-900 border-black/5 dark:border-white/5 dark:text-white text-slate-800"
+                          )}>
+                            +{hideUserScores ? '—' : (sub.points || 0)} pts
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </section>
