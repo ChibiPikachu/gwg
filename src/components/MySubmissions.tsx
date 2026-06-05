@@ -754,9 +754,14 @@ export default function MySubmissions() {
                            </button>
                          ))}
                        </div>
+                       {formData.completionStatus === 'beaten' && (
+                         <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
+                           <CheckCircle2 size={10} /> +15 Beaten Bonus Applied
+                         </div>
+                       )}
                        {formData.completionStatus === 'completed' && (
                          <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
-                           <CheckCircle2 size={10} /> +20 Completion Bonus Applied
+                           <CheckCircle2 size={10} /> +30 Completion Bonus Applied
                          </div>
                        )}
                     </div>
