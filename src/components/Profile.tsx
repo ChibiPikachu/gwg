@@ -187,7 +187,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
               {/* Accolades & Badges */}
               {(hasSurvivedMigration || (events.length > 0 && events.some(e => {
                 if (e.is_active || !e.winner_team) return false;
-                const userTeamForEvent = (targetUser?.eventTeams?.[e.id]) || targetUser?.team;
+                const userTeamForEvent = e.event_number === 3 
+                  ? targetUser?.eventTeams?.[e.id] 
+                  : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
                 return userTeamForEvent === e.winner_team;
               }))) && (
                 <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2 mb-1 animate-in fade-in duration-300">
@@ -219,7 +221,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   {events
                     .filter(e => {
                       if (e.is_active || !e.winner_team) return false;
-                      const userTeamForEvent = (targetUser?.eventTeams?.[e.id]) || targetUser?.team;
+                      const userTeamForEvent = e.event_number === 3 
+                        ? targetUser?.eventTeams?.[e.id] 
+                        : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
                       return userTeamForEvent === e.winner_team;
                     })
                     .map(e => (
