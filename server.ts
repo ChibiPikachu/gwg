@@ -1225,7 +1225,30 @@ async function createServer() {
       .order('last_login', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
-    res.json(users);
+
+    // Fetch all user event teams to attach to user objects
+    let eventTeamsMap: Record<string, Record<string, string>> = {};
+    try {
+      const { data: allEventTeams } = await supabase
+        .from('user_event_teams')
+        .select('steamid, event_id, team');
+      
+      (allEventTeams || []).forEach((row: any) => {
+        if (!eventTeamsMap[row.steamid]) {
+          eventTeamsMap[row.steamid] = {};
+        }
+        eventTeamsMap[row.steamid][row.event_id] = row.team;
+      });
+    } catch (err) {
+      console.warn('[Admin Users] Failed to load user_event_teams:', err);
+    }
+
+    const transformedUsers = (users || []).map((u: any) => ({
+      ...u,
+      eventTeams: eventTeamsMap[u.steamid] || {}
+    }));
+
+    res.json(transformedUsers);
   });
 
   // Helper to sync points
@@ -1421,8 +1444,8 @@ async function createServer() {
   });
 
   app.post('/api/admin/update-user-team', async (req, res) => {
-    const { targetSteamId, team } = req.body;
-    console.log('[Admin] Update Team Start:', { targetSteamId, team });
+    const { targetSteamId, team, eventId } = req.body;
+    console.log('[Admin] Update Team Start:', { targetSteamId, team, eventId });
     
     const supabase = getSupabase();
     if (!supabase) {
@@ -1435,41 +1458,73 @@ async function createServer() {
       // If the DB constraint fails, it might expect a specific string instead.
       const dbTeam = team === 'none' ? null : team;
       
-      console.log('[Admin] Attempting update:', { targetSteamId, dbTeam });
+      // Get the current active event
+      const { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
 
-      const { error, data: updateData } = await supabase
-        .from('profiles')
-        .update({ team: dbTeam })
-        .eq('steamid', String(targetSteamId))
-        .select();
+      const isActiveEvent = eventId ? (activeEvent?.id === eventId) : true;
+      const targetEventId = eventId || activeEvent?.id;
 
-      if (error) {
-        console.error('[Admin] Update error:', error.message, error.details, error.hint);
-        return res.status(500).json({ 
-          error: error.message, 
-          details: error.details,
-          hint: error.hint 
-        });
+      let updateData = null;
+      if (isActiveEvent) {
+        // If updating the active event (or no eventId provided), update profiles.team
+        console.log('[Admin] Updating active event team on profile:', { targetSteamId, dbTeam });
+        const { error: profileError, data: profData } = await supabase
+          .from('profiles')
+          .update({ team: dbTeam })
+          .eq('steamid', String(targetSteamId))
+          .select();
+
+        if (profileError) {
+          console.error('[Admin] Update profile error:', profileError.message);
+          return res.status(500).json({ 
+            error: profileError.message, 
+            details: profileError.details,
+            hint: profileError.hint 
+          });
+        }
+        updateData = profData;
       }
 
-      // ALSO record user team assignment for the active event
-      if (dbTeam) {
+      // Record / update user team assignment in user_event_teams for the event
+      if (targetEventId) {
         try {
-          const { data: activeEvent } = await supabase
-            .from('events')
-            .select('id')
-            .eq('is_active', true)
-            .maybeSingle();
-
-          if (activeEvent?.id) {
-            await supabase
+          if (team === 'none') {
+            const { error: delErr } = await supabase
+              .from('user_event_teams')
+              .delete()
+              .eq('steamid', String(targetSteamId))
+              .eq('event_id', targetEventId);
+            
+            if (delErr) {
+              console.warn('[Admin] Failed to delete user_event_team, falling back to upsert none:', delErr);
+              await supabase
+                .from('user_event_teams')
+                .upsert({
+                  steamid: String(targetSteamId),
+                  event_id: targetEventId,
+                  team: 'none'
+                }, { onConflict: 'steamid,event_id' });
+            } else {
+              console.log(`[Admin] Successfully cleared event-team association for user ${targetSteamId} and event ${targetEventId}`);
+            }
+          } else {
+            const { error: upsertErr } = await supabase
               .from('user_event_teams')
               .upsert({
                 steamid: String(targetSteamId),
-                event_id: activeEvent.id,
+                event_id: targetEventId,
                 team: dbTeam
               }, { onConflict: 'steamid,event_id' });
-            console.log(`[Admin] Successfully recorded team ${dbTeam} for event ${activeEvent.id} in user_event_teams`);
+
+            if (upsertErr) {
+              console.error('[Admin] Error upserting user_event_teams:', upsertErr);
+              return res.status(500).json({ error: 'Failed to record user event team', details: upsertErr.message });
+            }
+            console.log(`[Admin] Successfully recorded team ${dbTeam} for event ${targetEventId} in user_event_teams`);
           }
         } catch (ueErr) {
           console.error('[Admin] Error updating user_event_teams:', ueErr);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -97,6 +97,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [subStatusFilter, setSubStatusFilter] = React.useState<'all' | 'pending' | 'verified' | 'rejected'>('pending');
   const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned'>('all');
   const [settingsUserId, setSettingsUserId] = React.useState<string | null>(null);
+  const [editingUserEventTeams, setEditingUserEventTeams] = React.useState<any | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [selectedLevel, setSelectedLevel] = React.useState<number>(2);
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
@@ -327,6 +328,53 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       }
     } catch (err) {
       console.error('Failed to update team:', err);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const assignEventTeam = async (targetSteamId: string, eventId: string, team: Team | 'none') => {
+    setUpdating(targetSteamId);
+    try {
+      const res = await fetch('/api/admin/update-user-team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetSteamId, team, eventId })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        setUsers(prev => prev.map(u => {
+          if (u.steamid === targetSteamId) {
+            const updatedEventTeams = { ...u.eventTeams, [eventId]: team === 'none' ? null : team };
+            const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
+            return {
+              ...u,
+              team: isEventActive ? (team === 'none' ? null : team) : u.team,
+              eventTeams: updatedEventTeams
+            };
+          }
+          return u;
+        }));
+
+        setEditingUserEventTeams(prev => {
+          if (prev && prev.steamid === targetSteamId) {
+            const updatedEventTeams = { ...prev.eventTeams, [eventId]: team === 'none' ? null : team };
+            const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
+            return {
+              ...prev,
+              team: isEventActive ? (team === 'none' ? null : team) : prev.team,
+              eventTeams: updatedEventTeams
+            };
+          }
+          return prev;
+        });
+      } else {
+        alert(`Failed to update event team: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Failed to update event team:', err);
     } finally {
       setUpdating(null);
     }
@@ -884,6 +932,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                            <div className="fixed inset-0 z-30" onClick={() => setSettingsUserId(null)} />
                            <div className="absolute right-0 bottom-full mb-2 w-48 dark:bg-[#1c1c1c] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                              <div className="p-1.5 flex flex-col gap-0.5">
+                               <button 
+                                 onClick={() => { setEditingUserEventTeams(u); setSettingsUserId(null); }}
+                                 className="flex items-center gap-2 w-full px-3 py-2 text-left text-[10px] font-bold uppercase dark:text-white text-slate-700 hover:dark:bg-white/10 hover:bg-slate-50 rounded-lg transition-colors"
+                               >
+                                 <Trophy size={14} className="text-amber-500" />
+                                 Manage Event Teams
+                               </button>
+                               <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
                                <button 
                                  onClick={() => { handleUpdateRole(u.steamid, u.role === 'admin' ? 'member' : 'admin'); setSettingsUserId(null); }}
                                  disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
@@ -2000,6 +2056,165 @@ function TeamPointContributionChart({
           )}
         </div>
       </div>
+
+      {/* Manage Event Teams Modal */}
+      {editingUserEventTeams && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="fixed inset-0" onClick={() => setEditingUserEventTeams(null)} />
+          <div className="relative w-full max-w-2xl dark:bg-[#121212] bg-white rounded-2xl shadow-2xl border dark:border-white/10 border-black/10 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-5 border-b dark:border-white/5 border-black/5 flex items-center justify-between bg-slate-50 dark:bg-zinc-900/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                  <Trophy size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider dark:text-white text-slate-900">Manage Event Teams</h3>
+                  <p className="text-[10px] dark:text-white/40 text-slate-500 font-bold">Assign team rosters per specific event historical records</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingUserEventTeams(null)}
+                className="h-7 w-7 rounded-lg hover:dark:bg-white/10 hover:bg-slate-200 flex items-center justify-center dark:text-white/40 text-slate-400 hover:text-slate-900 transition-colors"
+              >
+                <XCircle size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto flex flex-col gap-6">
+              {/* User Info card */}
+              <div className="flex items-center gap-3 p-4 dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl">
+                <img 
+                  src={editingUserEventTeams.steam_avatar || editingUserEventTeams.steamAvatar} 
+                  alt="" 
+                  className="w-10 h-10 rounded-full object-cover border dark:border-white/10 border-black/5" 
+                  referrerPolicy="no-referrer"
+                />
+                <div className="flex flex-col">
+                  <span className="text-xs font-black dark:text-white text-slate-900">{editingUserEventTeams.steam_name || editingUserEventTeams.steamName}</span>
+                  <span className="text-[10px] font-mono dark:text-white/40 text-slate-400">ID: {editingUserEventTeams.steamid || editingUserEventTeams.steamId}</span>
+                </div>
+              </div>
+
+              {/* Events list */}
+              <div className="flex flex-col gap-3">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-40 dark:text-white text-slate-500">Event Assignments</span>
+                {events.length === 0 ? (
+                  <div className="text-center py-6 border border-dashed dark:border-white/10 border-black/10 rounded-xl">
+                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">No events loaded.</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {events.map((e: any) => {
+                      const userTeamForEvent = editingUserEventTeams.eventTeams?.[e.id] || 'none';
+                      const isUpdatingThisUser = updating === editingUserEventTeams.steamid;
+
+                      return (
+                        <div 
+                          key={e.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl hover:dark:bg-zinc-800/80 hover:bg-slate-100/50 transition-all"
+                        >
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black dark:text-white text-slate-800">
+                                Event #{e.event_number || e.eventNumber}: {e.name}
+                              </span>
+                              {e.is_active ? (
+                                <span className="text-[8px] px-1.5 py-0.5 rounded-full font-extrabold tracking-wider bg-emerald-500/10 text-emerald-500 uppercase">
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="text-[8px] px-1.5 py-0.5 rounded-full font-extrabold tracking-wider bg-slate-500/10 dark:text-slate-400 text-slate-500 uppercase">
+                                  Ended
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[9px] dark:text-white/30 text-slate-400 font-bold">
+                              {e.is_active ? 'Updates both profile & event rosters' : 'Roster update only (preserves current profile)'}
+                            </span>
+                          </div>
+
+                          <div className="relative w-full sm:w-44 shrink-0">
+                            <select
+                              value={userTeamForEvent || 'none'}
+                              disabled={isUpdatingThisUser}
+                              onChange={(selEvt) => assignEventTeam(editingUserEventTeams.steamid || editingUserEventTeams.steamId, e.id, selEvt.target.value as Team | 'none')}
+                              className={cn(
+                                "appearance-none dark:bg-[#222] bg-white border dark:border-white/10 border-black/10 rounded-xl px-3 py-1.5 pr-8 text-[11px] font-bold uppercase tracking-wider focus:outline-none transition-all w-full cursor-pointer h-9",
+                                userTeamForEvent && userTeamForEvent !== 'none' 
+                                  ? `${TEAM_COLORS[userTeamForEvent as Team].secondary} ${TEAM_COLORS[userTeamForEvent as Team].primary} dark:border-${userTeamForEvent}-500/30 border-${userTeamForEvent}-500/20` 
+                                  : "dark:text-white/60 text-slate-600"
+                              )}
+                            >
+                              <option value="none" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">None/Unassigned</option>
+                              <option value="blue" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Blue Team</option>
+                              <option value="green" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Green Team</option>
+                              <option value="purple" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Purple Team</option>
+                              <option value="red" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Red Team</option>
+                            </select>
+                            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
+                              <ChevronDown size={12} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Database Instruction Block */}
+              <div className="p-4 dark:bg-amber-500/5 bg-amber-500/5 border border-amber-500/20 rounded-xl flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-amber-500">
+                  <Database size={16} />
+                  <span className="text-xs font-black uppercase tracking-wider">Required Supabase Setup Configuration</span>
+                </div>
+                <p className="text-[10px] dark:text-white/60 text-slate-600 font-medium leading-relaxed">
+                  Custom event team overrides require the <code className="font-mono bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-amber-500">user_event_teams</code> mapping table in Supabase. If you have not created it yet or are getting database errors, run the following script in your <strong className="dark:text-white text-slate-800">Supabase SQL Editor</strong>:
+                </p>
+                
+                <div className="relative">
+                  <pre className="text-[9px] font-mono dark:bg-black/40 bg-slate-900 p-3 rounded-lg overflow-x-auto text-zinc-300 border dark:border-white/5 border-black/10 max-h-36">
+                    {`CREATE TABLE IF NOT EXISTS public.user_event_teams (
+    steamid TEXT NOT NULL REFERENCES public.profiles(steamid) ON DELETE CASCADE,
+    event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+    team TEXT NOT NULL,
+    PRIMARY KEY (steamid, event_id)
+);
+
+ALTER TABLE public.user_event_teams ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access" ON public.user_event_teams
+    FOR SELECT USING (true);`}
+                  </pre>
+                  <button
+                    onClick={() => {
+                      const sql = `CREATE TABLE IF NOT EXISTS public.user_event_teams (
+    steamid TEXT NOT NULL REFERENCES public.profiles(steamid) ON DELETE CASCADE,
+    event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+    team TEXT NOT NULL,
+    PRIMARY KEY (steamid, event_id)
+);
+
+ALTER TABLE public.user_event_teams ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access" ON public.user_event_teams
+    FOR SELECT USING (true);`;
+                      navigator.clipboard.writeText(sql);
+                      alert("SQL configuration script copied to clipboard!");
+                    }}
+                    className="absolute top-2 right-2 p-1.5 dark:bg-white/5 bg-slate-800 text-slate-300 dark:text-white/40 hover:dark:bg-white/10 hover:bg-slate-700 hover:text-white rounded-md transition-all border dark:border-white/5 border-black/10"
+                    title="Copy SQL to Clipboard"
+                  >
+                    <Copy size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
