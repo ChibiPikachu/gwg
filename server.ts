@@ -998,6 +998,32 @@ async function createServer() {
 
     try {
       const queryStr = String(query).trim();
+
+      // Check if the query is an IGDB ID (or game ID string) matching a game in our local database first
+      const localSupabase = getSupabase();
+      if (localSupabase && queryStr) {
+        try {
+          const { data: matchedGame } = await localSupabase
+            .from('games')
+            .select('*')
+            .eq('id', queryStr)
+            .maybeSingle();
+
+          if (matchedGame) {
+            console.log(`[IGDB ID Search] Found exact local DB game with ID: ${queryStr}`);
+            return res.json([{
+              id: matchedGame.id,
+              title: matchedGame.title,
+              image: matchedGame.image_url || 'https://via.placeholder.com/264x352?text=No+Cover',
+              summary: matchedGame.summary || "Existing game in system.",
+              steam_appid: matchedGame.steam_appid
+            }]);
+          }
+        } catch (dbErr) {
+          console.error('[IGDB ID Search] Failed to check IGDB ID match in local DB:', dbErr);
+        }
+      }
+
       const isSteamAppId = /^\d+$/.test(queryStr) && queryStr.length < 10; // App IDs are usually < 10 digits
 
       if (isSteamAppId) {
