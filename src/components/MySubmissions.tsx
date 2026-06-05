@@ -75,6 +75,7 @@ export default function MySubmissions() {
   const [showForm, setShowForm] = React.useState(false);
   const [gameSearch, setGameSearch] = React.useState('');
   const [igdbIdSearch, setIgdbIdSearch] = React.useState('');
+  const [steamAppIdSearch, setSteamAppIdSearch] = React.useState('');
   const [searching, setSearching] = React.useState(false);
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [searchError, setSearchError] = React.useState<string | null>(null);
@@ -302,7 +303,7 @@ export default function MySubmissions() {
 
   // Debounced real-time search
   React.useEffect(() => {
-    if (!gameSearch.trim() && !igdbIdSearch.trim()) {
+    if (!gameSearch.trim() && !igdbIdSearch.trim() && !steamAppIdSearch.trim()) {
       setSearchResults([]);
       return;
     }
@@ -312,7 +313,9 @@ export default function MySubmissions() {
       setSearchError(null);
       try {
         let url = '';
-        if (igdbIdSearch.trim()) {
+        if (steamAppIdSearch.trim()) {
+          url = `/api/games/search?steamAppId=${encodeURIComponent(steamAppIdSearch.trim())}`;
+        } else if (igdbIdSearch.trim()) {
           url = `/api/games/search?igdbId=${encodeURIComponent(igdbIdSearch.trim())}`;
         } else {
           url = `/api/games/search?query=${encodeURIComponent(gameSearch.trim())}`;
@@ -335,7 +338,7 @@ export default function MySubmissions() {
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timer);
-  }, [gameSearch, igdbIdSearch]);
+  }, [gameSearch, igdbIdSearch, steamAppIdSearch]);
 
   // Handle Escape key
   React.useEffect(() => {
@@ -501,6 +504,7 @@ export default function MySubmissions() {
     setSearchResults([]);
     setGameSearch('');
     setIgdbIdSearch('');
+    setSteamAppIdSearch('');
     setSteamVerifyMsg(null);
     setSteamTotalStats(null);
   };
@@ -567,7 +571,7 @@ export default function MySubmissions() {
       {showForm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
           <div className={cn(
-            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 my-auto",
+            "dark:bg-[#151515] bg-white border rounded-3xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 my-auto",
             theme.glow
           )}>
             <div className="p-4 sm:p-8">
@@ -585,47 +589,83 @@ export default function MySubmissions() {
                 <div className="space-y-6">
                   <div className="space-y-4">
                     <label className="text-xs uppercase font-bold opacity-30 tracking-widest dark:text-white text-slate-500">Search Game</label>
-                    <div className="flex gap-3">
-                      <div className="relative flex-1 group">
-                        <Search className={cn(
-                          "absolute left-4 top-1/2 -translate-y-1/2 transition-colors",
-                          searching && !igdbIdSearch.trim() ? theme.text : `text-slate-300 dark:text-white/20 group-focus-within:${theme.text}`
-                        )} size={18} />
+                    
+                    {/* Game Name Search Box */}
+                    <div className="relative group w-full">
+                      <Search className={cn(
+                        "absolute left-4 top-1/2 -translate-y-1/2 transition-colors",
+                        searching && !igdbIdSearch.trim() && !steamAppIdSearch.trim() ? theme.text : `text-slate-300 dark:text-white/20 group-focus-within:${theme.text}`
+                      )} size={18} />
+                      <input 
+                        type="text"
+                        placeholder="Start typing a game title..."
+                        className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                        value={gameSearch}
+                        onChange={(e) => {
+                          setGameSearch(e.target.value);
+                          if (e.target.value.trim()) {
+                            setIgdbIdSearch('');
+                            setSteamAppIdSearch('');
+                          }
+                        }}
+                      />
+                      {searching && !igdbIdSearch.trim() && !steamAppIdSearch.trim() && (
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                          <Loader2 className={cn("animate-spin", theme.text)} size={18} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Separator / Divider */}
+                    <div className="flex items-center py-2">
+                      <div className="flex-1 border-t border-slate-200 dark:border-white/5"></div>
+                      <span className="px-3 text-[10px] uppercase tracking-wider opacity-30 dark:text-white text-slate-500 font-bold">or</span>
+                      <div className="flex-1 border-t border-slate-200 dark:border-white/5"></div>
+                    </div>
+
+                    {/* STEAM BOX and IGDB BOX layout side-by-side */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* STEAM BOX */}
+                      <div className="relative group">
                         <input 
                           type="text"
-                          placeholder="Start typing a game title..."
-                          className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 pl-12 pr-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
-                          value={gameSearch}
+                          placeholder="Steam App ID"
+                          className={cn("w-full text-center dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 px-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                          value={steamAppIdSearch}
                           onChange={(e) => {
-                            setGameSearch(e.target.value);
-                            if (e.target.value.trim()) {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setSteamAppIdSearch(val);
+                            if (val.trim()) {
+                              setGameSearch('');
                               setIgdbIdSearch('');
                             }
                           }}
                         />
-                        {searching && !igdbIdSearch.trim() && (
+                        {searching && steamAppIdSearch.trim() && (
                           <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                            <Loader2 className={cn("animate-spin", theme.text)} size={18} />
+                            <Loader2 className={cn("animate-spin", theme.text)} size={14} />
                           </div>
                         )}
                       </div>
 
-                      <div className="relative w-36 group">
+                      {/* IGDB BOX */}
+                      <div className="relative group">
                         <input 
                           type="text"
                           placeholder="IGDB ID"
-                          className={cn("w-full text-center dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 px-3 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
+                          className={cn("w-full text-center dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl py-4 px-4 focus:outline-none transition-all font-sans text-sm dark:text-white text-slate-900", `focus:${theme.border}/50`)}
                           value={igdbIdSearch}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\D/g, '');
                             setIgdbIdSearch(val);
                             if (val.trim()) {
                               setGameSearch('');
+                              setSteamAppIdSearch('');
                             }
                           }}
                         />
                         {searching && igdbIdSearch.trim() && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2">
                             <Loader2 className={cn("animate-spin", theme.text)} size={14} />
                           </div>
                         )}

@@ -993,10 +993,74 @@ async function createServer() {
 
   // IGDB Game Search
   app.get('/api/games/search', async (req, res) => {
-    const { query, igdbId } = req.query;
-    if (!query && !igdbId) return res.json([]);
+    const { query, igdbId, steamAppId } = req.query;
+    if (!query && !igdbId && !steamAppId) return res.json([]);
 
     try {
+      if (steamAppId) {
+        const appIdStr = String(steamAppId).trim();
+        const localSupabase = getSupabase();
+        if (localSupabase && appIdStr) {
+          try {
+            const { data: matchedGame } = await localSupabase
+              .from('games')
+              .select('*')
+              .eq('steam_appid', parseInt(appIdStr))
+              .maybeSingle();
+
+            if (matchedGame) {
+              console.log(`[Steam AppID Search] Found exact local DB game with steam_appid: ${appIdStr}`);
+              return res.json([{
+                id: matchedGame.id,
+                title: matchedGame.title,
+                image: matchedGame.image_url || 'https://via.placeholder.com/264x352?text=No+Cover',
+                summary: matchedGame.summary || "Existing game in system.",
+                steam_appid: matchedGame.steam_appid
+              }]);
+            }
+          } catch (dbErr) {
+            console.error('[Steam AppID Search] Failed to check steam_appid match in local DB:', dbErr);
+          }
+        }
+
+        // Fetch from Steam API
+        console.log(`[Steam AppID Search Web] Querying Steam API for App ID: ${appIdStr}`);
+        const steamRes = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appIdStr}`);
+        const steamData: any = await steamRes.json();
+        
+        if (steamData[appIdStr] && steamData[appIdStr].success) {
+          const game = steamData[appIdStr].data;
+          return res.json([{
+            id: appIdStr,
+            title: game.name,
+            image: game.header_image || `https://cdn.cloudflare.steamstatic.com/steam/apps/${appIdStr}/header.jpg`,
+            summary: game.short_description || '',
+            steam_appid: parseInt(appIdStr)
+          }]);
+        } else {
+          // Fallback for delisted/F2P games via API Key Schema
+          try {
+            const apiKey = process.env.STEAM_API_KEY;
+            if (apiKey) {
+              const schemaRes = await fetch(`https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${apiKey}&appid=${appIdStr}`);
+              const schemaData: any = await schemaRes.json();
+              if (schemaData.game && schemaData.game.gameName) {
+                return res.json([{
+                  id: appIdStr,
+                  title: schemaData.game.gameName,
+                  image: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appIdStr}/header.jpg`,
+                  summary: "Delisted, Age-Restricted, or Free-to-Play game (No public Store Page available).",
+                  steam_appid: parseInt(appIdStr)
+                }]);
+              }
+            }
+          } catch (err) {
+            console.error(`[Steam AppID Search Web] Schema fallback failed:`, err);
+          }
+        }
+        return res.json([]);
+      }
+
       if (igdbId) {
         const idStr = String(igdbId).trim();
         const localSupabase = getSupabase();
