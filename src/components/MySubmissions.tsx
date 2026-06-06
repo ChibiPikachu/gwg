@@ -402,7 +402,8 @@ export default function MySubmissions() {
     }
 
     const finalEarned = Math.max(0, earned - achievementsBefore);
-    const finalHours = Math.max(0, hours - hoursBefore);
+    const finalHours = parseFloat(Math.max(0, hours - hoursBefore).toFixed(1));
+    const finalHoursBefore = parseFloat(hoursBefore.toFixed(1));
 
     if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
       alert("You must earn at least 1 achievement during the event (or check 'Game has no achievements').");
@@ -431,7 +432,7 @@ export default function MySubmissions() {
           achievements: finalEarned,
           hours: finalHours,
           achievementsBefore,
-          hoursBefore,
+          hoursBefore: finalHoursBefore,
           multiplier: multiplierPreview,
           completionStatus: formData.completionStatus,
           platform: formData.platform,
@@ -1153,7 +1154,7 @@ export default function MySubmissions() {
                           🏆 {sub.achievements_during}
                         </div>
                         <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs font-bold text-white">
-                          🕒 {sub.hours_during}h
+                          🕒 {Number(sub.hours_during || 0).toFixed(1)}h
                         </div>
                       </div>
                       
@@ -1302,7 +1303,7 @@ export default function MySubmissions() {
                           🏆 {sub.achievements_during} Ach
                         </div>
                         <div className="flex items-center gap-1 text-[10px] font-bold text-white">
-                          🕒 {sub.hours_during}h Played
+                          🕒 {Number(sub.hours_during || 0).toFixed(1)}h Played
                         </div>
                       </div>
                       

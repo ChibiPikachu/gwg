@@ -1245,7 +1245,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🕒</span>
-                            <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">{sub.hours_during}h</span>
+                            <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">{Number(sub.hours_during || 0).toFixed(1)}h</span>
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
@@ -1296,11 +1296,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <div className="grid grid-cols-3 gap-1.5 text-center font-mono rounded-lg">
                           <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
                             <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Before</span>
-                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{sub.hours_before || 0}h</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{Number(sub.hours_before || 0).toFixed(1)}h</span>
                           </div>
                           <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
                             <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Reported</span>
-                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{sub.hours_during}h</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{Number(sub.hours_during || 0).toFixed(1)}h</span>
                           </div>
                           <div className="p-2 rounded-xl border bg-blue-500/10 border-blue-500/20">
                             <span className="block text-[8px] uppercase tracking-tighter text-blue-600 dark:text-blue-400 font-bold font-sans">Adjusted</span>
