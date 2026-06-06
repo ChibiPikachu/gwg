@@ -2205,12 +2205,30 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      // Find active event
+      const { data: activeEvent, error: eventError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
 
-      // 1. Fetch all verified submissions
-      const { data: subs, error: fetchError } = await supabase.from('submissions').select('*').eq('status', 'verified');
+      if (eventError) {
+        console.error('Error fetching active event:', eventError);
+      }
+
+      if (!activeEvent) {
+        return res.json({ success: true, count: 0, usersSynced: 0, message: 'No active event found. Past events are preserved.' });
+      }
+
+      // 1. Fetch verified submissions for the current active event
+      const { data: subs, error: fetchError } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('status', 'verified')
+        .eq('event_id', activeEvent.id);
       if (fetchError) throw fetchError;
 
-      console.log(`[Admin] Recalculating points for ${subs.length} submissions...`);
+      console.log(`[Admin] Recalculating points for ${subs.length} submissions in active event ${activeEvent.id}...`);
 
       const gameIds = Array.from(new Set(subs.map((s: any) => s.game_id)));
       const { data: games } = await supabase.from('games').select('id, hltb_main, hltb_extras').in('id', gameIds);
@@ -2256,8 +2274,12 @@ async function createServer() {
         }).eq('id', sub.id);
       }
 
-      // 2. Fetch all users who have verified submissions to sync their profile points
-      const { data: usersToSync } = await supabase.from('submissions').select('user_id').eq('status', 'verified');
+      // 2. Fetch unique user IDs for the current active event's verified submissions to sync their points
+      const { data: usersToSync } = await supabase
+        .from('submissions')
+        .select('user_id')
+        .eq('status', 'verified')
+        .eq('event_id', activeEvent.id);
       const uniqueUserIds = [...new Set(usersToSync?.map((s: any) => s.user_id) || [])];
 
       for (const uid of uniqueUserIds) {
