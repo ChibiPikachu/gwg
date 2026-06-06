@@ -132,31 +132,28 @@ export default function MySubmissions() {
     setPastEventsPage(1);
   }, [submissionsSearchQuery, completionFilter]);
 
-  // Auto-calculate 'during event' stats
+  // Auto-fill total stats from Verified Steam
   React.useEffect(() => {
     if (formData.platform === 'Steam' && steamTotalStats) {
-      const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
-      const hoursBefore = parseFloat(formData.hoursBefore) || 0;
-      
-      const duringAchievements = Math.max(0, steamTotalStats.achievements - achievementsBefore);
-      const duringHours = Math.max(0, steamTotalStats.hours - hoursBefore);
-      
       setFormData(prev => ({
         ...prev,
-        achievementsEarned: String(duringAchievements),
-        hoursPlayed: duringHours.toFixed(1)
+        achievementsEarned: String(steamTotalStats.achievements),
+        hoursPlayed: steamTotalStats.hours.toFixed(1)
       }));
     }
-  }, [formData.achievementsBefore, formData.hoursBefore, steamTotalStats, formData.platform]);
+  }, [steamTotalStats, formData.platform]);
 
   const multiplierPreview = React.useMemo(() => {
-    const hours = parseFloat(formData.hoursPlayed) || 0;
+    const totalHours = parseFloat(formData.hoursPlayed) || 0;
+    const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+    const eventHours = Math.max(0, totalHours - hoursBefore);
+
     // New Math: Short (1x), Medium (2x), Long (3x), Very Long (4x)
-    if (hours < 8) return 1.0;
-    if (hours < 15) return 2.0;
-    if (hours < 25) return 3.0;
+    if (eventHours < 8) return 1.0;
+    if (eventHours < 15) return 2.0;
+    if (eventHours < 25) return 3.0;
     return 4.0;
-  }, [formData.hoursPlayed]);
+  }, [formData.hoursPlayed, formData.hoursBefore]);
 
   const filteredSubmissions = React.useMemo(() => {
     // Filter out "Event Update" (system notification) and "Screenshot Points" (adjustments) from entries
@@ -218,24 +215,28 @@ export default function MySubmissions() {
 
   const scorePreview = React.useMemo(() => {
     const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
+    const totalHours = parseFloat(formData.hoursPlayed) || 0;
+    const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+    const finalHours = Math.max(0, totalHours - hoursBefore);
+
     if (isNoAchievements) {
-      const hoursPlayed = parseFloat(formData.hoursPlayed) || 0;
-      const hoursBefore = parseFloat(formData.hoursBefore) || 0;
-      const finalHours = Math.max(0, hoursPlayed - hoursBefore);
       const gameTitle = selectedGame?.title || '';
       const hltb = hltbData[gameTitle] || { hltb_main: 0, hltb_extras: 0 };
       return calculateNonAchievementPoints(formData.level, finalHours, hltb, formData.completionStatus);
     }
 
-    const earned = parseInt(formData.achievementsEarned) || 0;
+    const totalAchievements = parseInt(formData.achievementsEarned) || 0;
+    const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
+    const finalAchievements = Math.max(0, totalAchievements - achievementsBefore);
+
     let bonus = 0;
     if (formData.completionStatus === 'completed') {
       bonus = 30;
     } else if (formData.completionStatus === 'beaten') {
       bonus = 15;
     }
-    return Math.round(earned * multiplierPreview) + bonus;
-  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, multiplierPreview, formData.completionStatus]);
+    return Math.round(finalAchievements * multiplierPreview) + bonus;
+  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
@@ -379,20 +380,30 @@ export default function MySubmissions() {
 
     const earned = parseInt(formData.achievementsEarned) || 0;
     const hours = parseFloat(formData.hoursPlayed) || 0;
+    const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
+    const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+
     const isNintendo = formData.platform === 'Nintendo';
     const hasNoAchievements = formData.hasNoAchievements === true;
 
-    if (earned < 0) {
-      alert("Achievements earned can't be negative.");
+    if (earned < 0 || achievementsBefore < 0) {
+      alert("Achievements can't be negative.");
+      return;
+    }
+    if (hours < 0 || hoursBefore < 0) {
+      alert("Hours can't be negative.");
       return;
     }
 
-    if (earned === 0 && !isNintendo && !hasNoAchievements) {
-      alert("You must submit at least 1 achievement (or check 'Game has no achievements').");
+    const finalEarned = Math.max(0, earned - achievementsBefore);
+    const finalHours = Math.max(0, hours - hoursBefore);
+
+    if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
+      alert("You must earn at least 1 achievement during the event (or check 'Game has no achievements').");
       return;
     }
-    if (hours <= 0) {
-      alert("Hours can't be 0.");
+    if (finalHours <= 0) {
+      alert("Playtime during the event must be greater than 0 hours.");
       return;
     }
 
@@ -411,10 +422,10 @@ export default function MySubmissions() {
           gameId: selectedGame.id,
           gameTitle: selectedGame.title,
           gameImage: selectedGame.image,
-          achievements: parseInt(formData.achievementsEarned) || 0,
-          hours: parseFloat(formData.hoursPlayed) || 0,
-          achievementsBefore: parseInt(formData.achievementsBefore) || 0,
-          hoursBefore: parseFloat(formData.hoursBefore) || 0,
+          achievements: finalEarned,
+          hours: finalHours,
+          achievementsBefore,
+          hoursBefore,
           multiplier: multiplierPreview,
           completionStatus: formData.completionStatus,
           platform: formData.platform,
@@ -452,10 +463,10 @@ export default function MySubmissions() {
     });
     const meta = parseNotesMeta(sub.notes || '');
     setFormData({
-      achievementsEarned: String(sub.achievements_during),
-      hoursPlayed: String(sub.hours_during),
-      achievementsBefore: String(sub.achievements_before),
-      hoursBefore: String(sub.hours_before),
+      achievementsEarned: String(Number(sub.achievements_during || 0) + Number(sub.achievements_before || 0)),
+      hoursPlayed: String(Number(Number(sub.hours_during || 0) + Number(sub.hours_before || 0)).toFixed(1)),
+      achievementsBefore: String(sub.achievements_before || 0),
+      hoursBefore: String(sub.hours_before || 0),
       completionStatus: sub.completion_status || 'beaten',
       platform: sub.platform || 'Steam',
       notes: meta.userNotes,
@@ -853,6 +864,16 @@ export default function MySubmissions() {
                         value={formData.achievementsEarned}
                         onChange={(e) => setFormData({...formData, achievementsEarned: e.target.value})}
                       />
+                      {!(formData.hasNoAchievements || formData.platform === 'Nintendo') && (() => {
+                        const total = parseInt(formData.achievementsEarned) || 0;
+                        const before = parseInt(formData.achievementsBefore) || 0;
+                        const finalEarned = Math.max(0, total - before);
+                        return (
+                          <div className={cn("text-[10px] font-bold mt-1 shrink-0", finalEarned > 0 ? "text-emerald-500" : "text-slate-400 opacity-60")}>
+                            Achievements unlocked during event: <span className="font-mono text-xs">{finalEarned}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Hours Played (Total)</label>
@@ -865,6 +886,16 @@ export default function MySubmissions() {
                         value={formData.hoursPlayed}
                         onChange={(e) => setFormData({...formData, hoursPlayed: e.target.value})}
                       />
+                      {(() => {
+                        const total = parseFloat(formData.hoursPlayed) || 0;
+                        const before = parseFloat(formData.hoursBefore) || 0;
+                        const finalHours = Math.max(0, total - before);
+                        return (
+                          <div className={cn("text-[10px] font-bold mt-1 shrink-0", finalHours > 0 ? "text-emerald-500" : "text-slate-400 opacity-60")}>
+                            Playtime during event: <span className="font-mono text-xs">{finalHours.toFixed(1)} hrs</span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="space-y-2">
