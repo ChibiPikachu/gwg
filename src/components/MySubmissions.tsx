@@ -552,6 +552,12 @@ export default function MySubmissions() {
           hours: totalHours,
           achievements: totalAchievements
         });
+
+        setFormData(prev => ({
+          ...prev,
+          achievementsEarned: String(totalAchievements),
+          hoursPlayed: totalHours.toFixed(1)
+        }));
         
         setSteamVerifyMsg({ 
           type: 'success', 
