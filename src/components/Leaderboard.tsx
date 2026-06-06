@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Medal, Users, Shield, Bell } from 'lucide-react';
+import { Trophy, Medal, Users, Shield, Bell, Loader2 } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -9,6 +9,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const { theme } = useAuth();
   const [users, setUsers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadingEvent, setLoadingEvent] = React.useState(true);
   const [activeEvent, setActiveEvent] = React.useState<any | null>(null);
   const [adjustments, setAdjustments] = React.useState<any[]>([]);
 
@@ -46,9 +47,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       .then(data => {
         const active = Array.isArray(data) ? data.find((e: any) => e.is_active) : null;
         setActiveEvent(active);
+        setLoadingEvent(false);
       })
       .catch(err => {
         console.error('Failed to fetch events for leaderboard active check:', err);
+        setLoadingEvent(false);
       });
 
     if (!isSupabaseConfigured) return;
@@ -105,6 +108,15 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     { team: 'green', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('green'), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
     { team: 'red', points: hideScores ? 0 : safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('red'), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
   ].sort((a, b) => hideScores ? a.team.localeCompare(b.team) : b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
+
+  if (loading || loadingEvent) {
+    return (
+      <div className="p-8 text-center min-h-[60vh] flex flex-col items-center justify-center gap-3">
+        <Loader2 className={cn("animate-spin", theme.text)} size={32} />
+        <span className="text-sm opacity-50 font-medium tracking-wide">Loading standings and settings...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-8 md:gap-12">
@@ -254,7 +266,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       {isUserAdj && (
                         <div className="mt-1">
                           <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
-                            screenshot points awarded
+                            screenshot points
                           </span>
                         </div>
                       )}
