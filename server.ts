@@ -1816,10 +1816,12 @@ async function createServer() {
       // Server-side point calculation
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
+      const hoursBeforeNum = parseFloat(hoursBefore) || 0;
+      const adjustedPlayHours = Math.max(0, numHours - hoursBeforeNum);
       // New Math Logic: Short (1x), Medium (2x), Long (3x), Very Long (4x)
-      if (numHours < 8) serverMultiplier = 1.0;
-      else if (numHours < 15) serverMultiplier = 2.0;
-      else if (numHours < 25) serverMultiplier = 3.0;
+      if (adjustedPlayHours < 8) serverMultiplier = 1.0;
+      else if (adjustedPlayHours < 15) serverMultiplier = 2.0;
+      else if (adjustedPlayHours < 25) serverMultiplier = 3.0;
       else serverMultiplier = 4.0;
 
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
@@ -1964,10 +1966,12 @@ async function createServer() {
       // 2. Recalculate points
       let serverMultiplier = 1.0;
       const numHours = parseFloat(hours) || 0;
+      const hoursBeforeNum = parseFloat(hoursBefore) || 0;
+      const adjustedPlayHours = Math.max(0, numHours - hoursBeforeNum);
       // Match multiplier logic: <8=1x, <15=2x, <25=3x, >=25=4x
-      if (numHours < 8) serverMultiplier = 1.0;
-      else if (numHours < 15) serverMultiplier = 2.0;
-      else if (numHours < 25) serverMultiplier = 3.0;
+      if (adjustedPlayHours < 8) serverMultiplier = 1.0;
+      else if (adjustedPlayHours < 15) serverMultiplier = 2.0;
+      else if (adjustedPlayHours < 25) serverMultiplier = 3.0;
       else serverMultiplier = 4.0;
 
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
@@ -2219,9 +2223,11 @@ async function createServer() {
         // Redetermine multiplier based on CORRECTED math (1x, 2x, 3x, 4x)
         let multiplier = 1.0;
         const hours = Number(sub.hours_during || 0);
-        if (hours < 8) multiplier = 1.0;
-        else if (hours < 15) multiplier = 2.0;
-        else if (hours < 25) multiplier = 3.0;
+        const hoursBeforeNum = Number(sub.hours_before || 0);
+        const adjustedPlayHours = Math.max(0, hours - hoursBeforeNum);
+        if (adjustedPlayHours < 8) multiplier = 1.0;
+        else if (adjustedPlayHours < 15) multiplier = 2.0;
+        else if (adjustedPlayHours < 25) multiplier = 3.0;
         else multiplier = 4.0;
 
         let correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier);

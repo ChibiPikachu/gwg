@@ -579,7 +579,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
                             {sub.hours_during !== undefined && sub.hours_during !== null && (
                               <span className="px-2 py-0.5 rounded-full dark:bg-white/5 bg-slate-100 border dark:border-white/5 border-black/5 font-extrabold tracking-wider text-[9px] dark:text-white/60 text-slate-500 flex items-center gap-1">
-                                🕒 {Number(sub.hours_during || 0).toFixed(1)}h
+                                🕒 {Math.max(0, Number(sub.hours_during || 0) - Number(sub.hours_before || 0)).toFixed(1)}h
                               </span>
                             )}
 

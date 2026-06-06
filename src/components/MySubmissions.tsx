@@ -430,7 +430,7 @@ export default function MySubmissions() {
           gameTitle: selectedGame.title,
           gameImage: selectedGame.image,
           achievements: finalEarned,
-          hours: finalHours,
+          hours: parseFloat(hours.toFixed(1)),
           achievementsBefore,
           hoursBefore: finalHoursBefore,
           multiplier: multiplierPreview,
@@ -471,7 +471,7 @@ export default function MySubmissions() {
     const meta = parseNotesMeta(sub.notes || '');
     setFormData({
       achievementsEarned: String(Number(sub.achievements_during || 0) + Number(sub.achievements_before || 0)),
-      hoursPlayed: String(Number(Number(sub.hours_during || 0) + Number(sub.hours_before || 0)).toFixed(1)),
+      hoursPlayed: String(Number(sub.hours_during || 0).toFixed(1)),
       achievementsBefore: String(sub.achievements_before || 0),
       hoursBefore: String(sub.hours_before || 0),
       completionStatus: sub.completion_status || 'beaten',
@@ -1154,7 +1154,7 @@ export default function MySubmissions() {
                           🏆 {sub.achievements_during}
                         </div>
                         <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs font-bold text-white">
-                          🕒 {Number(sub.hours_during || 0).toFixed(1)}h
+                          🕒 {Math.max(0, Number(sub.hours_during || 0) - Number(sub.hours_before || 0)).toFixed(1)}h
                         </div>
                       </div>
                       
@@ -1303,7 +1303,7 @@ export default function MySubmissions() {
                           🏆 {sub.achievements_during} Ach
                         </div>
                         <div className="flex items-center gap-1 text-[10px] font-bold text-white">
-                          🕒 {Number(sub.hours_during || 0).toFixed(1)}h Played
+                          🕒 {Math.max(0, Number(sub.hours_during || 0) - Number(sub.hours_before || 0)).toFixed(1)}h Played
                         </div>
                       </div>
                       
