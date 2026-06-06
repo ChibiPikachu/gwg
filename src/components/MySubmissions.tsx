@@ -71,6 +71,7 @@ export default function MySubmissions() {
   const { user, theme } = useAuth();
   const [submissions, setSubmissions] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadingEvents, setLoadingEvents] = React.useState(true);
   const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
   const [showForm, setShowForm] = React.useState(false);
   const [gameSearch, setGameSearch] = React.useState('');
@@ -120,12 +121,17 @@ export default function MySubmissions() {
   }, []);
 
   React.useEffect(() => {
+    setLoadingEvents(true);
     fetch('/api/events')
       .then(res => res.json())
       .then(data => {
         setEvents(Array.isArray(data) ? data : []);
+        setLoadingEvents(false);
       })
-      .catch(err => console.error('Failed to fetch events:', err));
+      .catch(err => {
+        console.error('Failed to fetch events:', err);
+        setLoadingEvents(false);
+      });
   }, []);
 
   React.useEffect(() => {
@@ -1068,7 +1074,7 @@ export default function MySubmissions() {
         </div>
       </div>
       
-      {loading ? (
+      {loading || loadingEvents ? (
         <div className="text-center py-24 opacity-30 animate-pulse dark:text-white text-slate-400">Loading submissions...</div>
       ) : submissions.length === 0 ? (
         <div className="text-center py-24 border-2 border-dashed dark:border-white/5 border-slate-200 rounded-3xl">
