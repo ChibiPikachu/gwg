@@ -10,6 +10,7 @@ interface AuthContextType {
   toggleDarkMode: () => void;
   loginWithSteam: () => void;
   syncWithDiscord: () => void;
+  loginWithDiscord: () => void;
   logout: () => void;
   updateProfile: (data: { displayName: string; status: string }) => Promise<boolean>;
 }
@@ -157,6 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           status: 'Authenticated via Steam!',
           points: 0,
         });
+        fetchMe();
       }
       
       if (event.data?.type === 'DISCORD_AUTH_SUCCESS') {
@@ -167,13 +169,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           discordId: discordProfile.id,
           discordName: discordName,
           discordAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null
-        } : null);
+        } : {
+          uid: `discord_${discordProfile.id}`,
+          steamId: `discord_${discordProfile.id}`,
+          steamName: discordName,
+          steamAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null,
+          team: 'none',
+          isAdmin: false,
+          role: 'member',
+          status: 'Authenticated via Discord!',
+          points: 0,
+          discordId: discordProfile.id,
+          discordName: discordName,
+          discordAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null,
+          createdAt: new Date().toISOString(),
+          eventTeams: {}
+        } as any);
+        fetchMe();
+      }
+
+      if (event.data?.type === 'DISCORD_AUTH_FAILURE') {
+        alert(event.data.error || 'Discord authentication failed.');
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [fetchMe]);
 
   const loginWithSteam = async () => {
     try {
@@ -204,6 +226,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginWithDiscord = async () => {
+    await syncWithDiscord();
+  };
+
   const logout = async () => {
     await fetch('/api/logout', { method: 'POST' });
     setUser(null);
@@ -229,7 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.team]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, theme, isDarkMode, toggleDarkMode, loginWithSteam, syncWithDiscord, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, theme, isDarkMode, toggleDarkMode, loginWithSteam, syncWithDiscord, loginWithDiscord, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

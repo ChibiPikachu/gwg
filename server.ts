@@ -528,7 +528,7 @@ async function createServer() {
     clientID: process.env.DISCORD_CLIENT_ID || 'dummy',
     clientSecret: process.env.DISCORD_CLIENT_SECRET || 'dummy',
     callbackURL: `${initialAppUrl}/auth/discord/callback`,
-    scope: ['identify']
+    scope: ['identify', 'guilds']
   }, (accessToken, refreshToken, profile, done) => {
     return done(null, profile);
   }));
@@ -566,6 +566,8 @@ async function createServer() {
       strategy._realm = appUrl;
     }
 
+    const previousUser = (req as any).user;
+
     passport.authenticate('steam', { failureRedirect: '/?error=AuthFailed' }, (err: any, user: any) => {
       if (err) {
         console.error('Steam Auth Error:', err);
@@ -582,23 +584,57 @@ async function createServer() {
         const supabase = getSupabase();
         if (supabase) {
           try {
-            // This part extracts the correct ID from Steam's response
             const steamId = String(user.id || user._json?.steamid);
             console.log('--- SYNC START ---');
             console.log('Syncing Steam ID:', steamId);
 
-            const { data, error: syncError } = await supabase.from('profiles').upsert({
-              steamid: steamId,
-              steam_name: user.displayName || user.personaname || 'Steam User',
-              steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
-              last_login: new Date().toISOString()
-            }, { onConflict: 'steamid' }).select(); // .select() lets us see the result
-            
-            if (syncError) {
-              console.error('❌ Supabase Sync Error:', syncError.message);
-              console.error('Error Details:', syncError.details);
+            // Check if we are linking Steam to an active Discord-only account
+            if (previousUser && previousUser.id && String(previousUser.id).startsWith('discord_')) {
+              console.log('Linking Steam ID to Discord-only account:', previousUser.id);
+              
+              // Verify that this steam ID is not already linked to another profile
+              const { data: existingSteamProfile } = await supabase
+                .from('profiles')
+                .select('steamid')
+                .eq('steamid', steamId)
+                .maybeSingle();
+
+              if (existingSteamProfile) {
+                console.warn('❌ Linking failed: This Steam account is already linked to another profile.');
+                return res.redirect('/?error=' + encodeURIComponent('This Steam account is already linked to another user.'));
+              }
+
+              // Update associated tables
+              await supabase.from('submissions').update({ user_id: steamId }).eq('user_id', previousUser.id);
+              await supabase.from('user_event_teams').update({ steamid: steamId }).eq('steamid', previousUser.id);
+
+              // Update the actual profile's steamid and info
+              const { error: syncError } = await supabase.from('profiles').update({
+                steamid: steamId,
+                steam_name: user.displayName || user.personaname || 'Steam User',
+                steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
+                last_login: new Date().toISOString()
+              }).eq('steamid', previousUser.id);
+
+              if (syncError) {
+                console.error('❌ Supabase Link Update Error:', syncError.message);
+              } else {
+                console.log('✅ Supabase Link Update Success!');
+              }
             } else {
-              console.log('✅ Supabase Sync Success! Data in DB:', data);
+              // Standard Steam sign-in/upsert
+              const { data, error: syncError } = await supabase.from('profiles').upsert({
+                steamid: steamId,
+                steam_name: user.displayName || user.personaname || 'Steam User',
+                steam_avatar: user.photos?.[2]?.value || user.photos?.[0]?.value || user._json?.avatarfull || null,
+                last_login: new Date().toISOString()
+              }, { onConflict: 'steamid' }).select();
+              
+              if (syncError) {
+                console.error('❌ Supabase Sync Error:', syncError.message);
+              } else {
+                console.log('✅ Supabase Sync Success! Data in DB:', data);
+              }
             }
             console.log('--- SYNC END ---');
           } catch (dbErr) {
@@ -649,27 +685,121 @@ async function createServer() {
       strategy._callbackURL = `${appUrl}/auth/discord/callback`;
     }
     passport.authenticate('discord', async (err: any, user: any) => {
-      if (err || !user) return res.redirect('/');
-      
-      // If user is logged in via Steam, link Discord
+      if (err || !user) {
+        const errorMsg = err?.message || 'Discord authentication failed.';
+        return res.send(`
+          <html><body><script>
+            window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: ${JSON.stringify(errorMsg)} }, '*');
+            window.close();
+          </script></body></html>
+        `);
+      }
+
+      // Read required server (guild) ID from env
+      const requiredGuildId = process.env.DISCORD_GUILD_ID;
+      if (requiredGuildId) {
+        const guilds = user.guilds || [];
+        const isMember = guilds.some((g: any) => String(g.id) === String(requiredGuildId));
+        if (!isMember) {
+          return res.send(`
+            <html><body><script>
+              window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: 'You must be a member of our Discord server to log in.' }, '*');
+              window.close();
+            </script></body></html>
+          `);
+        }
+      }
+
       const currentUser = (req as any).user;
       const supabase = getSupabase();
-      if (currentUser && (currentUser.id || currentUser.steam_id) && supabase) {
+      
+      const discordName = user.global_name || user.username || user.displayName || 'Discord User';
+      const discordAvatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : null;
+
+      if (currentUser && supabase) {
+        // SCENARIO A: Already authenticated via Steam, link Discord to existing profile
         try {
-          const discordName = user.global_name || user.username || user.displayName || 'Discord User';
+          const currentSteamId = currentUser.id || currentUser.steam_id || currentUser.steamid;
           await supabase.from('profiles').update({
             discord_id: user.id,
             discord_name: discordName,
-            discord_avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : null
-          }).eq('steamid', currentUser.id || currentUser.steam_id || currentUser.steamid);
-          
-          Object.assign((req as any).user, {
+            discord_avatar: discordAvatar
+          }).eq('steamid', currentSteamId);
+
+          Object.assign(currentUser, {
             discord_id: user.id,
             discord_name: discordName,
-            discord_avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : null
+            discord_avatar: discordAvatar
           });
         } catch (dbErr) {
           console.error('Failed to link Discord to Supabase:', dbErr);
+        }
+      } else if (supabase) {
+        // SCENARIO B: Log in with Discord primary account
+        try {
+          // Check if profile already exists with this discord_id
+          const { data: existingProfile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('discord_id', user.id)
+            .maybeSingle();
+
+          let finalProfile: any = null;
+
+          if (existingProfile) {
+            // Update last_login
+            await supabase.from('profiles').update({
+              last_login: new Date().toISOString()
+            }).eq('steamid', existingProfile.steamid);
+            finalProfile = { ...existingProfile };
+          } else {
+            // Create a Discord-only profile
+            const fallbackId = `discord_${user.id}`;
+            const newProfile = {
+              steamid: fallbackId,
+              steam_name: discordName,
+              steam_avatar: discordAvatar,
+              discord_id: user.id,
+              discord_name: discordName,
+              discord_avatar: discordAvatar,
+              active_avatar: 'discord',
+              team: 'none',
+              role: 'member',
+              status: 'Ready for Event #3',
+              points: 0,
+              last_login: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            };
+
+            const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
+            if (insertErr) {
+              console.error('Failed to insert new Discord-only profile:', insertErr);
+            }
+            finalProfile = newProfile;
+          }
+
+          // Establish custom passport session
+          const sessionUser = {
+            id: finalProfile.steamid,
+            steamid: finalProfile.steamid,
+            discord_id: user.id,
+            provider: 'discord'
+          };
+
+          await new Promise<void>((resolve, reject) => {
+            (req as any).logIn(sessionUser, (loginErr: any) => {
+              if (loginErr) reject(loginErr);
+              else resolve();
+            });
+          });
+        } catch (dbErr) {
+          console.error('Failed to log in Discord-only user:', dbErr);
+          return res.send(`
+            <html><body><script>
+              window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: 'Failed to establish local session.' }, '*');
+              window.close();
+            </script></body></html>
+          `);
         }
       }
 
@@ -727,6 +857,47 @@ async function createServer() {
     user.displayName = displayName;
     user.status = status;
     res.json({ success: true, user });
+  });
+
+  app.post('/api/profile/avatar-preference', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { preference } = req.body;
+    if (preference !== 'steam' && preference !== 'discord') {
+      return res.status(400).json({ error: 'Invalid preference' });
+    }
+
+    const user = (req as any).user;
+    const supabase = getSupabase();
+    const userId = user.id || user.steamid || user.steam_id || user.steamId;
+
+    if (supabase && userId) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ active_avatar: preference })
+          .eq('steamid', userId);
+
+        if (error) throw error;
+
+        // Update working session
+        user.active_avatar = preference;
+
+        if ((req as any).session) {
+          return (req as any).session.save((err: any) => {
+            if (err) return res.status(500).json({ error: 'Failed to update session' });
+            return res.json({ success: true, active_avatar: preference });
+          });
+        }
+        return res.json({ success: true, active_avatar: preference });
+      } catch (err) {
+        console.error('Failed to update avatar preference:', err);
+        return res.status(500).json({ error: 'Failed to update avatar preference' });
+      }
+    }
+    res.status(400).json({ error: 'Profile not found' });
   });
 
 
@@ -909,60 +1080,95 @@ async function createServer() {
       const user = (req as any).user;
       const supabase = getSupabase();
       
-      const steamId = user.id || user.steamid || user.steam_id || user.steamId;
-      
-      if (supabase && steamId) {
+      let profileData = null;
+      let error = null;
+
+      if (supabase) {
+        const queryId = user.id || user.steamid || user.steam_id || user.steamId;
+        
         try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('steamid', steamId)
-            .single();
+          // 1. Try to fetch by steamid
+          if (queryId) {
+            const { data, error: err1 } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('steamid', queryId)
+              .maybeSingle();
             
-          if (data && !error) {
-            let eventTeams: Record<string, string> = {};
-            try {
-              const { data: eventTeamsData } = await supabase
-                .from('user_event_teams')
-                .select('event_id, team')
-                .eq('steamid', steamId);
-
-              (eventTeamsData || []).forEach((row: any) => {
-                eventTeams[row.event_id] = row.team;
-              });
-
-              // Auto-lock into active event if not present yet and active event exists
-              const { data: activeEvent } = await supabase
-                .from('events')
-                .select('id')
-                .eq('is_active', true)
-                .maybeSingle();
-
-              if (activeEvent && data.team && !eventTeams[activeEvent.id]) {
-                await supabase
-                  .from('user_event_teams')
-                  .upsert({
-                    steamid: steamId,
-                    event_id: activeEvent.id,
-                    team: data.team
-                  }, { onConflict: 'steamid,event_id' });
-                eventTeams[activeEvent.id] = data.team;
-              }
-            } catch (uetError) {
-              console.warn('[Session Me] Could not fetch/update user_event_teams:', uetError);
+            if (data && !err1) {
+              profileData = data;
+            } else {
+              error = err1;
             }
+          }
 
-            // Merge database data with session data for the frontend
-            return res.json({
-              ...user,
-              ...data,
-              isAdmin: data.role === 'admin' || data.role === 'admins', // Ensure isAdmin is correctly set based on role
-              eventTeams: eventTeams
-            });
+          // 2. Try to fetch by discord_id if not found yet (handles Discord-only logins)
+          const discordId = user.discord_id || (user.provider === 'discord' ? user.id : null);
+          if (!profileData && discordId) {
+            const { data, error: err2 } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('discord_id', discordId)
+              .maybeSingle();
+            
+            if (data && !err2) {
+              profileData = data;
+              error = null;
+            }
           }
         } catch (err) {
-          console.error('Error fetching profile from Supabase:', err);
+          console.error('Error in /api/me fetching from Supabase:', err);
         }
+      }
+
+      if (profileData) {
+        let eventTeams: Record<string, string> = {};
+        const steamIdForUET = profileData.steamid;
+        try {
+          const { data: eventTeamsData } = await supabase
+            .from('user_event_teams')
+            .select('event_id, team')
+            .eq('steamid', steamIdForUET);
+
+          (eventTeamsData || []).forEach((row: any) => {
+            eventTeams[row.event_id] = row.team;
+          });
+
+          // Auto-lock into active event if not present yet and active event exists
+          const { data: activeEvent } = await supabase
+            .from('events')
+            .select('id')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (activeEvent && profileData.team && !eventTeams[activeEvent.id]) {
+            await supabase
+              .from('user_event_teams')
+              .upsert({
+                steamid: steamIdForUET,
+                event_id: activeEvent.id,
+                team: profileData.team
+              }, { onConflict: 'steamid,event_id' });
+            eventTeams[activeEvent.id] = profileData.team;
+          }
+        } catch (uetError) {
+          console.warn('[Session Me] Could not fetch/update user_event_teams:', uetError);
+        }
+
+        // Apply active avatar choice
+        let finalAvatar = profileData.steam_avatar;
+        if (profileData.active_avatar === 'discord' && profileData.discord_avatar) {
+          finalAvatar = profileData.discord_avatar;
+        }
+
+        // Merge database data with session data for the frontend
+        return res.json({
+          ...user,
+          ...profileData,
+          steam_avatar: finalAvatar, // Overwrite as evaluated above so existing components show preferred avatar flawlessly!
+          isAdmin: profileData.role === 'admin' || profileData.role === 'admins',
+          eventTeams: eventTeams
+        });
       }
       
       return res.json(user);
@@ -1489,14 +1695,25 @@ async function createServer() {
     // Publicly return profiles assigned to a team
     const { data: users, error } = await supabase
       .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, team, status, points, role')
+      .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
       .not('team', 'is', null)
       .neq('team', 'none')
       .order('points', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
+
+    const transformedUsers = (users || []).map((u: any) => {
+      let finalAvatar = u.steam_avatar;
+      if (u.active_avatar === 'discord' && u.discord_avatar) {
+        finalAvatar = u.discord_avatar;
+      }
+      return {
+        ...u,
+        steam_avatar: finalAvatar
+      };
+    });
     
-    res.json(users);
+    res.json(transformedUsers);
   });
 
   app.get('/api/leaderboard/games', async (req, res) => {
@@ -1572,7 +1789,7 @@ async function createServer() {
     const { steamid } = req.params;
     const { data: profile, error } = await supabase
       .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, team, status, points, role, created_at')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, points, role, created_at')
       .eq('steamid', steamid)
       .single();
 
@@ -1591,16 +1808,23 @@ async function createServer() {
     } catch (uetError) {
       console.warn('[Get User] Could not fetch user_event_teams:', uetError);
     }
+
+    // Determine final avatar output based on choice
+    let finalAvatar = profile.steam_avatar;
+    if (profile.active_avatar === 'discord' && profile.discord_avatar) {
+      finalAvatar = profile.discord_avatar;
+    }
     
     // Transform to frontend format
     const transformedUser = {
       uid: profile.steamid,
       steamId: profile.steamid,
       steamName: profile.steam_name,
-      steamAvatar: profile.steam_avatar,
+      steamAvatar: finalAvatar, // Respect preference
       discordName: profile.discord_name,
       discordAvatar: profile.discord_avatar,
       discordId: profile.discord_id,
+      active_avatar: profile.active_avatar || 'steam',
       team: profile.team,
       status: profile.status,
       points: profile.points,

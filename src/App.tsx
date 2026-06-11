@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Menu } from 'lucide-react';
 
 function AppContent() {
-  const { user, loading, theme, loginWithSteam, logout } = useAuth();
+  const { user, loading, theme, loginWithSteam, loginWithDiscord, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('submissions');
   const [viewedProfileId, setViewedProfileId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -57,12 +57,19 @@ function AppContent() {
             >
               <Menu size={24} />
             </button>
-            <div className="flex items-center gap-2 md:gap-4">
+            <div className="flex items-center gap-2 md:gap-4 flex-wrap">
               <button 
                 onClick={loginWithSteam}
-                className="bg-[#1a1a1a] border border-white/10 hover:border-white/20 transition-all rounded-xl pl-2 pr-2 py-3 flex items-center gap-2 font-bold text-sm shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] active:scale-95 group"
+                className="bg-[#1a1a1a] border border-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-3 flex items-center justify-center font-bold text-sm shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] active:scale-95 group cursor-pointer"
+                title="Sign in through Steam"
               >
                 <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Steam" className="h-6 opacity-80 group-hover:opacity-100 transition-opacity" />
+              </button>
+              <button 
+                onClick={loginWithDiscord}
+                className="bg-[#5865F2] hover:bg-[#4752C4] text-white border border-[#5865F2]/20 hover:border-white/10 transition-all rounded-xl px-4 py-3 flex items-center justify-center font-bold text-sm shadow-[0_0_20px_-5px_rgba(88,101,242,0.4)] active:scale-95 cursor-pointer h-12"
+              >
+                Log in with Discord
               </button>
             </div>
           </div>

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
 
 export default function Profile({ steamId }: { steamId?: string }) {
-  const { user: currentUser, theme, syncWithDiscord, updateProfile } = useAuth();
+  const { user: currentUser, theme, syncWithDiscord, loginWithSteam, loginWithDiscord, updateProfile } = useAuth();
   const [targetUser, setTargetUser] = useState<any>(null);
   const [loading, setLoading] = useState(!!steamId);
   const [isEditing, setIsEditing] = useState(false);
@@ -20,7 +20,38 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [selectedEventId, setSelectedEventId] = useState<string>('all');
   const [hoveredBadgeEventId, setHoveredBadgeEventId] = useState<string | null>(null);
 
+  const [activeAvatar, setActiveAvatar] = useState('steam');
+  const [updatingAvatar, setUpdatingAvatar] = useState(false);
+
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
+
+  const hasDiscord = !!targetUser?.discordId;
+  const hasRealSteam = targetUser?.steamId && !targetUser.steamId.startsWith('discord_');
+  const hasBoth = hasDiscord && hasRealSteam;
+
+  const handleAvatarPreferenceChange = async (preference: 'steam' | 'discord') => {
+    setUpdatingAvatar(true);
+    try {
+      const res = await fetch('/api/profile/avatar-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preference })
+      });
+      if (res.ok) {
+        setActiveAvatar(preference);
+        // Optimistically update targetUser's avatar option in views
+        setTargetUser((prev: any) => ({
+          ...prev,
+          active_avatar: preference,
+          steamAvatar: preference === 'steam' ? (prev.steam_avatar || prev.steamAvatar) : (prev.discord_avatar || prev.discordAvatar)
+        }));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
 
   const sortedEvents = React.useMemo(() => {
     return [...events].sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
@@ -92,8 +123,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
     if (targetUser && !targetUser.error) {
       setStatus(targetUser.status || '');
       setDisplayName(targetUser.steamName || '');
+      setActiveAvatar(targetUser.active_avatar || 'steam');
     }
-  }, [targetUser?.uid, targetUser?.status, targetUser?.steamName]);
+  }, [targetUser?.uid, targetUser?.status, targetUser?.steamName, targetUser?.active_avatar]);
 
   if (loading) {
     return (
@@ -400,42 +432,110 @@ export default function Profile({ steamId }: { steamId?: string }) {
             </div>
          </div>
 
-          <div className="p-8 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 flex flex-col items-center gap-4 text-center shadow-xl">
-            <div className="bg-[#5865F2]/10 p-3 rounded-2xl border border-[#5865F2]/20 shadow-inner group-hover:bg-[#5865F2]/20 transition-all">
-               <img 
-                 src="https://cdn.simpleicons.org/discord/5865F2" 
-                 className="w-8 h-8 drop-shadow-lg" 
-                 alt="Discord" 
-               />
-            </div>
-            {targetUser.discordId ? (
-              <div className="flex flex-col items-center gap-2">
-                 <span className="text-emerald-400 font-bold flex items-center gap-1">
-                   <Check size={16} /> Linked
-                 </span>
-                 <span className="text-[10px] opacity-40">Account: {targetUser.discordName}</span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <span className="text-white/20 font-bold flex items-center gap-1 uppercase text-xs">
-                  Not Linked
-                </span>
-                {isOwnProfile && (
-                  <button 
-                    onClick={syncWithDiscord}
-                    className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#5865F2]/20 flex items-center justify-center gap-3 group active:scale-95"
-                  >
-                    <img 
-                      src="https://cdn.simpleicons.org/discord/white" 
-                      className="w-5 h-5 group-hover:scale-110 transition-transform" 
-                      alt="" 
-                    />
-                    <span className="tracking-tight">Sync Discord</span>
-                  </button>
+          <div className="p-8 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 flex flex-col gap-6 text-center shadow-xl">
+            <h3 className="text-xs uppercase tracking-widest font-bold opacity-40 dark:text-white text-slate-500">Connections</h3>
+            
+            <div className="flex flex-col gap-4 w-full">
+              {/* Steam Connection Status */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-white/5 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img src="https://community.akamai.steamstatic.com/public/shared/images/responsive/header_logo.png" className="w-5 h-5 object-contain invert grayscale shrink-0" alt="Steam" />
+                  <div className="text-left min-w-0">
+                    <div className="text-xs font-bold leading-none">Steam Account</div>
+                    {targetUser.steamId && !targetUser.steamId.startsWith('discord_') ? (
+                      <div className="text-[10px] opacity-50 truncate max-w-[120px] leading-none mt-1">
+                        {targetUser.steamName || 'Linked'}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-zinc-500 leading-none mt-1">Not Linked</div>
+                    )}
+                  </div>
+                </div>
+                
+                {targetUser.steamId && !targetUser.steamId.startsWith('discord_') ? (
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 shrink-0">
+                    <CheckCircle2 size={14} /> Linked
+                  </span>
+                ) : (
+                  isOwnProfile && (
+                    <button 
+                      onClick={loginWithSteam} 
+                      className="bg-[#1b2838] border border-white/10 hover:border-white/20 hover:bg-[#203044] text-white px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      Add Steam
+                    </button>
+                  )
                 )}
               </div>
+
+              {/* Discord Connection Status */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-white/5 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img src="https://cdn.simpleicons.org/discord/5865F2" className="w-5 h-5 shrink-0" alt="Discord" />
+                  <div className="text-left min-w-0">
+                    <div className="text-xs font-bold leading-none">Discord Account</div>
+                    {targetUser.discordId ? (
+                      <div className="text-[10px] opacity-50 truncate max-w-[120px] leading-none mt-1">
+                        {targetUser.discordName || 'Linked'}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-zinc-500 leading-none mt-1">Not Linked</div>
+                    )}
+                  </div>
+                </div>
+
+                {targetUser.discordId ? (
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 shrink-0">
+                    <CheckCircle2 size={14} /> Linked
+                  </span>
+                ) : (
+                  isOwnProfile && (
+                    <button 
+                      onClick={syncWithDiscord}
+                      className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95 cursor-pointer shrink-0"
+                    >
+                      Sync Discord
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Active Avatar Selector - Only visible to owners with both accounts linked */}
+            {hasBoth && isOwnProfile && (
+              <div className="pt-2 border-t border-black/5 dark:border-white/5 text-left w-full">
+                <span className="text-[10px] uppercase font-bold opacity-30 block mb-2 dark:text-white text-slate-500">
+                  Avatar Preference
+                </span>
+                <div className="grid grid-cols-2 gap-2 bg-black/10 dark:bg-white/5 p-1 rounded-xl">
+                  <button
+                    onClick={() => handleAvatarPreferenceChange('steam')}
+                    disabled={updatingAvatar}
+                    className={cn(
+                      "py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer",
+                      activeAvatar === 'steam' 
+                        ? "bg-[#1b2838] text-white shadow" 
+                        : "text-slate-400 hover:text-slate-200"
+                    )}
+                  >
+                    Steam
+                  </button>
+                  <button
+                    onClick={() => handleAvatarPreferenceChange('discord')}
+                    disabled={updatingAvatar}
+                    className={cn(
+                      "py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer",
+                      activeAvatar === 'discord'
+                        ? "bg-[#5865F2] text-white shadow shadow-[#5865F2]/25" 
+                        : "text-slate-400 hover:text-slate-200"
+                    )}
+                  >
+                    Discord
+                  </button>
+                </div>
+              </div>
             )}
-         </div>
+          </div>
       </div>
 
       {/* Submissions Section */}

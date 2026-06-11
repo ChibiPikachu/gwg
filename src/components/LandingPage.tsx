@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '@/components/AuthProvider';
 
 export default function LandingPage() {
-  const { loginWithSteam } = useAuth();
+  const { loginWithSteam, loginWithDiscord } = useAuth();
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12 md:gap-16 py-8 md:py-12 dark:text-white text-slate-900">
@@ -26,6 +26,31 @@ export default function LandingPage() {
             That being said, we hope you found this site through our group. <br />
             If you didn't and you like what you read, here are some links that might help you!
           </p>
+        </div>
+
+        {/* Dynamic secure log in prompt */}
+        <div className="flex flex-wrap gap-4 items-center bg-slate-500/5 border border-slate-500/10 p-6 rounded-2xl md:p-8 mt-4">
+          <div className="flex-1 flex flex-col gap-1 min-w-[240px]">
+            <h4 className="text-lg font-bold">Secure Member Login</h4>
+            <p className="text-sm opacity-70">
+              Access the member portal, track achievements, and sync with your team.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button 
+              onClick={loginWithSteam} 
+              className="bg-[#1b2838] text-white border border-white/10 hover:border-white/25 transition-all px-4 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center active:scale-95 cursor-pointer shadow-lg max-h-11"
+              title="Sign in through Steam"
+            >
+              <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Steam" className="h-5" />
+            </button>
+            <button 
+              onClick={loginWithDiscord} 
+              className="bg-[#5865F2] hover:bg-[#4752C4] text-white transition-all px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center active:scale-95 cursor-pointer shadow-lg shadow-[#5865F2]/10 h-11"
+            >
+              Log in with Discord
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-8 mt-4">
