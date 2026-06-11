@@ -28,31 +28,6 @@ export default function LandingPage() {
           </p>
         </div>
 
-        {/* Dynamic secure log in prompt */}
-        <div className="flex flex-wrap gap-4 items-center bg-slate-500/5 border border-slate-500/10 p-6 rounded-2xl md:p-8 mt-4">
-          <div className="flex-1 flex flex-col gap-1 min-w-[240px]">
-            <h4 className="text-lg font-bold">Secure Member Login</h4>
-            <p className="text-sm opacity-70">
-              Access the member portal, track achievements, and sync with your team.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <button 
-              onClick={loginWithSteam} 
-              className="bg-[#1b2838] text-white border border-white/10 hover:border-white/25 transition-all px-4 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center active:scale-95 cursor-pointer shadow-lg max-h-11"
-              title="Sign in through Steam"
-            >
-              <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Steam" className="h-5" />
-            </button>
-            <button 
-              onClick={loginWithDiscord} 
-              className="bg-[#5865F2] hover:bg-[#4752C4] text-white transition-all px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center active:scale-95 cursor-pointer shadow-lg shadow-[#5865F2]/10 h-11"
-            >
-              Log in with Discord
-            </button>
-          </div>
-        </div>
-
         <div className="flex flex-col gap-8 mt-4">
           <div className="flex flex-col gap-2">
             <h3 className="text-xl font-bold dark:text-white text-slate-800">SteamGifts Thread:</h3>
