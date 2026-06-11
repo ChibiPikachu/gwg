@@ -664,7 +664,7 @@ async function createServer() {
       client_id: clientId,
       redirect_uri: `${appUrl}/auth/discord/callback`,
       response_type: 'code',
-      scope: 'identify'
+      scope: 'identify guilds'
     });
     res.json({ url: `https://discord.com/api/oauth2/authorize?${params.toString()}` });
   });
