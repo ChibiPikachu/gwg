@@ -2871,27 +2871,26 @@ async function createServer() {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { team, points, notes, userId, adjustmentType } = req.body;
+    const { team, points, notes, userId, userIds, adjustmentType } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      let adjustmentData: any;
-
       // Detect active event dynamically to bind event_id to the adjustments
       const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
       const activeEventId = activeEvent?.id || null;
 
-      if (userId) {
-        // Fetch user profile to get steam_name and avatar
-        const { data: userProfile, error: profileErr } = await supabase
+      const targetUserIds = Array.isArray(userIds) ? userIds : (userId ? [userId] : []);
+
+      if (targetUserIds.length > 0) {
+        // Fetch all user profiles for these userIds
+        const { data: userProfiles, error: profileErr } = await supabase
           .from('profiles')
           .select('*')
-          .eq('steamid', userId)
-          .single();
+          .in('steamid', targetUserIds);
 
-        if (profileErr || !userProfile) {
-          return res.status(404).json({ error: 'User profile not found' });
+        if (profileErr || !userProfiles || userProfiles.length === 0) {
+          return res.status(404).json({ error: 'No user profiles found for the selected members' });
         }
 
         const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
@@ -2902,8 +2901,8 @@ async function createServer() {
           ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' 
           : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png';
 
-        adjustmentData = {
-          user_id: userId,
+        const adjustmentsArray = userProfiles.map(userProfile => ({
+          user_id: userProfile.steamid,
           user_name: userProfile.steam_name,
           user_avatar: userProfile.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
           game_id: defaultGameId,
@@ -2922,7 +2921,21 @@ async function createServer() {
           status: 'verified',
           event_id: activeEventId,
           created_at: new Date().toISOString()
-        };
+        }));
+
+        const { data, error } = await supabase
+          .from('submissions')
+          .insert(adjustmentsArray)
+          .select();
+
+        if (error) throw error;
+
+        // Sync points for all targeted users
+        for (const uid of targetUserIds) {
+          await syncUserPoints(supabase, uid);
+        }
+
+        res.json(data);
       } else {
         const dummySteamId = `team_pts_${team}`;
         const { error: teamProfileError } = await supabase.from('profiles').upsert({
@@ -2940,7 +2953,7 @@ async function createServer() {
         const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
         const defaultGameId = game?.id || null;
 
-        adjustmentData = {
+        const adjustmentData = {
           user_id: dummySteamId,
           user_name: `Team ${team.toUpperCase()}`,
           user_avatar: 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
@@ -2961,21 +2974,17 @@ async function createServer() {
           event_id: activeEventId,
           created_at: new Date().toISOString()
         };
+
+        const { data, error } = await supabase
+          .from('submissions')
+          .insert(adjustmentData)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        res.json(data);
       }
-
-      const { data, error } = await supabase
-        .from('submissions')
-        .insert(adjustmentData)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (userId) {
-        await syncUserPoints(supabase, userId);
-      }
-
-      res.json(data);
     } catch (err: any) {
       console.error('Failed to add team points:', err);
       res.status(500).json({ error: err.message });

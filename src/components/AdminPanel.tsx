@@ -115,6 +115,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [teamAdjustments, setTeamAdjustments] = React.useState<any[]>([]);
   const [awardTargetType, setAwardTargetType] = React.useState<'team' | 'user'>('team');
   const [awardUserId, setAwardUserId] = React.useState('');
+  const [selectedUserIds, setSelectedUserIds] = React.useState<string[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = React.useState('');
+  const [userTeamFilter, setUserTeamFilter] = React.useState<'all' | 'blue' | 'purple' | 'green' | 'red'>('all');
   const [awardAdjustmentType, setAwardAdjustmentType] = React.useState<'screenshot' | 'bingo'>('screenshot');
 
   const fetchTeamAdjustments = React.useCallback(async () => {
@@ -147,8 +150,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const handleAwardTeamPoints = async (e: React.FormEvent) => {
     e.preventDefault();
     const isUser = awardTargetType === 'user';
-    if (isUser && !awardUserId) {
-      alert('Please select a user first!');
+    if (isUser && selectedUserIds.length === 0) {
+      alert('Please select at least one user first!');
       return;
     }
     if (!isUser && !awardTeam) return;
@@ -156,8 +159,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
     setIsAwarding(true);
     try {
-      const selectedU = users.find(u => u.steamid === awardUserId);
-      const teamToSend = isUser ? (selectedU?.team || 'blue') : awardTeam;
+      const teamToSend = isUser ? 'mixed' : awardTeam;
 
       const res = await fetch('/api/admin/team-adjustments', {
         method: 'POST',
@@ -166,7 +168,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           team: teamToSend,
           points: parseInt(awardPoints),
           notes: awardNotes,
-          userId: isUser ? awardUserId : null,
+          userIds: isUser ? selectedUserIds : null,
           adjustmentType: isUser ? awardAdjustmentType : 'screenshot'
         })
       });
@@ -174,10 +176,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         setAwardPoints('');
         setAwardNotes('');
         setAwardUserId('');
+        setSelectedUserIds([]);
         // Reload all data (including user points and adjustments log)
         await fetchTeamAdjustments();
         await fetchUsers(); // Refresh leaderboard data
-        alert(isUser ? 'Points successfully awarded to the user!' : 'Points successfully awarded to the team!');
+        alert(isUser ? `Points successfully awarded to ${selectedUserIds.length} users!` : 'Points successfully awarded to the team!');
       } else {
         const data = await res.json().catch(() => ({ error: 'Unknown server error' }));
         alert(`Failed to award points: ${data.error}`);
@@ -1671,23 +1674,180 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 </div>
               ) : (
                 <>
-                  <div className="space-y-1.5 animate-in fade-in duration-150">
-                    <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select User</label>
-                    <select
-                      value={awardUserId}
-                      onChange={(e) => setAwardUserId(e.target.value)}
-                      className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
-                      required
-                    >
-                      <option value="">-- Choose User --</option>
-                      {users
-                        .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
-                        .map(u => (
-                          <option key={u.steamid} value={u.steamid}>
-                            {u.steam_name} (Team {u.team})
-                          </option>
+                  <div className="space-y-3 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">
+                        Select Users ({selectedUserIds.length} selected)
+                      </label>
+                    </div>
+
+                    {/* Filters & Search */}
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Search users..."
+                        value={userSearchQuery}
+                        onChange={(e) => setUserSearchQuery(e.target.value)}
+                        className="w-full h-10 px-4 text-xs bg-slate-50 dark:bg-black/40 border dark:border-white/5 border-black/5 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:text-white text-slate-900"
+                      />
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setUserTeamFilter('all')}
+                          className={cn(
+                            "px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-colors border",
+                            userTeamFilter === 'all'
+                              ? "bg-slate-200 dark:bg-white/10 dark:text-white text-slate-900 border-transparent"
+                              : "bg-transparent dark:text-white/40 text-slate-500 border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5"
+                          )}
+                        >
+                          All Teams
+                        </button>
+                        {(['blue', 'purple', 'green', 'red'] as const).map(team => (
+                          <button
+                            key={team}
+                            type="button"
+                            onClick={() => setUserTeamFilter(team)}
+                            className={cn(
+                              "px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-colors border",
+                              userTeamFilter === team
+                                ? "bg-white dark:bg-white/20 dark:text-white text-slate-900 border-transparent shadow-sm"
+                                : "bg-transparent dark:text-white/40 text-slate-500 border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5"
+                            )}
+                          >
+                            {team}
+                          </button>
                         ))}
-                    </select>
+                      </div>
+
+                      {/* Select/Deselect All Shortcuts */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const eligibleIds = users
+                              .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
+                              .filter(u => {
+                                const matchesSearch = (u.steam_name || '').toLowerCase().includes(userSearchQuery.toLowerCase());
+                                const matchesTeam = userTeamFilter === 'all' || u.team === userTeamFilter;
+                                return matchesSearch && matchesTeam;
+                              })
+                              .map(u => u.steamid);
+                            
+                            // Union with existing selected IDs
+                            setSelectedUserIds(prev => Array.from(new Set([...prev, ...eligibleIds])));
+                          }}
+                          className="text-[10px] font-black uppercase tracking-widest text-indigo-500 hover:text-indigo-600 transition-colors"
+                        >
+                          Select Filtered
+                        </button>
+                        <span className="text-[10px] opacity-30">|</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const eligibleIds = users
+                              .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
+                              .filter(u => {
+                                const matchesSearch = (u.steam_name || '').toLowerCase().includes(userSearchQuery.toLowerCase());
+                                const matchesTeam = userTeamFilter === 'all' || u.team === userTeamFilter;
+                                return matchesSearch && matchesTeam;
+                              })
+                              .map(u => u.steamid);
+
+                            // Subtract from selected IDs
+                            setSelectedUserIds(prev => prev.filter(id => !eligibleIds.includes(id)));
+                          }}
+                          className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 dark:hover:text-white/60 transition-colors"
+                        >
+                          Deselect Filtered
+                        </button>
+                        <span className="text-[10px] opacity-30">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserIds([])}
+                          className="text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Scrollable list with checkboxes */}
+                    <div className="max-h-56 overflow-y-auto border dark:border-white/5 border-black/5 rounded-xl divide-y divide-black/5 dark:divide-white/5 bg-slate-50/50 dark:bg-black/20 p-1.5 space-y-0.5">
+                      {(() => {
+                        const eligibleUsers = users
+                          .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
+                          .filter(u => {
+                            const nameMatch = (u.steam_name || '').toLowerCase().includes(userSearchQuery.toLowerCase());
+                            const teamMatch = userTeamFilter === 'all' || u.team === userTeamFilter;
+                            return nameMatch && teamMatch;
+                          });
+
+                        if (eligibleUsers.length === 0) {
+                          return (
+                            <div className="p-4 text-center text-xs opacity-40 italic">
+                              No matching users found
+                            </div>
+                          );
+                        }
+
+                        return eligibleUsers.map(u => {
+                          const isChecked = selectedUserIds.includes(u.steamid);
+                          const getTeamColorBadge = (t: string) => {
+                            switch (t) {
+                              case 'blue': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+                              case 'purple': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+                              case 'green': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                              case 'red': return 'bg-red-500/10 text-red-400 border-red-500/20';
+                              default: return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+                            }
+                          };
+
+                          return (
+                            <label
+                              key={u.steamid}
+                              className={cn(
+                                "cursor-pointer flex items-center justify-between p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all",
+                                isChecked && "bg-black/5 dark:bg-white/5 font-medium"
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    if (isChecked) {
+                                      setSelectedUserIds(prev => prev.filter(id => id !== u.steamid));
+                                    } else {
+                                      setSelectedUserIds(prev => [...prev, u.steamid]);
+                                    }
+                                  }}
+                                  className="rounded border-slate-300 dark:border-white/10 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                />
+                                {u.steam_avatar && (
+                                  <img
+                                    src={u.steam_avatar}
+                                    alt=""
+                                    className="w-5 h-5 rounded-full object-cover border border-black/10 dark:border-white/10 shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                )}
+                                <span className="text-xs dark:text-white text-slate-900 truncate">
+                                  {u.steam_name}
+                                </span>
+                              </div>
+                              <span className={cn(
+                                "text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border leading-none shrink-0",
+                                getTeamColorBadge(u.team)
+                              )}>
+                                {u.team}
+                              </span>
+                            </label>
+                          );
+                        });
+                      })()}
+                    </div>
                   </div>
 
                   <div className="space-y-1.5 animate-in fade-in duration-150">
