@@ -757,7 +757,7 @@ export default function MySubmissions() {
                              rel="noopener noreferrer"
                              className="flex items-center gap-1.5 text-[10px] font-bold dark:text-white/40 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                            >
-                             <img src="https://www.google.com/s2/favicons?domain=steampowered.com&sz=16" className="w-3 h-3" alt="" />
+                             <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-3.5 h-3.5 filter invert opacity-60" alt="" />
                              Steam
                            </a>
                         )}
@@ -813,7 +813,7 @@ export default function MySubmissions() {
                               verifyingSteam ? "opacity-50" : "hover:bg-white/5"
                             )}
                           >
-                            {verifyingSteam ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                            {verifyingSteam ? <Loader2 size={12} className="animate-spin" /> : <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-3.5 h-3.5 filter invert" alt="" />}
                             {verifyingSteam ? 'Verifying...' : 'Check Ownership'}
                           </button>
                         ) : (

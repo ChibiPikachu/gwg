@@ -340,7 +340,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity text-sm bg-black/20 px-3 py-1 rounded-full border border-white/5"
                  >
-                    <img src="https://community.akamai.steamstatic.com/public/shared/images/responsive/header_logo.png" className="w-4 h-4 object-contain invert grayscale" alt="Steam" />
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-4 h-4 object-contain invert grayscale" alt="Steam" />
                     <span>View Steam Profile</span>
                  </a>
                  {targetUser.discordName && (
@@ -439,7 +439,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
               {/* Steam Connection Status */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-white/5 gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <img src="https://community.akamai.steamstatic.com/public/shared/images/responsive/header_logo.png" className="w-5 h-5 object-contain invert grayscale shrink-0" alt="Steam" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-5 h-5 shrink-0 filter invert opacity-80" alt="Steam" />
                   <div className="text-left min-w-0">
                     <div className="text-xs font-bold leading-none">Steam Account</div>
                     {targetUser.steamId && !targetUser.steamId.startsWith('discord_') ? (
@@ -462,6 +462,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                       onClick={loginWithSteam} 
                       className="bg-[#1b2838] border border-white/10 hover:border-white/20 hover:bg-[#203044] text-white px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shrink-0"
                     >
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-3.5 h-3.5 filter invert" alt="Steam" />
                       Add Steam
                     </button>
                   )

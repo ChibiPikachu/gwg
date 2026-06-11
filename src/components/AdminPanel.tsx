@@ -1103,10 +1103,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       href={`https://store.steampowered.com/app/${sub.steam_appid}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="absolute top-2 right-2 md:top-4 md:right-4 z-10 bg-blue-900/60 backdrop-blur-md hover:bg-blue-900/80 text-blue-100 text-[10px] font-mono px-2 py-1 rounded-md border border-blue-500/30 transition-all flex items-center gap-1.5 shadow-lg"
+                      className="absolute top-2 right-2 md:top-4 md:right-4 z-10 bg-[#1b2838]/80 backdrop-blur-md hover:bg-[#203044]/90 text-white text-[10px] font-mono px-2 py-1 rounded-md border border-white/10 transition-all flex items-center gap-1.5 shadow-lg"
                       title="Open Steam Store"
                     >
-                      <ExternalLink size={10} />
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-3 h-3 filter invert opacity-90" alt="" />
                       Steam
                     </a>
                   ) : sub.game_name ? (
