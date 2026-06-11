@@ -1697,8 +1697,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       onChange={(e) => setAwardAdjustmentType(e.target.value as 'screenshot' | 'bingo')}
                       className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
                     >
-                      <option value="screenshot">📸 Screenshot Points</option>
-                      <option value="bingo">🎯 Bingo Points</option>
+                      <option value="screenshot">Screenshot Points</option>
+                      <option value="bingo">Bingo Points</option>
                     </select>
                   </div>
                 </>
