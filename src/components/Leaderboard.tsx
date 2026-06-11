@@ -176,6 +176,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           ) : (
             safeUsers.map((u, i) => {
               const hasScreenshotPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Screenshot Points');
+              const hasBingoPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Bingo Points');
               return (
                 <div key={u.steamid} className="flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 group hover:border-black/10 dark:hover:border-white/10 transition-all shadow-sm dark:shadow-none">
                   <div className="text-sm font-bold opacity-30 w-4 dark:text-white text-slate-500">
@@ -213,6 +214,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                        {hasScreenshotPoints && (
                          <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 shrink-0">
                            screenshot points
+                         </span>
+                       )}
+                       {hasBingoPoints && (
+                         <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20 shrink-0">
+                           bingo points
                          </span>
                        )}
                     </div>

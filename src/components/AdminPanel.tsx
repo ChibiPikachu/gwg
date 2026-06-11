@@ -115,6 +115,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [teamAdjustments, setTeamAdjustments] = React.useState<any[]>([]);
   const [awardTargetType, setAwardTargetType] = React.useState<'team' | 'user'>('team');
   const [awardUserId, setAwardUserId] = React.useState('');
+  const [awardAdjustmentType, setAwardAdjustmentType] = React.useState<'screenshot' | 'bingo'>('screenshot');
 
   const fetchTeamAdjustments = React.useCallback(async () => {
     try {
@@ -165,7 +166,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           team: teamToSend,
           points: parseInt(awardPoints),
           notes: awardNotes,
-          userId: isUser ? awardUserId : null
+          userId: isUser ? awardUserId : null,
+          adjustmentType: isUser ? awardAdjustmentType : 'screenshot'
         })
       });
       if (res.ok) {
@@ -573,7 +575,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   });
 
   const filteredSubmissions = submissions.filter(sub => {
-    if (sub.game_name === 'Event Update' || sub.game_name === 'Screenshot Points') return false;
+    if (sub.game_name === 'Event Update' || sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points') return false;
 
     // Distinguish based on activeTab: 'submissions' (current event specs) vs 'previous_submissions' (archive)
     const isCurrent = checkIsCurrentSub(sub);
@@ -1668,24 +1670,38 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   </select>
                 </div>
               ) : (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select User</label>
-                  <select
-                    value={awardUserId}
-                    onChange={(e) => setAwardUserId(e.target.value)}
-                    className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
-                    required
-                  >
-                    <option value="">-- Choose User --</option>
-                    {users
-                      .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
-                      .map(u => (
-                        <option key={u.steamid} value={u.steamid}>
-                          {u.steam_name} (Team {u.team})
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                <>
+                  <div className="space-y-1.5 animate-in fade-in duration-150">
+                    <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Select User</label>
+                    <select
+                      value={awardUserId}
+                      onChange={(e) => setAwardUserId(e.target.value)}
+                      className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
+                      required
+                    >
+                      <option value="">-- Choose User --</option>
+                      {users
+                        .filter(u => u.steamid && !u.steamid.startsWith('team_pts_') && u.team && u.team !== 'none')
+                        .map(u => (
+                          <option key={u.steamid} value={u.steamid}>
+                            {u.steam_name} (Team {u.team})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5 animate-in fade-in duration-150">
+                    <label className="text-[10px] font-black uppercase tracking-widest opacity-50 dark:text-white text-slate-800">Adjustment Type</label>
+                    <select
+                      value={awardAdjustmentType}
+                      onChange={(e) => setAwardAdjustmentType(e.target.value as 'screenshot' | 'bingo')}
+                      className="w-full dark:bg-black/40 bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-sm dark:text-white text-slate-900"
+                    >
+                      <option value="screenshot">📸 Screenshot Points</option>
+                      <option value="bingo">🎯 Bingo Points</option>
+                    </select>
+                  </div>
+                </>
               )}
 
               <div className="space-y-1.5">
@@ -1766,9 +1782,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           </p>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[9px] opacity-40 font-mono">{new Date(adj.created_at).toLocaleString()}</span>
-                            {isUserAdj && (
+                            {isUserAdj && adj.game_name === 'Screenshot Points' && (
                               <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0">
                                 Screenshot Points
+                              </span>
+                            )}
+                            {isUserAdj && adj.game_name === 'Bingo Points' && (
+                              <span className="text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 px-1.5 py-0.2 rounded border border-blue-500/20 shrink-0">
+                                Bingo Points
                               </span>
                             )}
                           </div>

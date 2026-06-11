@@ -318,7 +318,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
                         )}
                         <div className="flex gap-4">
                           <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-black/5 dark:border-white/10">
-                            <img src={n.game_name === 'Screenshot Points' || n.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                            <img src={n.game_name === 'Screenshot Points' || n.game_name === 'Bingo Points' || n.game_image?.includes('1471391') ? (n.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                           </div>
                           <div className="flex-1 min-w-0">
                             {n.user_id === 'system_notification' ? (

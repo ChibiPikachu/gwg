@@ -2848,7 +2848,7 @@ async function createServer() {
       let query = supabase
         .from('submissions')
         .select('*')
-        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points');
+        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points');
 
       if (activeEvent) {
         query = query.eq('event_id', activeEvent.id);
@@ -2871,7 +2871,7 @@ async function createServer() {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { team, points, notes, userId } = req.body;
+    const { team, points, notes, userId, adjustmentType } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
@@ -2897,13 +2897,18 @@ async function createServer() {
         const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
         const defaultGameId = game?.id || null;
 
+        const adjType = adjustmentType === 'bingo' ? 'Bingo Points' : 'Screenshot Points';
+        const imgUrl = adjustmentType === 'bingo' 
+          ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' 
+          : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png';
+
         adjustmentData = {
           user_id: userId,
           user_name: userProfile.steam_name,
           user_avatar: userProfile.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
           game_id: defaultGameId,
-          game_name: 'Screenshot Points',
-          game_image: 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png',
+          game_name: adjType,
+          game_image: imgUrl,
           achievements_during: 0,
           hours_during: 0,
           achievements_before: 0,
@@ -2911,7 +2916,7 @@ async function createServer() {
           multiplier: 1.0,
           calculated_score: parseInt(points) || 0,
           completion_status: 'completed',
-          platform: 'Screenshot Points',
+          platform: adjType,
           points: parseInt(points) || 0,
           notes: notes || '',
           status: 'verified',

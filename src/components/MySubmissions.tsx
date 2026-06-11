@@ -162,8 +162,8 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed, formData.hoursBefore]);
 
   const filteredSubmissions = React.useMemo(() => {
-    // Filter out "Event Update" (system notification) and "Screenshot Points" (adjustments) from entries
-    let result = submissions.filter(s => s.game_name !== 'Event Update' && s.game_name !== 'Screenshot Points');
+    // Filter out "Event Update" (system notification), "Screenshot Points", and "Bingo Points" from entries
+    let result = submissions.filter(s => s.game_name !== 'Event Update' && s.game_name !== 'Screenshot Points' && s.game_name !== 'Bingo Points');
     if (completionFilter !== 'all') {
       if (completionFilter === 'pending') {
         result = result.filter(s => s.status === 'pending');
@@ -465,7 +465,7 @@ export default function MySubmissions() {
     setSelectedGame({
       id: sub.game_id,
       title: sub.game_name,
-      image: sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image,
+      image: sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image,
       steam_appid: sub.steam_appid || null
     });
     const meta = parseNotesMeta(sub.notes || '');
@@ -1113,7 +1113,7 @@ export default function MySubmissions() {
                     "group-hover:shadow-[0_0_25px_-5px_rgba(0,0,0,0.2)]"
                   )}>
                     <img 
-                      src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} 
+                      src={sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image} 
                       alt={sub.game_name} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                       referrerPolicy="no-referrer"
@@ -1258,7 +1258,7 @@ export default function MySubmissions() {
                   <div className="aspect-[3/4] relative w-full overflow-hidden bg-black/40">
                     {sub.game_image ? (
                       <img 
-                        src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} 
+                        src={sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image} 
                         alt={sub.game_name} 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                         referrerPolicy="no-referrer"

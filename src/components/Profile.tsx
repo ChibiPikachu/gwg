@@ -538,7 +538,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                         <div className="w-12 h-16 rounded overflow-hidden bg-white/5 shrink-0 border border-black/10 dark:border-white/5 relative shadow-sm">
                           {sub.game_image ? (
                             <img 
-                              src={sub.game_name === 'Screenshot Points' || sub.game_image?.includes('1471391') ? 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png' : sub.game_image} 
+                              src={sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image} 
                               alt={sub.game_name} 
                               className="w-full h-full object-cover" 
                               referrerPolicy="no-referrer"
