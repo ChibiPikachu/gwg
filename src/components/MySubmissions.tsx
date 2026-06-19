@@ -88,6 +88,7 @@ export default function MySubmissions() {
     achievementsBefore: '0',
     hoursBefore: '0',
     completionStatus: 'unfinished' as any,
+    beatenPrevious: 'no' as 'yes' | 'no',
     platform: 'Steam' as string,
     notes: '',
     hasNoAchievements: false,
@@ -225,10 +226,12 @@ export default function MySubmissions() {
     const hoursBefore = parseFloat(formData.hoursBefore) || 0;
     const finalHours = Math.max(0, totalHours - hoursBefore);
 
+    const effectivePreviewStatus = (formData.completionStatus === 'beaten' && formData.beatenPrevious === 'yes') ? 'unfinished' : formData.completionStatus;
+
     if (isNoAchievements) {
       const gameTitle = selectedGame?.title || '';
       const hltb = hltbData[gameTitle] || { hltb_main: 0, hltb_extras: 0 };
-      return calculateNonAchievementPoints(formData.level, finalHours, hltb, formData.completionStatus);
+      return calculateNonAchievementPoints(formData.level, finalHours, hltb, effectivePreviewStatus);
     }
 
     const totalAchievements = parseInt(formData.achievementsEarned) || 0;
@@ -236,13 +239,13 @@ export default function MySubmissions() {
     const finalAchievements = Math.max(0, totalAchievements - achievementsBefore);
 
     let bonus = 0;
-    if (formData.completionStatus === 'completed') {
+    if (effectivePreviewStatus === 'completed') {
       bonus = 30;
-    } else if (formData.completionStatus === 'beaten') {
+    } else if (effectivePreviewStatus === 'beaten') {
       bonus = 15;
     }
     return Math.round(finalAchievements * multiplierPreview) + bonus;
-  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus]);
+  }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus, formData.beatenPrevious]);
 
   const fetchSubmissions = React.useCallback(async () => {
     try {
@@ -435,6 +438,7 @@ export default function MySubmissions() {
           hoursBefore: finalHoursBefore,
           multiplier: multiplierPreview,
           completionStatus: formData.completionStatus,
+          beatenPrevious: formData.beatenPrevious,
           platform: formData.platform,
           calculatedScore: scorePreview,
           notes: serializedNotes,
@@ -478,7 +482,8 @@ export default function MySubmissions() {
       platform: sub.platform || 'Steam',
       notes: meta.userNotes,
       hasNoAchievements: meta.hasNoAchievements,
-      level: meta.level !== undefined ? meta.level : 2
+      level: meta.level !== undefined ? meta.level : 2,
+      beatenPrevious: sub.beaten_previous || 'no'
     });
     setSteamVerifyMsg(null);
     setSteamTotalStats(null);
@@ -514,6 +519,7 @@ export default function MySubmissions() {
       achievementsBefore: '0', 
       hoursBefore: '0', 
       completionStatus: 'unfinished',
+      beatenPrevious: 'no',
       platform: 'Steam',
       notes: '',
       hasNoAchievements: false,
@@ -855,14 +861,47 @@ export default function MySubmissions() {
                            </button>
                          ))}
                        </div>
-                       {formData.completionStatus === 'beaten' && (
-                         <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
-                           <CheckCircle2 size={10} /> +15 Beaten Bonus Applied
-                         </div>
-                       )}
-                       {formData.completionStatus === 'completed' && (
-                         <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1">
-                           <CheckCircle2 size={10} /> +30 Completion Bonus Applied
+                       
+                       {(formData.completionStatus === 'beaten' || formData.completionStatus === 'completed') && (
+                         <div className="mt-3 p-3 dark:bg-white/5 bg-slate-50 rounded-xl border border-black/5 dark:border-white/5 space-y-2">
+                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                             <span className="text-[10px] font-bold dark:text-slate-300 text-slate-600">
+                               Beaten during previous event?
+                             </span>
+                             <div className="flex gap-2">
+                               {(['no', 'yes'] as const).map((opt) => (
+                                 <button
+                                   key={opt}
+                                   type="button"
+                                   onClick={() => setFormData({...formData, beatenPrevious: opt})}
+                                   className={cn(
+                                     "px-3 py-1 text-[10px] font-bold uppercase rounded-md border transition-all",
+                                     formData.beatenPrevious === opt
+                                       ? "bg-blue-500 text-white border-blue-600"
+                                       : "bg-transparent border-black/10 dark:border-white/10 opacity-60 hover:opacity-100"
+                                   )}
+                                 >
+                                   {opt}
+                                 </button>
+                               ))}
+                             </div>
+                           </div>
+                           
+                           {formData.completionStatus === 'beaten' && formData.beatenPrevious === 'no' && (
+                             <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-0.5">
+                               <CheckCircle2 size={10} /> +15 Beaten Bonus Applied
+                             </div>
+                           )}
+                           {formData.completionStatus === 'beaten' && formData.beatenPrevious === 'yes' && (
+                             <div className="text-[10px] text-amber-400 font-bold flex items-center gap-1 mt-0.5 leading-tight">
+                               ⚠️ No Beaten Bonus; treated as "unfinished" status for scoring.
+                             </div>
+                           )}
+                           {formData.completionStatus === 'completed' && (
+                             <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-0.5">
+                               <CheckCircle2 size={10} /> +30 Completion Bonus Applied
+                             </div>
+                           )}
                          </div>
                        )}
                     </div>
@@ -1220,6 +1259,24 @@ export default function MySubmissions() {
                         </>
                       )}
                     </div>
+                    {sub.completion_status && (
+                      <div className="flex flex-wrap gap-1 items-center mt-0.5">
+                        <span className={cn(
+                          "text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded border leading-none",
+                          sub.completion_status === 'completed' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                          sub.completion_status === 'beaten' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                          sub.completion_status === 'abandoned' ? "bg-slate-500/10 text-slate-400 border-slate-500/20" :
+                          "bg-white/5 text-white/40 border-white/10"
+                        )}>
+                          {sub.completion_status}
+                        </span>
+                        {sub.beaten_previous === 'yes' && (
+                          <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded border leading-none bg-amber-500/10 text-amber-500 border-amber-500/20">
+                            Prev Beaten
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {sub.status === 'rejected' && sub.rejection_reason && (
                       <div className="p-2 bg-red-500/5 border border-red-500/10 rounded-lg text-[9px] text-red-300 leading-tight italic">
                         <span className="font-bold uppercase opacity-50 block mb-1">Reason:</span>
@@ -1370,6 +1427,24 @@ export default function MySubmissions() {
                         </>
                       )}
                     </div>
+                    {sub.completion_status && (
+                      <div className="flex flex-wrap gap-1 items-center mt-0.5">
+                        <span className={cn(
+                          "text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded border leading-none",
+                          sub.completion_status === 'completed' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                          sub.completion_status === 'beaten' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                          sub.completion_status === 'abandoned' ? "bg-slate-500/10 text-slate-400 border-slate-500/20" :
+                          "bg-white/5 text-white/40 border-white/10"
+                        )}>
+                          {sub.completion_status}
+                        </span>
+                        {sub.beaten_previous === 'yes' && (
+                          <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded border leading-none bg-amber-500/10 text-amber-500 border-amber-500/20">
+                            Prev Beaten
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {sub.status === 'rejected' && sub.rejection_reason && (
                       <div className="p-2 bg-red-500/5 border border-red-500/10 rounded-lg text-[9px] text-red-300 leading-tight italic truncate" title={sub.rejection_reason}>
                         <span className="font-bold uppercase opacity-50 block mb-0.5">Reason:</span>

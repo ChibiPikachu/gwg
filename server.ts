@@ -2015,12 +2015,16 @@ async function createServer() {
       achievementsBefore,
       hoursBefore,
       completionStatus,
+      beatenPrevious,
+      beaten_previous,
       notes,
       platform,
       steamAppId,
       steam_appid, // <-- Added the correct frontend variable name
       hltbId
     } = req.body;
+
+    const finalBeatenPrevious = beatenPrevious || beaten_previous || 'no';
 
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -2050,10 +2054,12 @@ async function createServer() {
 
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
       
+      const effectiveStatus = (completionStatus === 'beaten' && finalBeatenPrevious === 'yes') ? 'unfinished' : (completionStatus || 'unfinished');
+
       // Completion Bonus: +30 for 'completed', +15 for 'beaten' in games with achievements
-      if (completionStatus === 'completed') {
+      if (effectiveStatus === 'completed') {
         serverPoints += 30;
-      } else if (completionStatus === 'beaten') {
+      } else if (effectiveStatus === 'beaten') {
         serverPoints += 15;
       }
 
@@ -2066,7 +2072,7 @@ async function createServer() {
         const levelVal = meta.level !== undefined ? meta.level : 2;
         const hoursBeforeNum = parseFloat(hoursBefore) || 0;
         const finalPlayTime = Math.max(0, numHours - hoursBeforeNum);
-        serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, completionStatus || 'unfinished');
+        serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, effectiveStatus);
       }
 
       // Find active event
@@ -2103,6 +2109,7 @@ async function createServer() {
         multiplier: serverMultiplier,
         calculated_score: serverPoints,
         completion_status: completionStatus || 'beaten',
+        beaten_previous: finalBeatenPrevious,
         platform: platform || 'Others',
         steam_appid: finalSteamAppId || null, // Saved to DB here!
         points: serverPoints, 
@@ -2168,8 +2175,12 @@ async function createServer() {
       achievementsBefore,
       hoursBefore,
       completionStatus,
+      beatenPrevious,
+      beaten_previous,
       notes 
     } = req.body;
+
+    const finalBeatenPrevious = beatenPrevious || beaten_previous || 'no';
 
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -2199,9 +2210,12 @@ async function createServer() {
       else serverMultiplier = 4.0;
 
       let serverPoints = Math.round((parseInt(achievements) || 0) * serverMultiplier);
-      if (completionStatus === 'completed') {
+      
+      const effectiveStatus = (completionStatus === 'beaten' && finalBeatenPrevious === 'yes') ? 'unfinished' : (completionStatus || 'unfinished');
+
+      if (effectiveStatus === 'completed') {
         serverPoints += 30;
-      } else if (completionStatus === 'beaten') {
+      } else if (effectiveStatus === 'beaten') {
         serverPoints += 15;
       }
 
@@ -2214,7 +2228,7 @@ async function createServer() {
         const levelVal = meta.level !== undefined ? meta.level : 2;
         const hoursBeforeNum = parseFloat(hoursBefore) || 0;
         const finalPlayTime = Math.max(0, numHours - hoursBeforeNum);
-        serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, completionStatus || 'unfinished');
+        serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, effectiveStatus);
       }
 
       const { data, error } = await supabase
@@ -2227,6 +2241,7 @@ async function createServer() {
           multiplier: serverMultiplier,
           calculated_score: serverPoints,
           completion_status: completionStatus || sub.completion_status || 'beaten',
+          beaten_previous: finalBeatenPrevious,
           points: serverPoints,
           notes: notes || '',
           status: 'pending', // Reset to pending for admin re-review
@@ -2473,9 +2488,14 @@ async function createServer() {
         else multiplier = 4.0;
 
         let correctPoints = Math.round(Number(sub.achievements_during || 0) * multiplier);
-        if (sub.completion_status === 'completed') {
+        const subBeatenPrevious = sub.beaten_previous || 'no';
+        const effectiveRecalcStatus = (sub.completion_status === 'beaten' && subBeatenPrevious === 'yes') 
+          ? 'unfinished' 
+          : (sub.completion_status || 'unfinished');
+
+        if (effectiveRecalcStatus === 'completed') {
           correctPoints += 30;
-        } else if (sub.completion_status === 'beaten') {
+        } else if (effectiveRecalcStatus === 'beaten') {
           correctPoints += 15;
         }
         
@@ -2485,7 +2505,7 @@ async function createServer() {
           const levelVal = meta.level !== undefined ? meta.level : 2;
           const hoursBeforeNum = Number(sub.hours_before || 0);
           const finalPlayTime = Math.max(0, hours - hoursBeforeNum);
-          correctPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameMeta.hltb_main, gameMeta.hltb_extras, sub.completion_status || 'unfinished');
+          correctPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameMeta.hltb_main, gameMeta.hltb_extras, effectiveRecalcStatus);
         }
         
         console.log(`[Admin] Recalculating sub ${sub.id}: user=${sub.user_name}, hours=${hours}, achievements=${sub.achievements_during} -> multiplier=${multiplier}, points=${correctPoints}`);

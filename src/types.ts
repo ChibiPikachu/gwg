@@ -36,6 +36,7 @@ export interface Submission {
   points: number;
   status: SubmissionStatus;
   completionStatus?: CompletionStatus;
+  beaten_previous?: 'yes' | 'no';
   notes: string;
   eventId: string;
   createdAt: number;

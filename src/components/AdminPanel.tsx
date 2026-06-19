@@ -445,19 +445,22 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const calculateReviewPoints = (achievementsVal: string, multiplierVal: number, levelVal: number, sub: any) => {
     const meta = parseNotesMeta(sub?.notes || '');
+    const isBeatenPrev = sub?.beaten_previous === 'yes';
+    const effectiveAdminStatus = (sub?.completion_status === 'beaten' && isBeatenPrev) ? 'unfinished' : (sub?.completion_status || 'unfinished');
+
     if (meta.hasNoAchievements) {
       const hoursPlayed = parseFloat(editHours) || Number(sub?.hours_during || 0);
       const hoursBefore = Number(sub?.hours_before || 0);
       const finalPlayTime = Math.max(0, hoursPlayed - hoursBefore);
       const hltb = hltbData[sub?.game_name || ''] || { hltb_main: sub?.hltb_main, hltb_extras: sub?.hltb_extras };
-      const nonAchPts = calculateNonAchievementPoints(levelVal, finalPlayTime, hltb, sub?.completion_status);
+      const nonAchPts = calculateNonAchievementPoints(levelVal, finalPlayTime, hltb, effectiveAdminStatus);
       return String(nonAchPts);
     }
     const achs = parseInt(achievementsVal) || 0;
     let bonus = 0;
-    if (sub?.completion_status === 'completed') {
+    if (effectiveAdminStatus === 'completed') {
       bonus = 30;
-    } else if (sub?.completion_status === 'beaten') {
+    } else if (effectiveAdminStatus === 'beaten') {
       bonus = 15;
     }
     const basePoints = Math.round(achs * multiplierVal) + bonus;
@@ -1388,6 +1391,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             </div>
                           )}
 
+                          {sub.beaten_previous === 'yes' && (
+                            <div className="text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full border bg-amber-500/10 text-amber-500 border-amber-500/20">
+                              Prev Beaten
+                            </div>
+                          )}
+
                           {(() => {
                             const subEvent = events.find((e: any) => e.id === sub.event_id);
                             if (!subEvent) return null;
@@ -1444,16 +1453,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             setSelectedLevel(initialLvl);
 
                             let basePoints = 0;
+                            const isBeatenPrev = sub.beaten_previous === 'yes';
+                            const effectiveReviewStatus = (sub.completion_status === 'beaten' && isBeatenPrev) ? 'unfinished' : (sub.completion_status || 'unfinished');
+
                             if (meta.hasNoAchievements) {
                               const hltb = hltbData[sub.game_name] || { hltb_main: sub.hltb_main, hltb_extras: sub.hltb_extras };
                               const hoursBefore = Number(sub.hours_before || 0);
                               const finalPlayTime = Math.max(0, hours - hoursBefore);
-                              basePoints = calculateNonAchievementPoints(initialLvl, finalPlayTime, hltb, sub.completion_status);
+                              basePoints = calculateNonAchievementPoints(initialLvl, finalPlayTime, hltb, effectiveReviewStatus);
                             } else {
                               let bonus = 0;
-                              if (sub.completion_status === 'completed') {
+                              if (effectiveReviewStatus === 'completed') {
                                 bonus = 30;
-                              } else if (sub.completion_status === 'beaten') {
+                              } else if (effectiveReviewStatus === 'beaten') {
                                 bonus = 15;
                               }
                               basePoints = Math.round(achievements * m) + bonus;
