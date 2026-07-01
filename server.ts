@@ -2095,10 +2095,36 @@ async function createServer() {
         }
       }
 
+      // Get the latest profile details to make sure they are saved on submission
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('steamid', steamId)
+        .maybeSingle();
+
+      let displayAvatar = null;
+      let displayName = null;
+      if (userProfile) {
+        if (userProfile.active_avatar === 'discord' && userProfile.discord_avatar) {
+          displayAvatar = userProfile.discord_avatar;
+        } else {
+          displayAvatar = userProfile.steam_avatar;
+        }
+        displayName = userProfile.steam_name || userProfile.discord_name;
+      }
+
+      // Fallbacks to session info if profile query somehow failed or is empty
+      if (!displayName) {
+        displayName = currentUser.displayName || currentUser.steam_name || 'Steam User';
+      }
+      if (!displayAvatar) {
+        displayAvatar = currentUser.steam_avatar || (currentUser.photos?.[0]?.value) || null;
+      }
+
       const submissionData: any = {
         user_id: steamId,
-        user_name: currentUser.displayName || currentUser.steam_name,
-        user_avatar: currentUser.steam_avatar || (currentUser.photos?.[0]?.value),
+        user_name: displayName,
+        user_avatar: displayAvatar,
         game_id: internalGameId,
         game_name: gameTitle || game_title || "Unknown Game", 
         game_image: gameImage,
@@ -2231,9 +2257,29 @@ async function createServer() {
         serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, effectiveStatus);
       }
 
+      // Get the latest profile details to make sure they are saved on update/revision too
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('steamid', steamId)
+        .maybeSingle();
+
+      let displayAvatar = sub.user_avatar;
+      let displayName = sub.user_name;
+      if (userProfile) {
+        if (userProfile.active_avatar === 'discord' && userProfile.discord_avatar) {
+          displayAvatar = userProfile.discord_avatar;
+        } else if (userProfile.steam_avatar) {
+          displayAvatar = userProfile.steam_avatar;
+        }
+        displayName = userProfile.steam_name || userProfile.discord_name;
+      }
+
       const { data, error } = await supabase
         .from('submissions')
         .update({
+          user_name: displayName || sub.user_name || 'Unknown User',
+          user_avatar: displayAvatar || sub.user_avatar || '',
           achievements_during: achievements || 0,
           hours_during: hours || 0,
           achievements_before: achievementsBefore || 0,
@@ -2334,13 +2380,13 @@ async function createServer() {
       const gameIds = Array.from(new Set(submissions.map((s: any) => s.game_id)));
       
       const [profileRes, gamesRes] = await Promise.all([
-        supabase.from('profiles').select('steamid, team').in('steamid', userIds),
+        supabase.from('profiles').select('steamid, team, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar').in('steamid', userIds),
         supabase.from('games').select('id, total_achievements, hltb_main, hltb_extras, hltb_completionist').in('id', gameIds)
       ]);
 
-      const teamMap: Record<string, string> = {};
+      const profileMap: Record<string, any> = {};
       (profileRes.data || []).forEach((p: any) => {
-        teamMap[p.steamid] = p.team || 'none';
+        profileMap[p.steamid] = p;
       });
 
       const totalAchMap: Record<string, number> = {};
@@ -2354,14 +2400,38 @@ async function createServer() {
         hltbCompMap[g.id] = g.hltb_completionist || 0;
       });
 
-      const enriched = submissions.map((s: any) => ({
-        ...s,
-        userTeam: teamMap[s.user_id] || 'none',
-        totalAchievements: totalAchMap[s.game_id] || 0,
-        hltb_main: hltbMainMap[s.game_id] || 0,
-        hltb_extras: hltbExtrasMap[s.game_id] || 0,
-        hltb_completionist: hltbCompMap[s.game_id] || 0
-      }));
+      const enriched = submissions.map((s: any) => {
+        const p = profileMap[s.user_id];
+        
+        let finalAvatar = s.user_avatar;
+        if (p) {
+          if (p.active_avatar === 'discord' && p.discord_avatar) {
+            finalAvatar = p.discord_avatar;
+          } else if (p.steam_avatar) {
+            finalAvatar = p.steam_avatar;
+          }
+        }
+        
+        let finalName = s.user_name;
+        if (p) {
+          if (p.steam_name) {
+            finalName = p.steam_name;
+          } else if (p.discord_name) {
+            finalName = p.discord_name;
+          }
+        }
+
+        return {
+          ...s,
+          user_name: finalName || s.user_name || 'Unknown User',
+          user_avatar: finalAvatar || s.user_avatar || '',
+          userTeam: p?.team || 'none',
+          totalAchievements: totalAchMap[s.game_id] || 0,
+          hltb_main: hltbMainMap[s.game_id] || 0,
+          hltb_extras: hltbExtrasMap[s.game_id] || 0,
+          hltb_completionist: hltbCompMap[s.game_id] || 0
+        };
+      });
 
       console.log(`[Admin] Successfully returning ${enriched.length} submissions.`);
       res.json(enriched);
