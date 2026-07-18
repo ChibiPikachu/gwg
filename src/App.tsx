@@ -15,6 +15,7 @@ import Profile from '@/components/Profile';
 import MyTeam from '@/components/MyTeam';
 import Games from '@/components/Games';
 import AdminPanel from '@/components/AdminPanel';
+import DiscordRegistration from '@/components/DiscordRegistration';
 import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu } from 'lucide-react';
@@ -36,6 +37,10 @@ function AppContent() {
         <div className={`w-12 h-12 border-4 ${theme.border} border-t-transparent rounded-full animate-spin`}></div>
       </div>
     );
+  }
+
+  if (user && user.needs_registration) {
+    return <DiscordRegistration />;
   }
 
   if (!user) {

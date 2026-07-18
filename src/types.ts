@@ -15,6 +15,7 @@ export interface UserProfile {
   points: number;
   createdAt?: string;
   eventTeams?: Record<string, string>;
+  needs_registration?: boolean;
 }
 
 export type SubmissionStatus = 'pending' | 'verified' | 'rejected';

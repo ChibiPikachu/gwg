@@ -13,6 +13,7 @@ interface AuthContextType {
   loginWithDiscord: () => void;
   logout: () => void;
   updateProfile: (data: { displayName: string; status: string }) => Promise<boolean>;
+  fetchMe: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             discordAvatar: profile.discord_avatar || profile.discordAvatar,
             createdAt: profile.created_at || profile.createdAt,
             eventTeams: profile.eventTeams || {},
+            needs_registration: profile.needs_registration || false,
           } as any);
         }
         setLoading(false);
@@ -255,7 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.team]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, theme, isDarkMode, toggleDarkMode, loginWithSteam, syncWithDiscord, loginWithDiscord, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, theme, isDarkMode, toggleDarkMode, loginWithSteam, syncWithDiscord, loginWithDiscord, logout, updateProfile, fetchMe }}>
       {children}
     </AuthContext.Provider>
   );

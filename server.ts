@@ -744,47 +744,32 @@ async function createServer() {
             .eq('discord_id', user.id)
             .maybeSingle();
 
-          let finalProfile: any = null;
+          let sessionUser: any = null;
 
           if (existingProfile) {
             // Update last_login
             await supabase.from('profiles').update({
               last_login: new Date().toISOString()
             }).eq('steamid', existingProfile.steamid);
-            finalProfile = { ...existingProfile };
+            
+            sessionUser = {
+              id: existingProfile.steamid,
+              steamid: existingProfile.steamid,
+              discord_id: user.id,
+              provider: 'discord'
+            };
           } else {
-            // Create a Discord-only profile
-            const fallbackId = `discord_${user.id}`;
-            const newProfile = {
-              steamid: fallbackId,
-              steam_name: discordName,
-              steam_avatar: discordAvatar,
+            // First time Discord login: flag for registration prompt on frontend, do not insert profile yet
+            sessionUser = {
+              id: `discord_${user.id}`,
+              steamid: `discord_${user.id}`,
               discord_id: user.id,
               discord_name: discordName,
               discord_avatar: discordAvatar,
-              active_avatar: 'discord',
-              team: 'none',
-              role: 'member',
-              status: 'Ready for Event #3',
-              points: 0,
-              last_login: new Date().toISOString(),
-              created_at: new Date().toISOString()
+              provider: 'discord',
+              needs_registration: true
             };
-
-            const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
-            if (insertErr) {
-              console.error('Failed to insert new Discord-only profile:', insertErr);
-            }
-            finalProfile = newProfile;
           }
-
-          // Establish custom passport session
-          const sessionUser = {
-            id: finalProfile.steamid,
-            steamid: finalProfile.steamid,
-            discord_id: user.id,
-            provider: 'discord'
-          };
 
           await new Promise<void>((resolve, reject) => {
             (req as any).logIn(sessionUser, (loginErr: any) => {
@@ -811,6 +796,189 @@ async function createServer() {
       `);
     })(req, res, next);
   });
+
+  app.post('/api/auth/complete-registration', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { hasSteam, steamId } = req.body;
+    const user = (req as any).user;
+    const supabase = getSupabase();
+
+    if (!user || user.provider !== 'discord' || !user.needs_registration) {
+      return res.status(400).json({ error: 'This user does not require first-time Discord registration.' });
+    }
+
+    const discordId = user.discord_id;
+    const discordName = user.discord_name;
+    const discordAvatar = user.discord_avatar;
+
+    if (!discordId) {
+      return res.status(400).json({ error: 'No Discord association found in current session.' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database connection is unavailable.' });
+    }
+
+    try {
+      if (!hasSteam) {
+        // Create new user (Discord-only)
+        const fallbackId = `discord_${discordId}`;
+        const newProfile = {
+          steamid: fallbackId,
+          steam_name: discordName,
+          steam_avatar: discordAvatar,
+          discord_id: discordId,
+          discord_name: discordName,
+          discord_avatar: discordAvatar,
+          active_avatar: 'discord',
+          team: 'none',
+          role: 'member',
+          status: 'Ready for Event #3',
+          points: 0,
+          last_login: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        };
+
+        const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
+        if (insertErr) {
+          console.error('Failed to insert new Discord-only profile:', insertErr);
+          return res.status(500).json({ error: 'Failed to create profile: ' + insertErr.message });
+        }
+
+        // Update session
+        user.id = fallbackId;
+        user.steamid = fallbackId;
+        delete user.needs_registration;
+
+        if ((req as any).session) {
+          return (req as any).session.save((err: any) => {
+            if (err) return res.status(500).json({ error: 'Failed to save session' });
+            return res.json({ success: true, user });
+          });
+        }
+        return res.json({ success: true, user });
+
+      } else {
+        // Yes, they have a Steam account
+        if (!steamId || !/^\d{17}$/.test(steamId)) {
+          return res.status(400).json({ error: 'Steam ID must be exactly 17 digits.' });
+        }
+
+        // Check if there's already an existing member with that id
+        const { data: existingMember, error: queryErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('steamid', steamId)
+          .maybeSingle();
+
+        if (queryErr) {
+          console.error('Failed to query existing member:', queryErr);
+          return res.status(500).json({ error: 'Database query failed.' });
+        }
+
+        if (!existingMember) {
+          // If there isn't, create a new user with that steam_id
+          // Try to fetch real details from Steam API
+          let steamName = discordName;
+          let steamAvatar = discordAvatar;
+          try {
+            const apiKey = process.env.STEAM_API_KEY;
+            if (apiKey && apiKey !== 'DUMMY_KEY') {
+              const steamRes = await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${apiKey}&steamids=${steamId}`);
+              if (steamRes.ok) {
+                const steamData = await steamRes.json();
+                const player = steamData?.response?.players?.[0];
+                if (player) {
+                  steamName = player.personaname || player.realname || discordName;
+                  steamAvatar = player.avatarfull || player.avatarmedium || player.avatar || discordAvatar;
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to fetch Steam profile summaries from API:', err);
+          }
+
+          const newProfile = {
+            steamid: steamId,
+            steam_name: steamName,
+            steam_avatar: steamAvatar,
+            discord_id: discordId,
+            discord_name: discordName,
+            discord_avatar: discordAvatar,
+            active_avatar: 'discord',
+            team: 'none',
+            role: 'member',
+            status: 'Ready for Event #3',
+            points: 0,
+            last_login: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          };
+
+          const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
+          if (insertErr) {
+            console.error('Failed to insert new linked Steam profile:', insertErr);
+            return res.status(500).json({ error: 'Failed to create profile: ' + insertErr.message });
+          }
+
+          // Update session
+          user.id = steamId;
+          user.steamid = steamId;
+          delete user.needs_registration;
+
+          if ((req as any).session) {
+            return (req as any).session.save((err: any) => {
+              if (err) return res.status(500).json({ error: 'Failed to save session' });
+              return res.json({ success: true, user });
+            });
+          }
+          return res.json({ success: true, user });
+
+        } else {
+          // If there is already an existing member with that id, sync their progress so they can either log in with steam or discord and see the same info.
+          // Check if this Steam account is already linked to a different Discord account
+          if (existingMember.discord_id && existingMember.discord_id !== discordId) {
+            return res.status(400).json({ error: `This Steam account is already linked to another Discord account (${existingMember.discord_name || existingMember.discord_id}).` });
+          }
+
+          // Link this Discord account to the existing Steam account
+          const { error: updateErr } = await supabase
+            .from('profiles')
+            .update({
+              discord_id: discordId,
+              discord_name: discordName,
+              discord_avatar: discordAvatar,
+              last_login: new Date().toISOString()
+            })
+            .eq('steamid', steamId);
+
+          if (updateErr) {
+            console.error('Failed to link existing Steam profile to Discord:', updateErr);
+            return res.status(500).json({ error: 'Failed to link account.' });
+          }
+
+          // Update session
+          user.id = steamId;
+          user.steamid = steamId;
+          delete user.needs_registration;
+
+          if ((req as any).session) {
+            return (req as any).session.save((err: any) => {
+              if (err) return res.status(500).json({ error: 'Failed to save session' });
+              return res.json({ success: true, user });
+            });
+          }
+          return res.json({ success: true, user });
+        }
+      }
+    } catch (err: any) {
+      console.error('Complete registration error:', err);
+      return res.status(500).json({ error: 'Internal server error: ' + (err.message || err) });
+    }
+  });
+
   app.post('/api/profile/update', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
