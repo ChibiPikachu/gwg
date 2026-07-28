@@ -2264,11 +2264,20 @@ async function createServer() {
       }
 
       // Get the latest profile details to make sure they are saved on submission
-      const { data: userProfile } = await supabase
+      let { data: userProfile } = await supabase
         .from('profiles')
         .select('*')
         .eq('steamid', steamId)
         .maybeSingle();
+
+      if (!userProfile) {
+        const { data: altProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('discord_id', steamId.replace('discord_', ''))
+          .maybeSingle();
+        if (altProfile) userProfile = altProfile;
+      }
 
       let displayAvatar = null;
       let displayName = null;
@@ -2276,17 +2285,17 @@ async function createServer() {
         if (userProfile.active_avatar === 'discord' && userProfile.discord_avatar) {
           displayAvatar = userProfile.discord_avatar;
         } else {
-          displayAvatar = userProfile.steam_avatar;
+          displayAvatar = userProfile.steam_avatar || userProfile.discord_avatar;
         }
         displayName = userProfile.steam_name || userProfile.discord_name;
       }
 
       // Fallbacks to session info if profile query somehow failed or is empty
       if (!displayName) {
-        displayName = currentUser.displayName || currentUser.steam_name || 'Steam User';
+        displayName = currentUser.displayName || currentUser.steam_name || currentUser.discord_name || 'Member';
       }
       if (!displayAvatar) {
-        displayAvatar = currentUser.steam_avatar || (currentUser.photos?.[0]?.value) || null;
+        displayAvatar = currentUser.steam_avatar || currentUser.discord_avatar || (currentUser.photos?.[0]?.value) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
       }
 
       const submissionData: any = {
@@ -2426,22 +2435,27 @@ async function createServer() {
       }
 
       // Get the latest profile details to make sure they are saved on update/revision too
-      const { data: userProfile } = await supabase
+      let { data: userProfile } = await supabase
         .from('profiles')
         .select('*')
         .eq('steamid', steamId)
         .maybeSingle();
 
-      let displayAvatar = sub.user_avatar;
-      let displayName = sub.user_name;
-      if (userProfile) {
-        if (userProfile.active_avatar === 'discord' && userProfile.discord_avatar) {
-          displayAvatar = userProfile.discord_avatar;
-        } else if (userProfile.steam_avatar) {
-          displayAvatar = userProfile.steam_avatar;
-        }
-        displayName = userProfile.steam_name || userProfile.discord_name;
+      if (!userProfile) {
+        const { data: altProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('discord_id', steamId.replace('discord_', ''))
+          .maybeSingle();
+        if (altProfile) userProfile = altProfile;
       }
+
+      let displayAvatar = userProfile?.steam_avatar || userProfile?.discord_avatar || currentUser.steam_avatar || currentUser.discord_avatar || sub.user_avatar || '';
+      if (userProfile?.active_avatar === 'discord' && userProfile?.discord_avatar) {
+        displayAvatar = userProfile.discord_avatar;
+      }
+
+      let displayName = userProfile?.steam_name || userProfile?.discord_name || currentUser.displayName || currentUser.steam_name || currentUser.discord_name || sub.user_name || 'Member';
 
       const { data, error } = await supabase
         .from('submissions')
@@ -2548,13 +2562,15 @@ async function createServer() {
       const gameIds = Array.from(new Set(submissions.map((s: any) => s.game_id)));
       
       const [profileRes, gamesRes] = await Promise.all([
-        supabase.from('profiles').select('steamid, team, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar').in('steamid', userIds),
+        supabase.from('profiles').select('steamid, discord_id, team, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar'),
         supabase.from('games').select('id, total_achievements, hltb_main, hltb_extras, hltb_completionist').in('id', gameIds)
       ]);
 
+      const allProfiles = profileRes.data || [];
       const profileMap: Record<string, any> = {};
-      (profileRes.data || []).forEach((p: any) => {
-        profileMap[p.steamid] = p;
+      allProfiles.forEach((p: any) => {
+        if (p.steamid) profileMap[String(p.steamid)] = p;
+        if (p.discord_id) profileMap[String(p.discord_id)] = p;
       });
 
       const totalAchMap: Record<string, number> = {};
@@ -2569,30 +2585,34 @@ async function createServer() {
       });
 
       const enriched = submissions.map((s: any) => {
-        const p = profileMap[s.user_id];
+        const uId = String(s.user_id || '');
+        const p = profileMap[uId] || allProfiles.find((prof: any) => 
+          String(prof.steamid) === uId || 
+          String(prof.discord_id) === uId || 
+          (uId.startsWith('discord_') && String(prof.discord_id) === uId.replace('discord_', ''))
+        );
         
-        let finalAvatar = s.user_avatar;
+        let finalName = p?.steam_name || p?.discord_name || s.user_name;
+        if (!finalName || finalName === 'Unknown User' || finalName === 'Steam User') {
+          finalName = `Member (${uId.length > 8 ? uId.slice(-6) : uId})`;
+        }
+
+        let finalAvatar = '';
         if (p) {
           if (p.active_avatar === 'discord' && p.discord_avatar) {
             finalAvatar = p.discord_avatar;
-          } else if (p.steam_avatar) {
-            finalAvatar = p.steam_avatar;
+          } else {
+            finalAvatar = p.steam_avatar || p.discord_avatar || '';
           }
         }
-        
-        let finalName = s.user_name;
-        if (p) {
-          if (p.steam_name) {
-            finalName = p.steam_name;
-          } else if (p.discord_name) {
-            finalName = p.discord_name;
-          }
+        if (!finalAvatar) {
+          finalAvatar = s.user_avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
         }
 
         return {
           ...s,
-          user_name: finalName || s.user_name || 'Unknown User',
-          user_avatar: finalAvatar || s.user_avatar || '',
+          user_name: finalName,
+          user_avatar: finalAvatar,
           userTeam: p?.team || 'none',
           totalAchievements: totalAchMap[s.game_id] || 0,
           hltb_main: hltbMainMap[s.game_id] || 0,
@@ -2674,6 +2694,200 @@ async function createServer() {
     } catch (err) {
       console.error('Delete failed:', err);
       res.status(500).json({ error: 'Failed to delete submission' });
+    }
+  });
+
+  // Mass Accept Submissions
+  app.post('/api/admin/submissions/mass-accept', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const currentUser = (req as any).user;
+    const adminSteamId = String(currentUser?.id || currentUser?.steamid || currentUser?.steam_id || 'admin');
+    const { submissionIds, eventId } = req.body;
+
+    try {
+      let query = supabase.from('submissions').select('*').eq('status', 'pending');
+      if (Array.isArray(submissionIds) && submissionIds.length > 0) {
+        query = query.in('id', submissionIds);
+      } else if (eventId) {
+        query = query.eq('event_id', eventId);
+      }
+
+      const { data: pendingSubs, error: fetchErr } = await query;
+      if (fetchErr) throw fetchErr;
+
+      if (!pendingSubs || pendingSubs.length === 0) {
+        return res.json({ success: true, count: 0, message: 'No pending submissions found to accept.' });
+      }
+
+      const idsToAccept = pendingSubs.map((s: any) => s.id);
+      const userIdsToSync = Array.from(new Set(pendingSubs.map((s: any) => s.user_id)));
+
+      // Update all pending submissions to verified
+      for (const sub of pendingSubs) {
+        const pointsAwarded = Number(sub.calculated_score || sub.points || 0);
+        await supabase.from('submissions').update({
+          status: 'verified',
+          points: pointsAwarded,
+          rejection_reason: null,
+          verifier_id: adminSteamId
+        }).eq('id', sub.id);
+      }
+
+      // Re-sync user points for all affected users
+      for (const uid of userIdsToSync) {
+        if (uid) await syncUserPoints(supabase, uid as string);
+      }
+
+      console.log(`[Admin] Mass accepted ${idsToAccept.length} submissions for ${userIdsToSync.length} users.`);
+      res.json({ success: true, count: idsToAccept.length, affectedUsers: userIdsToSync.length });
+    } catch (err) {
+      console.error('Mass accept failed:', err);
+      res.status(500).json({ error: 'Failed to mass accept submissions', details: String(err) });
+    }
+  });
+
+  // Delete Submissions in Batch (by submission IDs or by event ID)
+  app.post('/api/admin/submissions/delete-batch', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { submissionIds, eventId } = req.body;
+
+    try {
+      let query = supabase.from('submissions').select('id, user_id');
+      if (Array.isArray(submissionIds) && submissionIds.length > 0) {
+        query = query.in('id', submissionIds);
+      } else if (eventId) {
+        query = query.eq('event_id', eventId);
+      } else {
+        return res.status(400).json({ error: 'Must provide submissionIds array or eventId' });
+      }
+
+      const { data: targetSubs, error: fetchErr } = await query;
+      if (fetchErr) throw fetchErr;
+
+      if (!targetSubs || targetSubs.length === 0) {
+        return res.json({ success: true, count: 0, message: 'No matching submissions found to delete.' });
+      }
+
+      const idsToDelete = targetSubs.map((s: any) => s.id);
+      const userIdsToSync = Array.from(new Set(targetSubs.map((s: any) => s.user_id)));
+
+      // Perform deletion
+      if (Array.isArray(submissionIds) && submissionIds.length > 0) {
+        const { error: delErr } = await supabase.from('submissions').delete().in('id', idsToDelete);
+        if (delErr) throw delErr;
+      } else if (eventId) {
+        const { error: delErr } = await supabase.from('submissions').delete().eq('event_id', eventId);
+        if (delErr) throw delErr;
+      }
+
+      // Sync user points for affected users
+      for (const uid of userIdsToSync) {
+        if (uid) await syncUserPoints(supabase, uid as string);
+      }
+
+      console.log(`[Admin] Batch deleted ${idsToDelete.length} submissions.`);
+      res.json({ success: true, count: idsToDelete.length, affectedUsers: userIdsToSync.length });
+    } catch (err) {
+      console.error('Batch delete failed:', err);
+      res.status(500).json({ error: 'Failed to batch delete submissions', details: String(err) });
+    }
+  });
+
+  // Export Submissions as CSV
+  app.get('/api/admin/submissions/export-csv', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const { eventId, status } = req.query;
+
+      let subQuery = supabase.from('submissions').select('*').order('created_at', { ascending: false });
+      if (eventId) subQuery = subQuery.eq('event_id', String(eventId));
+      if (status && status !== 'all') subQuery = subQuery.eq('status', String(status));
+
+      const [submissionsRes, profilesRes, eventsRes] = await Promise.all([
+        subQuery,
+        supabase.from('profiles').select('steamid, team, steam_name, discord_name'),
+        supabase.from('events').select('id, title')
+      ]);
+
+      if (submissionsRes.error) throw submissionsRes.error;
+
+      const submissions = submissionsRes.data || [];
+      const profileMap: Record<string, any> = {};
+      (profilesRes.data || []).forEach((p: any) => { profileMap[p.steamid] = p; });
+
+      const eventMap: Record<string, string> = {};
+      (eventsRes.data || []).forEach((e: any) => { eventMap[e.id] = e.title; });
+
+      const headers = [
+        'Submission ID',
+        'Date',
+        'User Name',
+        'User ID',
+        'Team',
+        'Game Title',
+        'Steam App ID',
+        'Achievements During',
+        'Hours During',
+        'Hours Before',
+        'Completion Status',
+        'Points Awarded',
+        'Multiplier',
+        'Status',
+        'Event Title',
+        'Event ID',
+        'Notes',
+        'Verifier ID'
+      ];
+
+      const escapeCSV = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const rows = submissions.map((s: any) => {
+        const p = profileMap[s.user_id];
+        const userName = p?.steam_name || p?.discord_name || s.user_name || 'Unknown User';
+        const team = p?.team || 'none';
+        const eventTitle = eventMap[s.event_id] || 'Unknown/Default Event';
+
+        return [
+          escapeCSV(s.id),
+          escapeCSV(new Date(s.created_at).toISOString()),
+          escapeCSV(userName),
+          escapeCSV(s.user_id),
+          escapeCSV(team),
+          escapeCSV(s.game_name),
+          escapeCSV(s.steam_appid || ''),
+          escapeCSV(s.achievements_during || 0),
+          escapeCSV(s.hours_during || 0),
+          escapeCSV(s.hours_before || 0),
+          escapeCSV(s.completion_status || 'unfinished'),
+          escapeCSV(s.points || 0),
+          escapeCSV(s.multiplier || 1.0),
+          escapeCSV(s.status),
+          escapeCSV(eventTitle),
+          escapeCSV(s.event_id || ''),
+          escapeCSV(s.notes || ''),
+          escapeCSV(s.verifier_id || '')
+        ].join(',');
+      });
+
+      const csvContent = [headers.join(','), ...rows].join('\n');
+      const filename = `submissions_export_${new Date().toISOString().slice(0, 10)}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.status(200).send(csvContent);
+    } catch (err) {
+      console.error('Export CSV failed:', err);
+      res.status(500).json({ error: 'Failed to export CSV', details: String(err) });
     }
   });
 

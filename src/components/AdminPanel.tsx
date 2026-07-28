@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -119,6 +119,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [userSearchQuery, setUserSearchQuery] = React.useState('');
   const [userTeamFilter, setUserTeamFilter] = React.useState<'all' | 'blue' | 'purple' | 'green' | 'red'>('all');
   const [awardAdjustmentType, setAwardAdjustmentType] = React.useState<'screenshot' | 'bingo'>('screenshot');
+
+  // Bulk Operations State
+  const [selectedSubIds, setSelectedSubIds] = React.useState<string[]>([]);
+  const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
+  const [deleteEventModalOpen, setDeleteEventModalOpen] = React.useState(false);
+  const [targetDeleteEventId, setTargetDeleteEventId] = React.useState<string>('');
 
   const fetchTeamAdjustments = React.useCallback(async () => {
     try {
@@ -541,6 +547,130 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     } finally {
       setUpdating(null);
     }
+  };
+
+  const handleMassAccept = async (idsToAccept?: string[]) => {
+    let finalIds = idsToAccept || selectedSubIds;
+    if (finalIds.length === 0) {
+      const pendingFiltered = filteredSubmissions.filter(s => s.status === 'pending').map(s => s.id);
+      if (pendingFiltered.length === 0) {
+        alert('No pending submissions found in current view.');
+        return;
+      }
+      if (!window.confirm(`Are you sure you want to mass accept all ${pendingFiltered.length} pending submission(s)?`)) {
+        return;
+      }
+      finalIds = pendingFiltered;
+    } else {
+      if (!window.confirm(`Are you sure you want to accept ${finalIds.length} selected submission(s)?`)) {
+        return;
+      }
+    }
+
+    setIsProcessingBulk(true);
+    try {
+      const res = await fetch('/api/admin/submissions/mass-accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionIds: finalIds })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`Successfully mass accepted ${data.count} submission(s)!`);
+        setSelectedSubIds([]);
+        fetchSubmissions();
+        fetchUsers();
+      } else {
+        alert(`Error mass accepting submissions: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Mass accept error:', err);
+      alert('Failed to execute mass accept.');
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  const handleBatchDeleteSelected = async () => {
+    if (selectedSubIds.length === 0) {
+      alert('Please select at least one submission to delete.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to permanently delete ${selectedSubIds.length} selected submission(s)?`)) {
+      return;
+    }
+
+    setIsProcessingBulk(true);
+    try {
+      const res = await fetch('/api/admin/submissions/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionIds: selectedSubIds })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`Successfully deleted ${data.count} submission(s)!`);
+        setSelectedSubIds([]);
+        fetchSubmissions();
+        fetchUsers();
+      } else {
+        alert(`Error deleting submissions: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Batch delete error:', err);
+      alert('Failed to execute batch deletion.');
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  const handleDeleteEventSubmissions = async (eventId: string) => {
+    const evt = events.find(e => e.id === eventId);
+    const evtName = evt?.title || eventId;
+
+    if (!window.confirm(`DANGER: Are you sure you want to PERMANENTLY delete ALL submission data for event "${evtName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsProcessingBulk(true);
+    try {
+      const res = await fetch('/api/admin/submissions/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`Successfully deleted ${data.count} submission(s) for event "${evtName}".`);
+        setDeleteEventModalOpen(false);
+        setTargetDeleteEventId('');
+        fetchSubmissions();
+        fetchUsers();
+      } else {
+        alert(`Error deleting event submissions: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Delete event submissions error:', err);
+      alert('Failed to delete event submissions.');
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  const handleExportCSV = () => {
+    const currentEventId = activeTab === 'submissions' && activeEvent ? activeEvent.id : undefined;
+    let url = '/api/admin/submissions/export-csv';
+    const params = new URLSearchParams();
+    if (currentEventId && activeTab === 'submissions') {
+      params.append('eventId', currentEventId);
+    }
+    if (subStatusFilter && subStatusFilter !== 'all') {
+      params.append('status', subStatusFilter);
+    }
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+    window.open(url, '_blank');
   };
 
   const checkIsCurrentSub = React.useCallback((s: any) => {
@@ -1077,6 +1207,70 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             </div>
           </div>
 
+          {/* Action Toolbar for Bulk Actions & Export */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-2xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => {
+                  const allFilteredIds = filteredSubmissions.map(s => s.id);
+                  if (selectedSubIds.length === allFilteredIds.length && allFilteredIds.length > 0) {
+                    setSelectedSubIds([]);
+                  } else {
+                    setSelectedSubIds(allFilteredIds);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all border dark:bg-white/5 bg-white hover:bg-slate-100 dark:hover:bg-white/10 dark:text-white text-slate-700 border-black/10 dark:border-white/10"
+              >
+                {selectedSubIds.length === filteredSubmissions.length && filteredSubmissions.length > 0 ? 'Deselect All' : `Select All (${filteredSubmissions.length})`}
+              </button>
+
+              {activeTab === 'submissions' && (
+                <button
+                  onClick={() => handleMassAccept()}
+                  disabled={isProcessingBulk}
+                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 flex items-center gap-1.5 disabled:opacity-50"
+                  title="Mass accept selected submissions or all pending submissions in current view"
+                >
+                  <CheckCircle2 size={13} />
+                  {selectedSubIds.length > 0 ? `Mass Accept Selected (${selectedSubIds.length})` : 'Mass Accept Pending'}
+                </button>
+              )}
+
+              {selectedSubIds.length > 0 && (
+                <button
+                  onClick={handleBatchDeleteSelected}
+                  disabled={isProcessingBulk}
+                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <XCircle size={13} />
+                  Delete Selected ({selectedSubIds.length})
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportCSV}
+                className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/30 flex items-center gap-1.5 shadow-sm"
+                title="Export submission data to a CSV file"
+              >
+                <Download size={13} />
+                Export CSV
+              </button>
+
+              {activeTab === 'previous_submissions' && (
+                <button
+                  onClick={() => setDeleteEventModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 flex items-center gap-1.5"
+                  title="Delete all submission data for a previous event"
+                >
+                  <Trash2 size={13} />
+                  Delete Past Event Submissions
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:gap-6">
             {filteredSubmissions.length === 0 ? (
               <div className="p-8 md:p-12 border-2 border-dashed dark:border-white/5 border-black/5 rounded-3xl text-center">
@@ -1139,6 +1333,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     <div className="flex flex-col xl:flex-row justify-between xl:items-start gap-2 md:gap-4 min-w-0">
                       <div className="min-w-0 pr-16 md:pr-24"> {/* Added right padding so text doesn't overlap the absolute ID tag */}
                         <div className="flex items-center gap-2 mb-1.5 md:mb-2">
+                           <input
+                             type="checkbox"
+                             checked={selectedSubIds.includes(sub.id)}
+                             onChange={(e) => {
+                               if (e.target.checked) {
+                                 setSelectedSubIds(prev => [...prev, sub.id]);
+                               } else {
+                                 setSelectedSubIds(prev => prev.filter(id => id !== sub.id));
+                               }
+                             }}
+                             className="w-4 h-4 rounded border-slate-300 dark:border-white/20 text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                             title="Select for bulk action"
+                           />
                            <div className={cn(
                              "px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] uppercase font-bold tracking-widest border shrink-0",
                              (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].primary : TEAM_COLORS.none.primary,
@@ -2440,6 +2647,67 @@ function TeamPointContributionChart({
           )}
         </div>
       </div>
+
+      {/* Modal to delete all submissions for a previous event */}
+      {deleteEventModalOpen && (
+        <div className="fixed inset-0 z-50 backdrop-blur-md bg-black/70 flex items-center justify-center p-4">
+          <div className="dark:bg-[#181818] bg-white border dark:border-white/10 border-black/10 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b dark:border-white/10 border-black/10 pb-3">
+              <h3 className="font-bold text-lg dark:text-white text-slate-900 flex items-center gap-2">
+                <Trash2 className="text-red-500" size={20} />
+                Clear Event Submissions
+              </h3>
+              <button
+                onClick={() => setDeleteEventModalOpen(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Select an event to permanently delete all associated submission records. User leaderboard totals will be synchronized automatically.
+            </p>
+
+            <div className="flex flex-col gap-2 my-2">
+              <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-white/40">Select Event:</label>
+              <select
+                value={targetDeleteEventId}
+                onChange={(e) => setTargetDeleteEventId(e.target.value)}
+                className="w-full dark:bg-[#111111] bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2 text-sm font-semibold dark:text-white text-slate-800"
+              >
+                <option value="">-- Choose an Event --</option>
+                {events.map((evt) => (
+                  <option key={evt.id} value={evt.id}>
+                    {evt.title} {evt.is_active ? '(Active Event)' : '(Past Event)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t dark:border-white/10 border-black/10">
+              <button
+                onClick={() => setDeleteEventModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold dark:bg-white/5 bg-slate-100 hover:bg-slate-200 dark:hover:bg-white/10 dark:text-white text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!targetDeleteEventId || isProcessingBulk}
+                onClick={() => {
+                  if (targetDeleteEventId) {
+                    handleDeleteEventSubmissions(targetDeleteEventId);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                Delete All Event Submissions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
