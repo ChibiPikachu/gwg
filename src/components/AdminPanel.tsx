@@ -704,10 +704,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const filteredUsers = safeUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
-    const matchesSearch = (u.steam_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (u.discord_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          String(u.steamid || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesTeam && matchesSearch;
+    const nameStr = (u.steam_name || u.steamName || u.discord_name || u.discordName || u.displayName || '').toLowerCase();
+    const idStr = String(u.steamid || u.steamId || u.discord_id || u.id || '').toLowerCase();
+    const searchLower = searchQuery.toLowerCase();
+    return matchesTeam && (nameStr.includes(searchLower) || idStr.includes(searchLower));
   });
 
   const filteredSubmissions = submissions.filter(sub => {
@@ -1019,26 +1019,32 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           <section>
             <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-8 dark:text-white text-slate-900">User Directory</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-              {filteredUsers.map((u) => (
-                <div key={u.steamid} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm hover:dark:border-white/10 hover:border-black/10 transition-all min-w-0">
+              {filteredUsers.map((u, idx) => {
+                const userId = u.steamid || u.steamId || u.discord_id || u.id || `user-${idx}`;
+                const userName = u.steam_name || u.steamName || u.discord_name || u.discordName || u.displayName || 'User';
+                const userAvatar = u.steam_avatar || u.steamAvatar || u.discord_avatar || u.discordAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
+                const teamColorObj = u.team && u.team !== 'none' && TEAM_COLORS[u.team as Team] ? TEAM_COLORS[u.team as Team] : null;
+
+                return (
+                <div key={userId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm hover:dark:border-white/10 hover:border-black/10 transition-all min-w-0">
                   <div className="flex items-center gap-4 min-w-0">
                       <button 
-                        onClick={() => onViewProfile?.(u.steamid)}
+                        onClick={() => onViewProfile?.(userId)}
                         className={cn(
                           "w-12 h-12 md:w-14 md:h-14 rounded-full border-2 p-1 shrink-0 transition-all hover:scale-105 active:scale-95",
-                          u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : "dark:border-white/10 border-black/10"
+                          teamColorObj ? teamColorObj.border : "dark:border-white/10 border-black/10"
                         )}
                         title="View Profile"
                       >
-                        <img src={u.steam_avatar} alt="" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={userAvatar} alt="" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
                       </button>
                       <div className="flex flex-col min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                            <span className="text-sm font-black text-blue-400 truncate">{u.steam_name}</span>
+                            <span className="text-sm font-black text-blue-400 truncate">{userName}</span>
                             {u.role === 'admin' && (
                               <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 border border-red-500/20">Admin</span>
                             )}
-                            {u.discord_name && (
+                            {u.discord_name && u.steam_name && (
                               <span className="text-[10px] font-bold dark:text-white/40 text-slate-400 truncate">
                                 ({u.discord_name})
                               </span>
@@ -1050,7 +1056,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               <span className={cn("text-xs font-mono font-bold", theme.text)}>{u.points || 0}</span>
                           </div>
                           <span className="text-slate-300 dark:text-white/10">|</span>
-                          <span className="text-[10px] font-mono opacity-40 dark:text-white/40 text-slate-400 select-all" title="Click to select Steam ID">ID: {u.steamid}</span>
+                          <span className="text-[10px] font-mono opacity-40 dark:text-white/40 text-slate-400 select-all" title="Click to copy ID">ID: {userId}</span>
                         </div>
                       </div>
                   </div>
@@ -1061,12 +1067,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       <div className="relative">
                         <select
                           value={u.team || 'none'}
-                          disabled={updating === u.steamid}
-                          onChange={(e) => assignTeam(u.steamid, e.target.value as Team)}
+                          disabled={updating === userId}
+                          onChange={(e) => assignTeam(userId, e.target.value as Team)}
                           className={cn(
                             "appearance-none dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-3 py-1.5 pr-8 text-[11px] font-bold uppercase tracking-wider focus:outline-none transition-all w-full cursor-pointer h-9",
-                            u.team && u.team !== 'none' 
-                              ? `${TEAM_COLORS[u.team as Team].secondary} ${TEAM_COLORS[u.team as Team].primary} dark:border-${u.team}-500/30 border-${u.team}-500/20` 
+                            teamColorObj 
+                              ? `${teamColorObj.secondary} ${teamColorObj.primary} dark:border-${u.team}-500/30 border-${u.team}-500/20` 
                               : "dark:text-white/60 text-slate-600"
                           )}
                         >
@@ -1084,13 +1090,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                     <div className="relative mt-4">
                        <button
-                         onClick={() => setSettingsUserId(settingsUserId === u.steamid ? null : u.steamid)}
+                         onClick={() => setSettingsUserId(settingsUserId === userId ? null : userId)}
                          className="h-9 w-9 dark:bg-white/5 bg-slate-50 dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-slate-900 rounded-xl transition-colors flex items-center justify-center border dark:border-transparent border-black/5 hover:border-black/10 shrink-0"
                          title="Account Actions"
                        >
-                         <Settings size={14} className={cn(settingsUserId === u.steamid && theme.text)} />
+                         <Settings size={14} className={cn(settingsUserId === userId && theme.text)} />
                        </button>
-                       {settingsUserId === u.steamid && (
+                       {settingsUserId === userId && (
                          <>
                            <div className="fixed inset-0 z-30" onClick={() => setSettingsUserId(null)} />
                            <div className="absolute right-0 bottom-full mb-2 w-48 dark:bg-[#1c1c1c] bg-white border dark:border-white/10 border-black/10 rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -1104,8 +1110,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                </button>
                                <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
                                <button 
-                                 onClick={() => { handleUpdateRole(u.steamid, u.role === 'admin' ? 'member' : 'admin'); setSettingsUserId(null); }}
-                                 disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
+                                 onClick={() => { handleUpdateRole(userId, u.role === 'admin' ? 'member' : 'admin'); setSettingsUserId(null); }}
+                                 disabled={updating === userId || userId === currentUser?.steamId || userId === currentUser?.discordId}
                                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-[10px] font-bold uppercase dark:text-white text-slate-700 hover:dark:bg-white/10 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
                                >
                                  <Shield size={14} className={u.role === 'admin' ? 'text-red-500' : 'text-emerald-500'} />
@@ -1113,8 +1119,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                </button>
                                <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
                                <button 
-                                 onClick={() => { handleKickUser(u.steamid, u.steam_name); setSettingsUserId(null); }}
-                                 disabled={updating === u.steamid || u.steamid === currentUser?.steamId}
+                                 onClick={() => { handleKickUser(userId, userName); setSettingsUserId(null); }}
+                                 disabled={updating === userId || userId === currentUser?.steamId || userId === currentUser?.discordId}
                                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-[10px] font-bold uppercase text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
                                >
                                  <XCircle size={14} />
@@ -1127,7 +1133,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                      </div>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           </section>
         </>
@@ -2358,6 +2365,67 @@ CREATE POLICY "Allow public read access" ON public.user_event_teams
           </div>
         </div>
       )}
+
+      {/* Modal to delete all submissions for a previous event */}
+      {deleteEventModalOpen && (
+        <div className="fixed inset-0 z-50 backdrop-blur-md bg-black/70 flex items-center justify-center p-4">
+          <div className="dark:bg-[#181818] bg-white border dark:border-white/10 border-black/10 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b dark:border-white/10 border-black/10 pb-3">
+              <h3 className="font-bold text-lg dark:text-white text-slate-900 flex items-center gap-2">
+                <Trash2 className="text-red-500" size={20} />
+                Clear Event Submissions
+              </h3>
+              <button
+                onClick={() => setDeleteEventModalOpen(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Select an event to permanently delete all associated submission records. User leaderboard totals will be synchronized automatically.
+            </p>
+
+            <div className="flex flex-col gap-2 my-2">
+              <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-white/40">Select Event:</label>
+              <select
+                value={targetDeleteEventId}
+                onChange={(e) => setTargetDeleteEventId(e.target.value)}
+                className="w-full dark:bg-[#111111] bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2 text-sm font-semibold dark:text-white text-slate-800"
+              >
+                <option value="">-- Choose an Event --</option>
+                {events.map((evt) => (
+                  <option key={evt.id} value={evt.id}>
+                    {evt.title} {evt.is_active ? '(Active Event)' : '(Past Event)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t dark:border-white/10 border-black/10">
+              <button
+                onClick={() => setDeleteEventModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold dark:bg-white/5 bg-slate-100 hover:bg-slate-200 dark:hover:bg-white/10 dark:text-white text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!targetDeleteEventId || isProcessingBulk}
+                onClick={() => {
+                  if (targetDeleteEventId) {
+                    handleDeleteEventSubmissions(targetDeleteEventId);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                Delete All Event Submissions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2527,7 +2595,7 @@ function TeamPointContributionChart({
                       }}
                       onMouseEnter={() => setHoveredIndex(idx)}
                       onMouseLeave={() => setHoveredIndex(null)}
-                      onClick={() => onViewProfile?.(wedge.member.steamid)}
+                      onClick={() => onViewProfile?.(wedge.member.steamid || wedge.member.steamId || wedge.member.discord_id || wedge.member.id)}
                     />
                   );
                 })}
@@ -2545,12 +2613,12 @@ function TeamPointContributionChart({
                 {activeWidget ? (
                   <div className="animate-in fade-in zoom-in-95 duration-200">
                     <span className="block text-[10px] uppercase tracking-widest font-extrabold dark:text-white/40 text-slate-400 truncate max-w-[120px]">
-                      {activeWidget.member.steam_name}
+                      {activeWidget.member.steam_name || activeWidget.member.steamName || activeWidget.member.discord_name || 'User'}
                     </span>
                     <span className="block text-lg font-mono font-black dark:text-white text-slate-900 leading-tight">
                       {Number(activeWidget.member.points || 0)} pts
                     </span>
-                    <span className={cn("inline-block text-[10px] font-black uppercase mt-0.5 px-1.5 py-0.5 rounded-full", TEAM_COLORS[selectedChartTeam].secondary, TEAM_COLORS[selectedChartTeam].primary)}>
+                    <span className={cn("inline-block text-[10px] font-black uppercase mt-0.5 px-1.5 py-0.5 rounded-full", TEAM_COLORS[selectedChartTeam]?.secondary || 'bg-slate-500/10', TEAM_COLORS[selectedChartTeam]?.primary || 'text-slate-400')}>
                       {(activeWidget.percentage * 100).toFixed(1)}%
                     </span>
                   </div>
@@ -2559,7 +2627,7 @@ function TeamPointContributionChart({
                     <span className="block text-[9px] uppercase tracking-widest font-black dark:text-white/30 text-slate-400">
                       Total Points
                     </span>
-                    <span className={cn("block text-2xl font-mono font-black", TEAM_COLORS[selectedChartTeam].primary)}>
+                    <span className={cn("block text-2xl font-mono font-black", TEAM_COLORS[selectedChartTeam]?.primary || 'text-blue-500')}>
                       {totalPoints}
                     </span>
                     <span className="block text-[9px] font-bold dark:text-white/40 text-slate-400">
@@ -2582,17 +2650,21 @@ function TeamPointContributionChart({
             </div>
           ) : (
             teamMembers.map((member, idx) => {
+              const mId = member.steamid || member.steamId || member.discord_id || member.id || `member-${idx}`;
+              const mName = member.steam_name || member.steamName || member.discord_name || member.discordName || mId;
+              const mAvatar = member.steam_avatar || member.steamAvatar || member.discord_avatar || member.discordAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
+
               const points = Number(member.points || 0);
               const percentage = totalPoints > 0 ? points / totalPoints : 0;
               const hasPoints = points > 0;
-              const sliceIndex = chartSlices.findIndex(s => s.steamid === member.steamid);
+              const sliceIndex = chartSlices.findIndex(s => (s.steamid || s.discord_id) === mId);
               const sliceColor = hasPoints && sliceIndex !== -1 ? getSliceColor(sliceIndex, chartSlices.length) : 'transparent';
               
               const isHovered = hoveredIndex === sliceIndex && hasPoints;
 
               return (
                 <div
-                  key={member.steamid}
+                  key={mId}
                   className={cn(
                     "flex items-center justify-between p-2 rounded-xl transition-all border border-transparent cursor-pointer",
                     isHovered 
@@ -2601,7 +2673,7 @@ function TeamPointContributionChart({
                   )}
                   onMouseEnter={() => hasPoints && sliceIndex !== -1 && setHoveredIndex(sliceIndex)}
                   onMouseLeave={() => setHoveredIndex(null)}
-                  onClick={() => onViewProfile?.(member.steamid)}
+                  onClick={() => onViewProfile?.(mId)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     {/* Visual point indicator node */}
@@ -2613,7 +2685,7 @@ function TeamPointContributionChart({
                     />
 
                     <img 
-                      src={member.steam_avatar} 
+                      src={mAvatar} 
                       alt="" 
                       className="w-7 h-7 rounded-full object-cover shrink-0 border border-black/5 dark:border-white/10 animate-fade-in" 
                       referrerPolicy="no-referrer"
@@ -2621,9 +2693,9 @@ function TeamPointContributionChart({
 
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-black dark:text-white text-slate-800 truncate">
-                        {member.steam_name}
+                        {mName}
                       </span>
-                      {member.discord_name && (
+                      {member.discord_name && member.steam_name && (
                         <span className="text-[9px] font-bold dark:text-white/30 text-slate-400 truncate">
                           @{member.discord_name}
                         </span>
@@ -2647,67 +2719,6 @@ function TeamPointContributionChart({
           )}
         </div>
       </div>
-
-      {/* Modal to delete all submissions for a previous event */}
-      {deleteEventModalOpen && (
-        <div className="fixed inset-0 z-50 backdrop-blur-md bg-black/70 flex items-center justify-center p-4">
-          <div className="dark:bg-[#181818] bg-white border dark:border-white/10 border-black/10 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b dark:border-white/10 border-black/10 pb-3">
-              <h3 className="font-bold text-lg dark:text-white text-slate-900 flex items-center gap-2">
-                <Trash2 className="text-red-500" size={20} />
-                Clear Event Submissions
-              </h3>
-              <button
-                onClick={() => setDeleteEventModalOpen(false)}
-                className="text-slate-400 hover:text-white text-sm"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Select an event to permanently delete all associated submission records. User leaderboard totals will be synchronized automatically.
-            </p>
-
-            <div className="flex flex-col gap-2 my-2">
-              <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-white/40">Select Event:</label>
-              <select
-                value={targetDeleteEventId}
-                onChange={(e) => setTargetDeleteEventId(e.target.value)}
-                className="w-full dark:bg-[#111111] bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2 text-sm font-semibold dark:text-white text-slate-800"
-              >
-                <option value="">-- Choose an Event --</option>
-                {events.map((evt) => (
-                  <option key={evt.id} value={evt.id}>
-                    {evt.title} {evt.is_active ? '(Active Event)' : '(Past Event)'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2 border-t dark:border-white/10 border-black/10">
-              <button
-                onClick={() => setDeleteEventModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold dark:bg-white/5 bg-slate-100 hover:bg-slate-200 dark:hover:bg-white/10 dark:text-white text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!targetDeleteEventId || isProcessingBulk}
-                onClick={() => {
-                  if (targetDeleteEventId) {
-                    handleDeleteEventSubmissions(targetDeleteEventId);
-                  }
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center gap-1.5"
-              >
-                <Trash2 size={14} />
-                Delete All Event Submissions
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1763,36 +1763,54 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    const { data: users, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('last_login', { ascending: false });
-
-    if (error) return res.status(500).json({ error: error.message });
-
-    // Fetch all user event teams to attach to user objects
-    let eventTeamsMap: Record<string, Record<string, string>> = {};
     try {
-      const { data: allEventTeams } = await supabase
-        .from('user_event_teams')
-        .select('steamid, event_id, team');
-      
-      (allEventTeams || []).forEach((row: any) => {
-        if (!eventTeamsMap[row.steamid]) {
-          eventTeamsMap[row.steamid] = {};
-        }
-        eventTeamsMap[row.steamid][row.event_id] = row.team;
+      const { data: users, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('last_login', { ascending: false, nullsFirst: false });
+
+      if (error) {
+        console.error('[Admin Users] Error fetching profiles:', error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Fetch all user event teams to attach to user objects
+      let eventTeamsMap: Record<string, Record<string, string>> = {};
+      try {
+        const { data: allEventTeams } = await supabase
+          .from('user_event_teams')
+          .select('steamid, event_id, team');
+        
+        (allEventTeams || []).forEach((row: any) => {
+          if (row.steamid) {
+            const key = String(row.steamid);
+            if (!eventTeamsMap[key]) {
+              eventTeamsMap[key] = {};
+            }
+            eventTeamsMap[key][row.event_id] = row.team;
+          }
+        });
+      } catch (err) {
+        console.warn('[Admin Users] Failed to load user_event_teams:', err);
+      }
+
+      const transformedUsers = (users || []).map((u: any) => {
+        const effectiveId = String(u.steamid || u.discord_id || u.id || '');
+        return {
+          ...u,
+          steamid: effectiveId,
+          steam_name: u.steam_name || u.steamName || u.discord_name || u.discordName || 'User',
+          steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
+          team: u.team || 'none',
+          eventTeams: eventTeamsMap[effectiveId] || (u.steamid ? eventTeamsMap[u.steamid] : {}) || {}
+        };
       });
+
+      res.json(transformedUsers);
     } catch (err) {
-      console.warn('[Admin Users] Failed to load user_event_teams:', err);
+      console.error('[Admin Users] Exception:', err);
+      res.status(500).json({ error: 'Failed to fetch users' });
     }
-
-    const transformedUsers = (users || []).map((u: any) => ({
-      ...u,
-      eventTeams: eventTeamsMap[u.steamid] || {}
-    }));
-
-    res.json(transformedUsers);
   });
 
   // Helper to sync points
