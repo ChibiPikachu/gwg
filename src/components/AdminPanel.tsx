@@ -1651,11 +1651,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             setEditHours(String(hours));
                             setEditAchievements(String(achievements));
                             
-                            let m = sub.multiplier || 1.0;
-                            if (hours >= 25) m = 4.0;
-                            else if (hours >= 15) m = 3.0;
-                            else if (hours >= 8) m = 2.0;
-                            else if (hours > 0) m = 1.0;
+                            const hoursBefore = Number(sub.hours_before || 0);
+                            const eventHours = Math.max(0, hours - hoursBefore);
+                            
+                            let m = 1.0;
+                            if (eventHours <= 8) m = 1.0;
+                            else if (eventHours <= 15) m = 2.0;
+                            else if (eventHours <= 25) m = 3.0;
+                            else m = 4.0;
  
                             setEditMultiplier(m);
                             
@@ -1787,10 +1790,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                   const val = parseFloat(e.target.value) || 0;
                                   setEditHours(e.target.value);
                                   
+                                  const hoursBefore = Number(sub.hours_before || 0);
+                                  const eventHours = Math.max(0, val - hoursBefore);
+
                                   let m = 1.0;
-                                  if (val >= 25) m = 4.0;
-                                  else if (val >= 15) m = 3.0;
-                                  else if (val >= 8) m = 2.0;
+                                  if (eventHours <= 8) m = 1.0;
+                                  else if (eventHours <= 15) m = 2.0;
+                                  else if (eventHours <= 25) m = 3.0;
+                                  else m = 4.0;
                                   
                                   setEditMultiplier(m);
                                   setPointsAwarded(calculateReviewPoints(editAchievements, m, selectedLevel, sub));
