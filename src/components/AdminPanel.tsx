@@ -207,6 +207,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
       if (res.ok) {
         await fetchTeamAdjustments();
+        await fetchUsers();
         alert('Adjustment successfully revoked!');
       } else {
         const data = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -450,6 +451,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   };
 
   const calculateReviewPoints = (achievementsVal: string, multiplierVal: number, levelVal: number, sub: any) => {
+    if (sub?.game_name === 'Screenshot Points' || sub?.game_name === 'Bingo Points' || sub?.game_name === 'Team Award' || sub?.platform === 'System') {
+      return String(sub?.points || 0);
+    }
     const meta = parseNotesMeta(sub?.notes || '');
     const isBeatenPrev = sub?.beaten_previous === 'yes';
     const effectiveAdminStatus = (sub?.completion_status === 'beaten' && isBeatenPrev) ? 'unfinished' : (sub?.completion_status || 'unfinished');
@@ -514,6 +518,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         } : s));
         setReviewingId(null);
         setRejectionReason('');
+        await fetchUsers();
+        await fetchTeamAdjustments();
       } else {
         const data = await res.json();
         alert(`Verification failed: ${data.error}`);
@@ -1687,7 +1693,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               }
                               basePoints = Math.round(achievements * m) + bonus;
                             }
-                            setPointsAwarded(String(basePoints));
+                            const initialPointsVal = (sub.points !== undefined && sub.points !== null && sub.status === 'verified') ? sub.points : basePoints;
+                            setPointsAwarded(String(initialPointsVal));
                             setRejectionReason(sub.rejection_reason || '');
                           }}
                           className={cn(

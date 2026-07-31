@@ -1837,7 +1837,7 @@ async function createServer() {
           .select('points, id, status, user_id, event_id')
           .eq('user_id', steamid)
           .eq('status', 'verified')
-          .eq('event_id', activeEvent.id);
+          .or(`event_id.eq.${activeEvent.id},event_id.is.null`);
 
         if (subError) {
           console.error(`[Sync] Error fetching submissions for ${steamid}:`, subError);
@@ -2947,6 +2947,19 @@ async function createServer() {
       });
 
       for (const sub of subs) {
+        // Skip manual point adjustments so manual awards/deductions are preserved exactly
+        if (
+          sub.game_name === 'Screenshot Points' ||
+          sub.game_name === 'Bingo Points' ||
+          sub.game_name === 'Team Award' ||
+          sub.platform === 'System' ||
+          sub.platform === 'Screenshot Points' ||
+          sub.platform === 'Bingo Points' ||
+          sub.user_id?.startsWith('team_pts_')
+        ) {
+          continue;
+        }
+
         // Redetermine multiplier based on CORRECTED math (1x, 2x, 3x, 4x)
         let multiplier = 1.0;
         const hours = Number(sub.hours_during || 0);
@@ -3565,7 +3578,7 @@ async function createServer() {
         .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points');
 
       if (activeEvent) {
-        query = query.eq('event_id', activeEvent.id);
+        query = query.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
       } else {
         // Return dummy/unmatching event ID to prevent leak of older adjustments
         query = query.eq('event_id', '99999999-9999-9999-9999-999999999999');
@@ -3615,6 +3628,8 @@ async function createServer() {
           ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' 
           : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png';
 
+        const numPoints = Math.round(Number(points) || 0);
+
         const adjustmentsArray = userProfiles.map(userProfile => ({
           user_id: userProfile.steamid,
           user_name: userProfile.steam_name,
@@ -3627,10 +3642,10 @@ async function createServer() {
           achievements_before: 0,
           hours_before: 0,
           multiplier: 1.0,
-          calculated_score: parseInt(points) || 0,
-          completion_status: 'completed',
+          calculated_score: numPoints,
+          completion_status: 'unfinished',
           platform: adjType,
-          points: parseInt(points) || 0,
+          points: numPoints,
           notes: notes || '',
           status: 'verified',
           event_id: activeEventId,
@@ -3667,6 +3682,8 @@ async function createServer() {
         const { data: game } = await supabase.from('games').select('id').limit(1).maybeSingle();
         const defaultGameId = game?.id || null;
 
+        const numPoints = Math.round(Number(points) || 0);
+
         const adjustmentData = {
           user_id: dummySteamId,
           user_name: `Team ${team.toUpperCase()}`,
@@ -3679,10 +3696,10 @@ async function createServer() {
           achievements_before: 0,
           hours_before: 0,
           multiplier: 1.0,
-          calculated_score: parseInt(points) || 0,
-          completion_status: 'completed',
+          calculated_score: numPoints,
+          completion_status: 'unfinished',
           platform: 'System',
-          points: parseInt(points) || 0,
+          points: numPoints,
           notes: notes || '',
           status: 'verified',
           event_id: activeEventId,
@@ -3696,6 +3713,8 @@ async function createServer() {
           .single();
 
         if (error) throw error;
+
+        await syncUserPoints(supabase, dummySteamId);
 
         res.json(data);
       }
