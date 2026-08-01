@@ -1813,6 +1813,91 @@ async function createServer() {
     }
   });
 
+  // Helper to ensure an event's winner team is calculated and permanently saved to the event record
+  async function ensureEventWinnerSaved(supabase: any, eventId: string) {
+    try {
+      const { data: event } = await supabase
+        .from('events')
+        .select('id, is_active, winner_team, description')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (!event) return null;
+
+      let winnerTeam: string | null = event.winner_team || null;
+      if (!winnerTeam && event.description) {
+        const match = event.description.match(/<!--WINNER:(.*?)-->/);
+        if (match && match[1]) {
+          winnerTeam = match[1];
+        }
+      }
+
+      if (!winnerTeam) {
+        // Calculate winner team from verified submissions
+        const { data: verifiedSubs } = await supabase
+          .from('submissions')
+          .select('user_id, points')
+          .eq('event_id', eventId)
+          .eq('status', 'verified');
+
+        const { data: uets } = await supabase
+          .from('user_event_teams')
+          .select('steamid, team')
+          .eq('event_id', eventId);
+
+        const uetMap = new Map<string, string>();
+        (uets || []).forEach((u: any) => uetMap.set(u.steamid, u.team));
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('steamid, team');
+        const profMap = new Map<string, string>();
+        (profiles || []).forEach((p: any) => profMap.set(p.steamid, p.team));
+
+        const teamPoints: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+        (verifiedSubs || []).forEach((sub: any) => {
+          if (sub.user_id === 'system_notification') return;
+          let team: string | null = null;
+          if (sub.user_id.startsWith('team_pts_')) {
+            team = sub.user_id.substring('team_pts_'.length);
+          } else {
+            team = uetMap.get(sub.user_id) || profMap.get(sub.user_id) || null;
+          }
+          if (team && teamPoints[team] !== undefined) {
+            teamPoints[team] += Number(sub.points || 0);
+          }
+        });
+
+        let maxPts = -1;
+        let bestTeam: string | null = null;
+        for (const t in teamPoints) {
+          if (teamPoints[t] > maxPts && teamPoints[t] > 0) {
+            maxPts = teamPoints[t];
+            bestTeam = t;
+          }
+        }
+        winnerTeam = bestTeam;
+
+        if (winnerTeam) {
+          const updatedDesc = event.description
+            ? (event.description.includes('<!--WINNER:')
+                ? event.description.replace(/<!--WINNER:.*?-->/, `<!--WINNER:${winnerTeam}-->`)
+                : `${event.description}\n<!--WINNER:${winnerTeam}-->`)
+            : `<!--WINNER:${winnerTeam}-->`;
+
+          await supabase
+            .from('events')
+            .update({ winner_team: winnerTeam, description: updatedDesc })
+            .eq('id', eventId);
+        }
+      }
+      return winnerTeam;
+    } catch (err) {
+      console.error('Failed to ensure event winner saved:', err);
+      return null;
+    }
+  }
+
   // Helper to sync points
   async function syncUserPoints(supabase: any, steamid: string) {
     try {
@@ -1871,11 +1956,21 @@ async function createServer() {
         }
       }
       
-      console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
+      // Preserve existing profile points so deleting previous event submissions does NOT decrease user points
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('points')
+        .eq('steamid', steamid)
+        .maybeSingle();
+
+      const currentPoints = Number(existingProfile?.points || 0);
+      const finalPoints = Math.max(currentPoints, totalPoints);
+
+      console.log(`[Sync] Calculated totalPoints: ${totalPoints}, currentPoints: ${currentPoints} -> finalPoints: ${finalPoints} for user ${steamid}`);
 
       const { data: updateResult, error: profileError } = await supabase
         .from('profiles')
-        .update({ points: totalPoints })
+        .update({ points: finalPoints })
         .eq('steamid', steamid)
         .select();
 
@@ -1885,7 +1980,7 @@ async function createServer() {
         console.log(`[Sync] Successfully updated profile for ${steamid}. New data:`, updateResult?.[0]);
       }
         
-      return totalPoints;
+      return finalPoints;
     } catch (err) {
       console.error('Failed to sync points for user:', steamid, err);
       return null;
@@ -2812,7 +2907,7 @@ async function createServer() {
     const { submissionIds, eventId } = req.body;
 
     try {
-      let query = supabase.from('submissions').select('id, user_id');
+      let query = supabase.from('submissions').select('id, user_id, event_id');
       if (Array.isArray(submissionIds) && submissionIds.length > 0) {
         query = query.in('id', submissionIds);
       } else if (eventId) {
@@ -2828,6 +2923,15 @@ async function createServer() {
         return res.json({ success: true, count: 0, message: 'No matching submissions found to delete.' });
       }
 
+      // Lock in / preserve event winner badge info BEFORE deleting any submissions!
+      const affectedEventIds = Array.from(new Set(targetSubs.map((s: any) => s.event_id).filter(Boolean)));
+      if (eventId && !affectedEventIds.includes(eventId)) {
+        affectedEventIds.push(eventId);
+      }
+      for (const eid of affectedEventIds) {
+        await ensureEventWinnerSaved(supabase, eid as string);
+      }
+
       const idsToDelete = targetSubs.map((s: any) => s.id);
       const userIdsToSync = Array.from(new Set(targetSubs.map((s: any) => s.user_id)));
 
@@ -2840,7 +2944,7 @@ async function createServer() {
         if (delErr) throw delErr;
       }
 
-      // Sync user points for affected users
+      // Sync user points for affected users (points floor is preserved)
       for (const uid of userIdsToSync) {
         if (uid) await syncUserPoints(supabase, uid as string);
       }
@@ -3365,9 +3469,16 @@ async function createServer() {
 
       const eventsWithWinners = events.map((event: any, index: number) => {
         const eventNum = index + 1;
-        let winnerTeam: string | null = null;
+        let winnerTeam: string | null = event.winner_team || null;
 
-        if (!event.is_active) {
+        if (!winnerTeam && event.description) {
+          const match = event.description.match(/<!--WINNER:(.*?)-->/);
+          if (match && match[1]) {
+            winnerTeam = match[1];
+          }
+        }
+
+        if (!event.is_active && !winnerTeam) {
           const teamPoints: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
           const eventSubs = subsByEvent.get(event.id) || [];
 
@@ -3396,6 +3507,20 @@ async function createServer() {
             }
           }
           winnerTeam = bestTeam;
+
+          if (winnerTeam) {
+            const updatedDesc = event.description
+              ? (event.description.includes('<!--WINNER:')
+                  ? event.description.replace(/<!--WINNER:.*?-->/, `<!--WINNER:${winnerTeam}-->`)
+                  : `${event.description}\n<!--WINNER:${winnerTeam}-->`)
+              : `<!--WINNER:${winnerTeam}-->`;
+
+            supabase
+              .from('events')
+              .update({ winner_team: winnerTeam, description: updatedDesc })
+              .eq('id', event.id)
+              .then(() => {});
+          }
         }
 
         const votingMatch = event.description?.match(/<!--VOTING:(.*?)-->/);
@@ -3511,6 +3636,9 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      // Ensure winner team is permanently locked in before closing event
+      await ensureEventWinnerSaved(supabase, id);
+
       // 1. Mark event as inactive
       const { data: updatedEvent, error: eventError } = await supabase
         .from('events')
