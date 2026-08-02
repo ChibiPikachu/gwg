@@ -57,10 +57,22 @@ export default function Profile({ steamId }: { steamId?: string }) {
     return [...events].sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
   }, [events]);
 
+  const userGameSubmissions = React.useMemo(() => {
+    return (submissions || []).filter((s: any) => 
+      s.game_name !== 'Event Update' && 
+      s.game_name !== 'Screenshot Points' && 
+      s.game_name !== 'Bingo Points' &&
+      s.game_name !== 'Team Award' &&
+      s.platform !== 'System' &&
+      s.user_id !== 'system_notification' &&
+      !String(s.user_id || '').startsWith('team_pts_')
+    );
+  }, [submissions]);
+
   const filteredSubmissions = React.useMemo(() => {
-    if (selectedEventId === 'all') return submissions;
-    return submissions.filter((s: any) => s.event_id === selectedEventId);
-  }, [submissions, selectedEventId]);
+    if (selectedEventId === 'all') return userGameSubmissions;
+    return userGameSubmissions.filter((s: any) => s.event_id === selectedEventId);
+  }, [userGameSubmissions, selectedEventId]);
 
   React.useEffect(() => {
     fetch('/api/events')
@@ -578,12 +590,12 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     ? "dark:bg-black/10 bg-white/20 dark:text-zinc-950 text-white"
                     : "dark:bg-white/10 bg-slate-200/50 dark:text-white text-slate-500"
                 )}>
-                  {submissions.length}
+                  {userGameSubmissions.length}
                 </span>
               </button>
 
               {sortedEvents.map((evt) => {
-                const count = submissions.filter((s: any) => s.event_id === evt.id).length;
+                const count = userGameSubmissions.filter((s: any) => s.event_id === evt.id).length;
                 const isActiveTab = selectedEventId === evt.id;
 
                 return (

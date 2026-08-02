@@ -708,6 +708,23 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [reviewingId, searchQuery]);
 
+  const isUserGameSubmission = React.useCallback((s: any) => {
+    if (!s) return false;
+    if (s.user_id === 'system_notification' || String(s.user_id || '').startsWith('team_pts_')) return false;
+    if (
+      s.game_name === 'Event Update' ||
+      s.game_name === 'Screenshot Points' ||
+      s.game_name === 'Bingo Points' ||
+      s.game_name === 'Team Award' ||
+      s.platform === 'System' ||
+      s.platform === 'Screenshot Points' ||
+      s.platform === 'Bingo Points'
+    ) {
+      return false;
+    }
+    return true;
+  }, []);
+
   const filteredUsers = safeUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
     const nameStr = (u.steam_name || u.steamName || u.discord_name || u.discordName || u.displayName || '').toLowerCase();
@@ -717,7 +734,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   });
 
   const filteredSubmissions = submissions.filter(sub => {
-    if (sub.game_name === 'Event Update' || sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points') return false;
+    if (!isUserGameSubmission(sub)) return false;
 
     // Distinguish based on activeTab: 'submissions' (current event specs) vs 'previous_submissions' (archive)
     const isCurrent = checkIsCurrentSub(sub);
@@ -798,9 +815,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
         >
           Game Submissions
-          {submissions.filter(s => s.status === 'pending' && checkIsCurrentSub(s)).length > 0 && (
+          {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && checkIsCurrentSub(s)).length > 0 && (
             <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0", theme.bg)}>
-              {submissions.filter(s => s.status === 'pending' && checkIsCurrentSub(s)).length}
+              {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && checkIsCurrentSub(s)).length}
             </span>
           )}
           {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
@@ -813,9 +830,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           )}
         >
           Submissions Archive
-          {submissions.filter(s => s.status === 'pending' && !checkIsCurrentSub(s)).length > 0 && (
+          {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && !checkIsCurrentSub(s)).length > 0 && (
             <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0 bg-amber-500")}>
-              {submissions.filter(s => s.status === 'pending' && !checkIsCurrentSub(s)).length}
+              {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && !checkIsCurrentSub(s)).length}
             </span>
           )}
           {activeTab === 'previous_submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
@@ -1200,6 +1217,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   <Clock size={12} /> 
                   {
                     submissions.filter(s => {
+                      if (!isUserGameSubmission(s)) return false;
                       const isCurrent = checkIsCurrentSub(s);
                       const matchesTab = activeTab === 'submissions' ? isCurrent : !isCurrent;
                       return s.status === 'pending' && matchesTab;
@@ -1210,6 +1228,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   <CheckCircle2 size={12} /> 
                   {
                     submissions.filter(s => {
+                      if (!isUserGameSubmission(s)) return false;
                       const isCurrent = checkIsCurrentSub(s);
                       const matchesTab = activeTab === 'submissions' ? isCurrent : !isCurrent;
                       return s.status === 'verified' && matchesTab;
@@ -1661,9 +1680,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             const eventHours = Math.max(0, hours - hoursBefore);
                             
                             let m = 1.0;
-                            if (eventHours <= 8) m = 1.0;
-                            else if (eventHours <= 15) m = 2.0;
-                            else if (eventHours <= 25) m = 3.0;
+                            if (eventHours < 8) m = 1.0;
+                            else if (eventHours < 15) m = 2.0;
+                            else if (eventHours < 25) m = 3.0;
                             else m = 4.0;
  
                             setEditMultiplier(m);
@@ -1801,9 +1820,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                   const eventHours = Math.max(0, val - hoursBefore);
 
                                   let m = 1.0;
-                                  if (eventHours <= 8) m = 1.0;
-                                  else if (eventHours <= 15) m = 2.0;
-                                  else if (eventHours <= 25) m = 3.0;
+                                  if (eventHours < 8) m = 1.0;
+                                  else if (eventHours < 15) m = 2.0;
+                                  else if (eventHours < 25) m = 3.0;
                                   else m = 4.0;
                                   
                                   setEditMultiplier(m);

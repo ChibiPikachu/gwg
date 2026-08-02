@@ -163,8 +163,16 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed, formData.hoursBefore]);
 
   const filteredSubmissions = React.useMemo(() => {
-    // Filter out "Event Update" (system notification), "Screenshot Points", and "Bingo Points" from entries
-    let result = submissions.filter(s => s.game_name !== 'Event Update' && s.game_name !== 'Screenshot Points' && s.game_name !== 'Bingo Points');
+    // Filter out system notifications and team point adjustments from entries
+    let result = submissions.filter(s => 
+      s.game_name !== 'Event Update' && 
+      s.game_name !== 'Screenshot Points' && 
+      s.game_name !== 'Bingo Points' &&
+      s.game_name !== 'Team Award' &&
+      s.platform !== 'System' &&
+      s.user_id !== 'system_notification' &&
+      !String(s.user_id || '').startsWith('team_pts_')
+    );
     if (completionFilter !== 'all') {
       if (completionFilter === 'pending') {
         result = result.filter(s => s.status === 'pending');
