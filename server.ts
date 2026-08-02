@@ -3991,22 +3991,32 @@ async function createServer() {
   });
 
   app.post('/api/admin/events', async (req, res) => {
-    const { title, description, startDate, endDate, isActive, hideScores } = req.body;
+    const { title, description, startDate, endDate, isActive, hideScores, winnerTeam } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      let finalDesc = (description || '').replace(/<!--WINNER:.*?-->/g, '').trim();
+      if (winnerTeam && winnerTeam !== 'auto' && winnerTeam !== 'none') {
+        finalDesc = `${finalDesc}\n<!--WINNER:${winnerTeam}-->`.trim();
+      }
+
+      const insertData: any = {
+        title,
+        description: finalDesc,
+        start_date: startDate,
+        end_date: endDate,
+        is_active: isActive || false,
+        hide_scores: hideScores || false,
+        created_at: new Date().toISOString()
+      };
+      if (winnerTeam && winnerTeam !== 'auto' && winnerTeam !== 'none') {
+        insertData.winner_team = winnerTeam;
+      }
+
       const { data, error } = await supabase
         .from('events')
-        .insert({
-          title,
-          description,
-          start_date: startDate,
-          end_date: endDate,
-          is_active: isActive || false,
-          hide_scores: hideScores || false,
-          created_at: new Date().toISOString()
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -4032,21 +4042,36 @@ async function createServer() {
 
   app.put('/api/admin/events/:id', async (req, res) => {
     const { id } = req.params;
-    const { title, description, startDate, endDate, isActive, hideScores } = req.body;
+    const { title, description, startDate, endDate, isActive, hideScores, winnerTeam } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      let finalDesc = (description || '').replace(/<!--WINNER:.*?-->/g, '').trim();
+      if (winnerTeam && winnerTeam !== 'auto' && winnerTeam !== 'none') {
+        finalDesc = `${finalDesc}\n<!--WINNER:${winnerTeam}-->`.trim();
+      }
+
+      const updateData: any = {
+        title,
+        description: finalDesc,
+        start_date: startDate,
+        end_date: endDate,
+        is_active: isActive,
+        hide_scores: hideScores || false
+      };
+
+      if (winnerTeam !== undefined) {
+        if (winnerTeam === 'auto' || winnerTeam === 'none' || !winnerTeam) {
+          updateData.winner_team = null;
+        } else {
+          updateData.winner_team = winnerTeam;
+        }
+      }
+
       const { data, error } = await supabase
         .from('events')
-        .update({
-          title,
-          description,
-          start_date: startDate,
-          end_date: endDate,
-          is_active: isActive,
-          hide_scores: hideScores || false
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
@@ -4286,14 +4311,17 @@ async function createServer() {
     const adminName = currentAdmin ? (currentAdmin.steamName || currentAdmin.steam_name || currentAdmin.displayName || currentAdmin.discord_name || currentAdmin.username || 'Admin') : 'Admin';
     const adminId = currentAdmin ? String(currentAdmin.steamid || currentAdmin.steamId || currentAdmin.id || 'admin') : 'admin';
 
-    const { team, points, notes, userId, userIds, adjustmentType } = req.body;
+    const { team, points, notes, userId, userIds, adjustmentType, eventId, event_id } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      // Detect active event dynamically to bind event_id to the adjustments
-      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
-      const activeEventId = activeEvent?.id || null;
+      // Detect active event dynamically or use explicitly provided eventId
+      let activeEventId = eventId || event_id || null;
+      if (!activeEventId) {
+        const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+        activeEventId = activeEvent?.id || null;
+      }
 
       const targetUserIds = Array.isArray(userIds) ? userIds : (userId ? [userId] : []);
       const formattedNotes = serializeNotesMeta(false, undefined, notes || '', adminName, adminId);

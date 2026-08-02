@@ -28,6 +28,17 @@ export default function EventsPanel() {
   const parseDateTimeToLocalParts = (isoStr: string | undefined) => {
     if (!isoStr) return null;
     
+    // Prioritize standard Date parsing first so it converts UTC/Z or other formats to client local parts!
+    const d = new Date(isoStr);
+    if (!isNaN(d.getTime())) {
+      const year = String(d.getFullYear());
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hour = String(d.getHours()).padStart(2, '0');
+      const minute = String(d.getMinutes()).padStart(2, '0');
+      return { year, month, day, hour, minute };
+    }
+
     const cleanStr = isoStr.replace(' ', 'T');
     
     // Check if it's a standard T-delimited timestamp
@@ -45,15 +56,7 @@ export default function EventsPanel() {
       }
     }
     
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return null;
-    
-    const year = String(d.getFullYear());
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hour = String(d.getHours()).padStart(2, '0');
-    const minute = String(d.getMinutes()).padStart(2, '0');
-    return { year, month, day, hour, minute };
+    return null;
   };
 
   const handleStartEdit = (event: any) => {
@@ -107,7 +110,12 @@ export default function EventsPanel() {
     const [hrs, mins] = timePart.split(':');
     const formattedHrs = String(hrs || '00').padStart(2, '0');
     const formattedMins = String(mins || '00').padStart(2, '0');
-    return `${dateOnly}T${formattedHrs}:${formattedMins}:00`;
+    // Parse as local wall clock time in user/admin's browser timezone
+    const d = new Date(`${dateOnly}T${formattedHrs}:${formattedMins}:00`);
+    if (isNaN(d.getTime())) {
+      return `${dateOnly}T${formattedHrs}:${formattedMins}:00`;
+    }
+    return d.toISOString();
   };
 
   const formatEventDateTime = (isoStr: string | number | undefined, fallbackText = 'Unknown'): string => {
@@ -133,7 +141,8 @@ export default function EventsPanel() {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      hour12: false,
+      timeZoneName: 'short'
     });
   };
 
@@ -210,7 +219,8 @@ export default function EventsPanel() {
           startDate: finalStartDate,
           endDate: finalEndDate,
           isActive: editingEvent.is_active,
-          hideScores: !!editingEvent.hide_scores
+          hideScores: !!editingEvent.hide_scores,
+          winnerTeam: editingEvent.winner_team || 'auto'
         })
       });
 
@@ -536,6 +546,27 @@ export default function EventsPanel() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500 flex items-center justify-between">
+                  <span>Event Winner Team (Override / Lock)</span>
+                  <span className="text-[9px] text-amber-500 font-bold uppercase">Badges & Historical Winner</span>
+                </label>
+                <select
+                  value={editingEvent?.winner_team || 'auto'}
+                  onChange={e => setEditingEvent({ ...editingEvent!, winner_team: e.target.value === 'auto' ? null : e.target.value })}
+                  className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 text-xs font-bold uppercase tracking-wider focus:outline-none transition-all dark:text-white text-slate-900 cursor-pointer", theme.border_focus)}
+                >
+                  <option value="auto" className="dark:bg-[#111] bg-white text-slate-900 dark:text-white">Auto (Calculate from submissions)</option>
+                  <option value="blue" className="dark:bg-[#111] bg-white text-slate-900 dark:text-white">Team Blue</option>
+                  <option value="purple" className="dark:bg-[#111] bg-white text-slate-900 dark:text-white">Team Purple</option>
+                  <option value="green" className="dark:bg-[#111] bg-white text-slate-900 dark:text-white">Team Green</option>
+                  <option value="red" className="dark:bg-[#111] bg-white text-slate-900 dark:text-white">Team Red</option>
+                </select>
+                <p className="text-[10px] opacity-50 dark:text-white text-slate-500 italic">
+                  Locking the winner team ensures user badges for this event remain permanent even if individual submissions are later deleted.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
