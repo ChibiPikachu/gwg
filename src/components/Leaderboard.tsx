@@ -483,7 +483,13 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search player, tag, steamid..."
-                    className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/50 shadow-sm transition-all placeholder:opacity-40"
+                    className={cn(
+                      "w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 shadow-sm transition-all placeholder:opacity-40",
+                      user?.team === 'blue' ? "focus:ring-sky-500/50" :
+                      user?.team === 'green' ? "focus:ring-green-500/50" :
+                      user?.team === 'red' ? "focus:ring-red-500/50" :
+                      "focus:ring-purple-500/50"
+                    )}
                   />
                   {searchQuery && (
                     <button
@@ -886,7 +892,13 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                             value={prevSearchQuery}
                             onChange={(e) => setPrevSearchQuery(e.target.value)}
                             placeholder="Search archived player..."
-                            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/50 shadow-sm transition-all placeholder:opacity-40"
+                            className={cn(
+                              "w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 shadow-sm transition-all placeholder:opacity-40",
+                              user?.team === 'blue' ? "focus:ring-sky-500/50" :
+                              user?.team === 'green' ? "focus:ring-green-500/50" :
+                              user?.team === 'red' ? "focus:ring-red-500/50" :
+                              "focus:ring-purple-500/50"
+                            )}
                           />
                           {prevSearchQuery && (
                             <button
