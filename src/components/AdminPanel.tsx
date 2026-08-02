@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -136,6 +136,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
   const [deleteEventModalOpen, setDeleteEventModalOpen] = React.useState(false);
   const [targetDeleteEventId, setTargetDeleteEventId] = React.useState<string>('');
+
+  // Mass Team Assignment State
+  const [massSelectedUserIds, setMassSelectedUserIds] = React.useState<string[]>([]);
+  const [massTargetEventId, setMassTargetEventId] = React.useState<string>('active');
+  const [massTargetTeam, setMassTargetTeam] = React.useState<Team | 'none'>('blue');
+  const [isMassAssigning, setIsMassAssigning] = React.useState(false);
+  const [massAssignSuccessMsg, setMassAssignSuccessMsg] = React.useState<string | null>(null);
 
   const fetchActivityLogs = React.useCallback(async () => {
     setLoadingActivityLogs(true);
@@ -759,6 +766,57 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     return matchesTeam && (nameStr.includes(searchLower) || idStr.includes(searchLower));
   });
 
+  const handleToggleSelectUser = (steamId: string) => {
+    setMassSelectedUserIds(prev =>
+      prev.includes(steamId) ? prev.filter(id => id !== steamId) : [...prev, steamId]
+    );
+  };
+
+  const handleSelectAllFilteredUsers = () => {
+    const allIds = filteredUsers.map(u => String(u.steamid || u.steamId)).filter(Boolean);
+    setMassSelectedUserIds(allIds);
+  };
+
+  const handleDeselectAllUsers = () => {
+    setMassSelectedUserIds([]);
+  };
+
+  const handleMassAssignTeam = async () => {
+    if (massSelectedUserIds.length === 0) {
+      alert('Please select at least one member to assign a team.');
+      return;
+    }
+    setIsMassAssigning(true);
+    setMassAssignSuccessMsg(null);
+    try {
+      const targetEvId = massTargetEventId === 'active' ? undefined : massTargetEventId;
+      const res = await fetch('/api/admin/update-user-team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetSteamIds: massSelectedUserIds,
+          team: massTargetTeam,
+          eventId: targetEvId
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setMassAssignSuccessMsg(`Successfully assigned ${massTargetTeam.toUpperCase()} team to ${massSelectedUserIds.length} selected member(s)!`);
+        await fetchUsers();
+        setMassSelectedUserIds([]);
+        setTimeout(() => setMassAssignSuccessMsg(null), 5000);
+      } else {
+        alert(`Failed mass assignment: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Mass assign error:', err);
+      alert('Failed to perform mass team assignment.');
+    } finally {
+      setIsMassAssigning(false);
+    }
+  };
+
   const filteredSubmissions = submissions.filter(sub => {
     if (!isUserGameSubmission(sub)) return false;
 
@@ -1076,18 +1134,180 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             filterTeam={filterTeam}
           />
 
-          <section>
-            <h2 className="text-lg md:text-xl font-bold mb-4 md:mb-8 dark:text-white text-slate-900">User Directory</h2>
+          <section className="space-y-6">
+            {/* Mass Select & Team Assignment Card */}
+            <div className="p-5 md:p-6 dark:bg-[#121212] bg-white rounded-2xl border dark:border-white/10 border-black/10 shadow-lg flex flex-col gap-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b dark:border-white/5 border-black/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm md:text-base font-black uppercase tracking-wider dark:text-white text-slate-900 flex items-center gap-2">
+                      Mass Select Members & Assign Team
+                    </h3>
+                    <p className="text-[11px] dark:text-white/50 text-slate-500 font-medium">
+                      Select multiple members to assign or reassign team rosters for current or previous events.
+                    </p>
+                  </div>
+                </div>
+                
+                {massSelectedUserIds.length > 0 && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-black self-start sm:self-auto">
+                    <span>{massSelectedUserIds.length} member(s) selected</span>
+                  </div>
+                )}
+              </div>
+
+              {massAssignSuccessMsg && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-between animate-in fade-in">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 size={16} />
+                    {massAssignSuccessMsg}
+                  </span>
+                  <button onClick={() => setMassAssignSuccessMsg(null)} className="opacity-60 hover:opacity-100">
+                    <XCircle size={14} />
+                  </button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Event Selector */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider opacity-60 dark:text-white text-slate-600">
+                    1. Target Event
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={massTargetEventId}
+                      onChange={(e) => setMassTargetEventId(e.target.value)}
+                      className="appearance-none dark:bg-[#1a1a1a] bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3.5 py-2.5 pr-8 text-xs font-bold dark:text-white text-slate-800 focus:outline-none w-full cursor-pointer h-10"
+                    >
+                      <option value="active">🔥 Current Active Event & Profile Default</option>
+                      {events.map((ev: any) => (
+                        <option key={ev.id} value={ev.id}>
+                          Event #{ev.event_number || ev.eventNumber}: {ev.name} {ev.is_active ? '(Active)' : '(Ended)'}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
+                      <ChevronDown size={14} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Team Selector */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider opacity-60 dark:text-white text-slate-600">
+                    2. Target Team
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={massTargetTeam}
+                      onChange={(e) => setMassTargetTeam(e.target.value as Team | 'none')}
+                      className={cn(
+                        "appearance-none dark:bg-[#1a1a1a] bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3.5 py-2.5 pr-8 text-xs font-bold uppercase tracking-wider focus:outline-none w-full cursor-pointer h-10",
+                        massTargetTeam !== 'none' && TEAM_COLORS[massTargetTeam]
+                          ? `${TEAM_COLORS[massTargetTeam].secondary} ${TEAM_COLORS[massTargetTeam].primary}`
+                          : "dark:text-white text-slate-800"
+                      )}
+                    >
+                      <option value="blue" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Blue Team</option>
+                      <option value="green" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Green Team</option>
+                      <option value="purple" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Purple Team</option>
+                      <option value="red" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">Red Team</option>
+                      <option value="none" className="dark:bg-[#181818] bg-white text-slate-800 dark:text-white">None / Unassigned</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
+                      <ChevronDown size={14} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Action Buttons */}
+                <div className="flex flex-col gap-1.5 justify-end">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider opacity-60 dark:text-white text-slate-600">
+                    3. Apply Batch Assignment
+                  </label>
+                  <button
+                    onClick={handleMassAssignTeam}
+                    disabled={massSelectedUserIds.length === 0 || isMassAssigning}
+                    className="h-10 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-amber-500/20"
+                  >
+                    {isMassAssigning ? (
+                      <span>Assigning...</span>
+                    ) : (
+                      <>
+                        <Shield size={14} />
+                        <span>Assign to {massSelectedUserIds.length} Selected</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Selection Helper Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSelectAllFilteredUsers}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold dark:bg-white/5 bg-slate-100 hover:dark:bg-white/10 hover:bg-slate-200 dark:text-white text-slate-700 transition-colors flex items-center gap-1.5 border dark:border-white/5 border-black/5"
+                  >
+                    <CheckSquare size={13} className="text-amber-500" />
+                    <span>Select All Filtered ({filteredUsers.length})</span>
+                  </button>
+                  {massSelectedUserIds.length > 0 && (
+                    <button
+                      onClick={handleDeselectAllUsers}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-1.5 border border-red-500/20"
+                    >
+                      <XCircle size={13} />
+                      <span>Deselect All</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-[11px] dark:text-white/40 text-slate-400 font-medium">
+                  {massTargetEventId === 'active' 
+                    ? 'Updates profile team & current active event roster.' 
+                    : `Updates team roster for historical ${events.find((e: any) => e.id === massTargetEventId)?.name || 'Selected Event'}.`}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg md:text-xl font-bold dark:text-white text-slate-900">User Directory</h2>
+              <span className="text-xs font-bold dark:text-white/40 text-slate-500">
+                {filteredUsers.length} member(s) listed
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
               {filteredUsers.map((u, idx) => {
                 const userId = u.steamid || u.steamId || u.discord_id || u.id || `user-${idx}`;
                 const userName = u.steam_name || u.steamName || u.discord_name || u.discordName || u.displayName || 'User';
                 const userAvatar = u.steam_avatar || u.steamAvatar || u.discord_avatar || u.discordAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
                 const teamColorObj = u.team && u.team !== 'none' && TEAM_COLORS[u.team as Team] ? TEAM_COLORS[u.team as Team] : null;
+                const isMassSelected = massSelectedUserIds.includes(userId);
 
                 return (
-                <div key={userId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border dark:border-white/5 border-black/5 relative group shadow-sm hover:dark:border-white/10 hover:border-black/10 transition-all min-w-0">
-                  <div className="flex items-center gap-4 min-w-0">
+                <div 
+                  key={userId} 
+                  className={cn(
+                    "flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border relative group shadow-sm transition-all min-w-0",
+                    isMassSelected 
+                      ? "border-amber-500/60 dark:bg-amber-500/5 bg-amber-50/50 ring-1 ring-amber-500/30" 
+                      : "dark:border-white/5 border-black/5 hover:dark:border-white/10 hover:border-black/10"
+                  )}
+                >
+                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isMassSelected}
+                        onChange={() => handleToggleSelectUser(userId)}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-white/20 text-amber-500 focus:ring-amber-500 cursor-pointer shrink-0"
+                        title="Select for Mass Team Assignment"
+                      />
                       <button 
                         onClick={() => onViewProfile?.(userId)}
                         className={cn(

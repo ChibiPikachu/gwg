@@ -159,7 +159,7 @@ async function backfillEventTeams(supabase: any) {
     // First do a quick check query to see if the table exists
     const { error: tableCheckErr } = await supabase
       .from('user_event_teams')
-      .select('steamid')
+      .select('steamid, event_id')
       .limit(1);
 
     if (tableCheckErr) {
@@ -171,6 +171,18 @@ async function backfillEventTeams(supabase: any) {
       return;
     }
 
+    // Fetch existing records from user_event_teams so we NEVER overwrite existing admin choices
+    const { data: existingUets } = await supabase
+      .from('user_event_teams')
+      .select('steamid, event_id');
+
+    const existingUetSet = new Set<string>();
+    (existingUets || []).forEach((u: any) => {
+      if (u.steamid && u.event_id) {
+        existingUetSet.add(`${u.steamid}_${u.event_id}`);
+      }
+    });
+
     // 1. Fetch all submissions to map user_id -> event_id
     const { data: subs, error: subsError } = await supabase
       .from('submissions')
@@ -181,7 +193,7 @@ async function backfillEventTeams(supabase: any) {
       return;
     }
     
-    // 2. Fetch all profiles to get their current team as the initial default
+    // 2. Fetch all profiles to get their current team as the initial default for missing entries
     const { data: profiles, error: profsError } = await supabase
       .from('profiles')
       .select('steamid, team');
@@ -198,7 +210,7 @@ async function backfillEventTeams(supabase: any) {
       }
     });
 
-    // 3. For each unique combination of user_id and event_id in submissions, upsert into user_event_teams
+    // 3. For each unique combination of user_id and event_id in submissions, ONLY insert if missing
     const uniqueUserEvents = new Set<string>();
     const toInsert: any[] = [];
     
@@ -207,7 +219,8 @@ async function backfillEventTeams(supabase: any) {
       if (sub.user_id.startsWith('team_pts_') || sub.user_id === 'system_notification') return;
       
       const key = `${sub.user_id}_${sub.event_id}`;
-      if (!uniqueUserEvents.has(key)) {
+      // CRITICAL: NEVER overwrite existing user_event_teams set by admins
+      if (!existingUetSet.has(key) && !uniqueUserEvents.has(key)) {
         uniqueUserEvents.add(key);
         const currentTeam = profileTeamMap.get(sub.user_id);
         if (currentTeam) {
@@ -220,7 +233,7 @@ async function backfillEventTeams(supabase: any) {
       }
     });
     
-    // 4. Also map current profiles to the active event if they don't have submissions yet
+    // 4. Also map current profiles to the active event if they don't have records yet
     const { data: activeEvent } = await supabase
       .from('events')
       .select('id')
@@ -231,7 +244,7 @@ async function backfillEventTeams(supabase: any) {
       (profiles || []).forEach((p: any) => {
         if (!p.steamid || !p.team) return;
         const key = `${p.steamid}_${activeEvent.id}`;
-        if (!uniqueUserEvents.has(key)) {
+        if (!existingUetSet.has(key) && !uniqueUserEvents.has(key)) {
           uniqueUserEvents.add(key);
           toInsert.push({
             steamid: p.steamid,
@@ -243,7 +256,7 @@ async function backfillEventTeams(supabase: any) {
     }
 
     if (toInsert.length > 0) {
-      console.log(`[Backfill] Preparing to upsert ${toInsert.length} user event-team relations...`);
+      console.log(`[Backfill] Preparing to insert ${toInsert.length} missing user event-team relations...`);
       for (let i = 0; i < toInsert.length; i += 100) {
         const chunk = toInsert.slice(i, i + 100);
         const { error: upsertErr } = await supabase
@@ -251,12 +264,12 @@ async function backfillEventTeams(supabase: any) {
           .upsert(chunk, { onConflict: 'steamid,event_id' });
           
         if (upsertErr) {
-          console.error('[Backfill] Batch upsert error:', upsertErr);
+          console.error('[Backfill] Batch insert error:', upsertErr);
         }
       }
       console.log('[Backfill] Completed successfully.');
     } else {
-      console.log('[Backfill] Nothing to backfill.');
+      console.log('[Backfill] All user event teams up to date.');
     }
   } catch (err) {
     console.error('[Backfill] Unexpected error running backfill:', err);
@@ -2580,8 +2593,12 @@ async function createServer() {
   });
 
   app.post('/api/admin/update-user-team', async (req, res) => {
-    const { targetSteamId, team, eventId } = req.body;
-    console.log('[Admin] Update Team Start:', { targetSteamId, team, eventId });
+    const { targetSteamId, targetSteamIds, team, eventId } = req.body;
+    const ids: string[] = Array.isArray(targetSteamIds) && targetSteamIds.length > 0
+      ? targetSteamIds.map(String)
+      : (targetSteamId ? [String(targetSteamId)] : []);
+
+    console.log('[Admin] Update Team Start:', { ids, team, eventId });
     
     const supabase = getSupabase();
     if (!supabase) {
@@ -2589,9 +2606,12 @@ async function createServer() {
       return res.status(500).json({ error: 'Database unavailable' });
     }
 
+    if (ids.length === 0) {
+      return res.status(400).json({ error: 'No user ID provided' });
+    }
+
     try {
-      // If team is 'none', we store it as null. 
-      // If the DB constraint fails, it might expect a specific string instead.
+      // If team is 'none', we store it as null in DB
       const dbTeam = team === 'none' ? null : team;
       
       // Get the current active event
@@ -2606,12 +2626,12 @@ async function createServer() {
 
       let updateData = null;
       if (isActiveEvent) {
-        // If updating the active event (or no eventId provided), update profiles.team
-        console.log('[Admin] Updating active event team on profile:', { targetSteamId, dbTeam });
+        // If updating active event, update profiles.team for all specified users
+        console.log('[Admin] Updating active event team on profiles:', { ids, dbTeam });
         const { error: profileError, data: profData } = await supabase
           .from('profiles')
           .update({ team: dbTeam })
-          .eq('steamid', String(targetSteamId))
+          .in('steamid', ids)
           .select();
 
         if (profileError) {
@@ -2632,43 +2652,38 @@ async function createServer() {
             const { error: delErr } = await supabase
               .from('user_event_teams')
               .delete()
-              .eq('steamid', String(targetSteamId))
+              .in('steamid', ids)
               .eq('event_id', targetEventId);
             
             if (delErr) {
-              console.warn('[Admin] Failed to delete user_event_team, falling back to upsert none:', delErr);
-              await supabase
-                .from('user_event_teams')
-                .upsert({
-                  steamid: String(targetSteamId),
-                  event_id: targetEventId,
-                  team: 'none'
-                }, { onConflict: 'steamid,event_id' });
+              console.warn('[Admin] Failed to delete user_event_teams batch:', delErr);
             } else {
-              console.log(`[Admin] Successfully cleared event-team association for user ${targetSteamId} and event ${targetEventId}`);
+              console.log(`[Admin] Successfully cleared event-team association for ${ids.length} users in event ${targetEventId}`);
             }
           } else {
+            const uetRows = ids.map(id => ({
+              steamid: id,
+              event_id: targetEventId,
+              team: dbTeam
+            }));
+
             const { error: upsertErr } = await supabase
               .from('user_event_teams')
-              .upsert({
-                steamid: String(targetSteamId),
-                event_id: targetEventId,
-                team: dbTeam
-              }, { onConflict: 'steamid,event_id' });
+              .upsert(uetRows, { onConflict: 'steamid,event_id' });
 
             if (upsertErr) {
               console.error('[Admin] Error upserting user_event_teams:', upsertErr);
               return res.status(500).json({ error: 'Failed to record user event team', details: upsertErr.message });
             }
-            console.log(`[Admin] Successfully recorded team ${dbTeam} for event ${targetEventId} in user_event_teams`);
+            console.log(`[Admin] Successfully recorded team ${dbTeam} for event ${targetEventId} for ${ids.length} users in user_event_teams`);
           }
         } catch (ueErr) {
           console.error('[Admin] Error updating user_event_teams:', ueErr);
         }
       }
       
-      console.log('[Admin] Successfully updated team for:', targetSteamId, 'Result:', updateData);
-      res.json({ success: true, updated: updateData });
+      console.log(`[Admin] Successfully updated team for ${ids.length} user(s). Result:`, updateData);
+      res.json({ success: true, count: ids.length, updated: updateData });
     } catch (err) {
       console.error('[Admin] Internal Exception:', err);
       res.status(500).json({ error: 'Internal server error', details: String(err) });
