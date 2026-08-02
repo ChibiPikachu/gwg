@@ -338,7 +338,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                               </div>
                               {e.description && (
                                 <p className="text-[11px] text-zinc-300 leading-normal line-clamp-3 select-none italic font-medium">
-                                  {e.description.replace(/<!--VOTING:.*?-->/g, '')}
+                                  {e.description.replace(/<!--.*?-->/gs, '').trim()}
                                 </p>
                               )}
                               <div className="mt-2 pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px] text-zinc-400 font-bold select-none">

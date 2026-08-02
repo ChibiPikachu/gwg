@@ -171,9 +171,13 @@ export default function EventsPanel() {
     if (isEditing && editingEvent) {
       const finalStartDate = combineDateAndTimeStr(editingEvent.start_date, startTime);
       const finalEndDate = combineDateAndTimeStr(editingEvent.end_date, endTime);
-      const cleanDesc = (editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim();
+      const rawDesc = (editingEvent as any).raw_description || editingEvent.description || '';
+      const systemComments = (rawDesc.match(/<!--(?!VOTING:).*?-->/gs) || []).join('\n');
+      const cleanDesc = (editingEvent.description || '').replace(/<!--.*?-->/gs, '').trim();
       const finalVotingStr = votingDate ? combineDateAndTimeStr(votingDate, votingTime) : '';
-      const finalDescription = finalVotingStr ? `${cleanDesc} <!--VOTING:${finalVotingStr}-->` : cleanDesc;
+      let finalDescription = cleanDesc;
+      if (finalVotingStr) finalDescription += ` <!--VOTING:${finalVotingStr}-->`;
+      if (systemComments) finalDescription += `\n${systemComments}`;
 
       const draft: CompetitionEvent = {
         id: editingEvent.id || 'draft',
@@ -207,9 +211,13 @@ export default function EventsPanel() {
       const finalStartDate = combineDateAndTimeStr(editingEvent.start_date, startTime);
       const finalEndDate = combineDateAndTimeStr(editingEvent.end_date, endTime);
 
-      const cleanDesc = (editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim();
+      const rawDesc = (editingEvent as any).raw_description || editingEvent.description || '';
+      const systemComments = (rawDesc.match(/<!--(?!VOTING:).*?-->/gs) || []).join('\n');
+      const cleanDesc = (editingEvent.description || '').replace(/<!--.*?-->/gs, '').trim();
       const finalVotingStr = votingDate ? combineDateAndTimeStr(votingDate, votingTime) : '';
-      const finalDescription = finalVotingStr ? `${cleanDesc} <!--VOTING:${finalVotingStr}-->` : cleanDesc;
+      let finalDescription = cleanDesc;
+      if (finalVotingStr) finalDescription += ` <!--VOTING:${finalVotingStr}-->`;
+      if (systemComments) finalDescription += `\n${systemComments}`;
 
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
@@ -280,8 +288,8 @@ export default function EventsPanel() {
         start_date: combineDateAndTimeStr(editingEvent.start_date, startTime),
         end_date: combineDateAndTimeStr(editingEvent.end_date, endTime),
         description: (votingDate 
-          ? `${(editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim()} <!--VOTING:${combineDateAndTimeStr(votingDate, votingTime)}-->`
-          : (editingEvent.description || '').replace(/<!--VOTING:.*?-->/g, '').trim()
+          ? `${(editingEvent.description || '').replace(/<!--.*?-->/gs, '').trim()} <!--VOTING:${combineDateAndTimeStr(votingDate, votingTime)}-->`
+          : (editingEvent.description || '').replace(/<!--.*?-->/gs, '').trim()
         )
       } as CompetitionEvent
     : null;
