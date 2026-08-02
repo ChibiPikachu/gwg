@@ -263,6 +263,50 @@ async function backfillEventTeams(supabase: any) {
   }
 }
 
+async function snapshotEventTeams(supabase: any, eventId: string) {
+  if (!supabase || !eventId) return;
+  try {
+    const { data: profiles } = await supabase.from('profiles').select('steamid, team');
+    if (!profiles || profiles.length === 0) return;
+
+    const { data: existingUets } = await supabase
+      .from('user_event_teams')
+      .select('steamid, team')
+      .eq('event_id', eventId);
+
+    const existingMap = new Map<string, string>();
+    (existingUets || []).forEach((u: any) => {
+      if (u.steamid) existingMap.set(u.steamid, u.team);
+    });
+
+    const rowsToUpsert: any[] = [];
+    profiles.forEach((p: any) => {
+      if (!p.steamid) return;
+      const teamToSave = existingMap.get(p.steamid) || (p.team && p.team !== 'none' ? p.team : null);
+      if (teamToSave && teamToSave !== 'none') {
+        rowsToUpsert.push({
+          steamid: String(p.steamid),
+          event_id: String(eventId),
+          team: teamToSave
+        });
+      }
+    });
+
+    if (rowsToUpsert.length > 0) {
+      const { error } = await supabase
+        .from('user_event_teams')
+        .upsert(rowsToUpsert, { onConflict: 'steamid,event_id' });
+      if (error) {
+        console.warn(`[SnapshotEventTeams] Error saving event teams for ${eventId}:`, error.message);
+      } else {
+        console.log(`[SnapshotEventTeams] Successfully snapshotted ${rowsToUpsert.length} user event teams for event ${eventId}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[SnapshotEventTeams] Exception for event ${eventId}:`, err);
+  }
+}
+
 function getSupabase() {
   if (!supabaseClient) {
     const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -3344,14 +3388,18 @@ async function createServer() {
     try {
       const { eventId, status } = req.query;
 
+      // Ensure historical team relations are initialized
+      await backfillEventTeams(supabase);
+
       let subQuery = supabase.from('submissions').select('*').order('created_at', { ascending: false });
       if (eventId) subQuery = subQuery.eq('event_id', String(eventId));
       if (status && status !== 'all') subQuery = subQuery.eq('status', String(status));
 
-      const [submissionsRes, profilesRes, eventsRes] = await Promise.all([
+      const [submissionsRes, profilesRes, eventsRes, userEventTeamsRes] = await Promise.all([
         subQuery,
         supabase.from('profiles').select('steamid, team, steam_name, discord_name'),
-        supabase.from('events').select('id, title')
+        supabase.from('events').select('id, title'),
+        supabase.from('user_event_teams').select('steamid, event_id, team')
       ]);
 
       if (submissionsRes.error) throw submissionsRes.error;
@@ -3362,6 +3410,13 @@ async function createServer() {
 
       const eventMap: Record<string, string> = {};
       (eventsRes.data || []).forEach((e: any) => { eventMap[e.id] = e.title; });
+
+      const uetMap = new Map<string, string>();
+      (userEventTeamsRes?.data || []).forEach((uet: any) => {
+        if (uet.steamid && uet.event_id && uet.team) {
+          uetMap.set(`${uet.steamid}_${uet.event_id}`, uet.team);
+        }
+      });
 
       const headers = [
         'Submission ID',
@@ -3393,7 +3448,16 @@ async function createServer() {
       const rows = submissions.map((s: any) => {
         const p = profileMap[s.user_id];
         const userName = p?.steam_name || p?.discord_name || s.user_name || 'Unknown User';
-        const team = p?.team || 'none';
+        
+        let team = 'none';
+        if (s.user_id?.startsWith('team_pts_')) {
+          team = s.user_id.replace('team_pts_', '');
+        } else if (s.user_id && s.event_id && uetMap.has(`${s.user_id}_${s.event_id}`)) {
+          team = uetMap.get(`${s.user_id}_${s.event_id}`) || 'none';
+        } else if (p?.team) {
+          team = p.team;
+        }
+
         const eventTitle = eventMap[s.event_id] || 'Unknown/Default Event';
 
         return [
@@ -4016,6 +4080,9 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
+      // Snapshot all current member team allocations in user_event_teams for this event before closing
+      await snapshotEventTeams(supabase, id);
+
       // Ensure winner team is permanently locked in before closing event
       await ensureEventWinnerSaved(supabase, id);
 
