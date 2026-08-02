@@ -2264,8 +2264,8 @@ async function createServer() {
 
       usersList.sort((a, b) => b.points - a.points);
 
-      // Top 16 users
-      const top16Users = usersList.slice(0, 16).map((u, idx) => ({
+      // All users ranked by points
+      const allUsers = usersList.map((u, idx) => ({
         ...u,
         rank: idx + 1
       }));
@@ -2299,7 +2299,7 @@ async function createServer() {
           description: event.description
         },
         standings: teamStandings,
-        topUsers: top16Users,
+        topUsers: allUsers,
         totalParticipants: usersList.length,
         adjustments: adjustmentLogs
       });

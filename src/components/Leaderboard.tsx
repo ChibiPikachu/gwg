@@ -559,18 +559,18 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     </div>
                   </section>
 
-                  {/* Top 16 Users Section */}
+                  {/* All Event Users Section */}
                   <section>
                     <div className="flex items-center justify-between mb-6">
                       <div>
                         <h3 className="text-xl font-bold flex items-center gap-2">
                           <Trophy className="text-amber-400" size={22} />
-                          Top 16 Users (Most Event Points)
+                          Event User Standings
                         </h3>
-                        <p className="text-xs opacity-60 mt-0.5">Top performing individual members in this previous event.</p>
+                        <p className="text-xs opacity-60 mt-0.5">Individual member standings in this previous event.</p>
                       </div>
                       <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                        Top 16
+                        {previousEventData.topUsers.length} Members
                       </span>
                     </div>
 
