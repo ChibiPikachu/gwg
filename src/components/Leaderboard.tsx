@@ -424,8 +424,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             )}
 
             {hideScores && (
-              <div className="mb-8 p-4 rounded-xl bg-purple-500/10 border border-purple-500/25 text-purple-400 font-bold text-center text-sm tracking-wide animate-pulse">
-                Leaderboard is hidden right now!
+              <div className="mb-8 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 font-bold text-center text-sm tracking-wide shadow-sm animate-in fade-in">
+                Leaderboard is hidden!
               </div>
             )}
 
@@ -471,7 +471,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                   <Trophy className={theme.text} size={24} />
                   All Members
                 </h2>
-                <p className="text-xs opacity-60 mt-0.5">Search and filter community members by name, handle, or team faction.</p>
+                <p className="text-xs opacity-60 mt-0.5">Search and filter community members by name, handle, or team.</p>
               </div>
 
               {/* Search & Team Filter Bar */}
@@ -488,7 +488,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       user?.team === 'blue' ? "focus:ring-sky-500/50" :
                       user?.team === 'green' ? "focus:ring-green-500/50" :
                       user?.team === 'red' ? "focus:ring-red-500/50" :
-                      "focus:ring-purple-500/50"
+                      user?.team === 'purple' ? "focus:ring-purple-500/50" :
+                      "focus:ring-slate-500/50"
                     )}
                   />
                   {searchQuery && (
@@ -708,17 +709,17 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       className={cn(
                         "px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 border flex items-center gap-2.5",
                         isSelected
-                          ? "bg-purple-500/10 border-purple-500/30 text-purple-400 shadow-sm"
+                          ? "bg-slate-500/10 border-slate-500/30 text-slate-400 shadow-sm"
                           : "dark:bg-zinc-900/50 bg-slate-100 border-transparent dark:text-white/50 text-slate-600 hover:dark:text-white hover:text-slate-900"
                       )}
                     >
                       <Calendar size={13} />
-                      <span>Event #{evtNumber}: {evt.title}</span>
+                      <span>Event #{evtNumber}</span>
                       {evt.winner_team && (
                         <span className={cn(
                           "text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider",
-                          TEAM_COLORS[evt.winner_team as Team]?.secondary || "bg-purple-500/20",
-                          TEAM_COLORS[evt.winner_team as Team]?.primary || "text-purple-400"
+                          TEAM_COLORS[evt.winner_team as Team]?.secondary || "bg-slate-500/20",
+                          TEAM_COLORS[evt.winner_team as Team]?.primary || "text-slate-400"
                         )}>
                           🏆 {evt.winner_team}
                         </span>
@@ -791,12 +792,12 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       {previousEventData.event.winner_team && (
                         <div className={cn(
                           "p-4 rounded-2xl border flex items-center gap-3 shrink-0",
-                          TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-purple-500/10",
-                          TEAM_COLORS[previousEventData.event.winner_team as Team]?.border || "border-purple-500/20"
+                          TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-slate-500/10",
+                          TEAM_COLORS[previousEventData.event.winner_team as Team]?.border || "border-slate-500/20"
                         )}>
                           <div className={cn(
                             "w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0",
-                            TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-purple-500/20"
+                            TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-slate-500/20"
                           )}>
                             🏆
                           </div>
@@ -895,7 +896,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                               user?.team === 'blue' ? "focus:ring-sky-500/50" :
                               user?.team === 'green' ? "focus:ring-green-500/50" :
                               user?.team === 'red' ? "focus:ring-red-500/50" :
-                              "focus:ring-purple-500/50"
+                              user?.team === 'purple' ? "focus:ring-purple-500/50" :
+                              "focus:ring-slate-500/50"
                             )}
                           />
                           {prevSearchQuery && (
@@ -953,7 +955,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       <div className="p-12 text-center border-2 border-dashed dark:border-white/5 border-black/5 rounded-2xl flex flex-col items-center justify-center gap-2">
                         <Search size={32} className="opacity-20" />
                         <p className="text-sm font-bold opacity-60">No archived members match your filter</p>
-                        <p className="text-xs opacity-40">Try searching with a different name or team faction.</p>
+                        <p className="text-xs opacity-40">Try searching with a different name or team.</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1091,8 +1093,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       {/* Admin Notification Popup */}
       {adminPopupMsg && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-[#141414] border border-purple-500/30 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 animate-in zoom-in-95 duration-150">
-            <div className="w-14 h-14 rounded-2xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 text-2xl">
+          <div className="bg-[#141414] border border-slate-500/30 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-slate-500/20 border border-slate-500/30 flex items-center justify-center text-slate-400 text-2xl">
               <Shield size={28} />
             </div>
             <div>
@@ -1104,7 +1106,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             </div>
             <button
               onClick={() => setAdminPopupMsg(null)}
-              className="w-full py-3 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer mt-2 shadow-lg"
+              className="w-full py-3 rounded-2xl bg-slate-500 hover:bg-slate-400 text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer mt-2 shadow-lg"
             >
               Acknowledge
             </button>
@@ -1115,16 +1117,16 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       {/* Force Scores Modal */}
       {forceScoresModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-[#121212] border border-purple-500/30 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-[#121212] border border-slate-500/30 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-purple-500/10">
+            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-slate-500/10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                <div className="w-10 h-10 rounded-xl bg-slate-500/20 border border-slate-500/30 flex items-center justify-center text-slate-400">
                   <Sparkles size={20} />
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-white">Force Scores Mode (Admin)</h3>
-                  <p className="text-xs text-purple-300/80">
+                  <p className="text-xs text-slate-300/80">
                     {forceModalEventTitle ? `Target: ${forceModalEventTitle}` : 'Override Scores'}
                   </p>
                 </div>
@@ -1139,13 +1141,13 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
             {/* Content */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs leading-relaxed">
+              <div className="p-4 rounded-2xl bg-slate-500/10 border border-slate-500/20 text-slate-300 text-xs leading-relaxed">
                 <strong>Admin Override:</strong> Manually force exact team totals or member scores into event metadata. This allows locked scores for events where submissions were removed (e.g. Event #4). No user notifications will be generated.
               </div>
 
               {/* Team Totals Override */}
               <div className="space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">Team Totals Override</h4>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Team Totals Override</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {(['blue', 'purple', 'green', 'red'] as const).map(team => (
                     <div key={team} className="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-1.5">
@@ -1166,13 +1168,13 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               {/* Member Scores Override */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">Member Score Overrides</h4>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Member Score Overrides</h4>
                   <input
                     type="text"
                     placeholder="Filter member..."
                     value={forceMemberSearch}
                     onChange={(e) => setForceMemberSearch(e.target.value)}
-                    className="px-3 py-1 text-xs bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-purple-500 w-44"
+                    className="px-3 py-1 text-xs bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-slate-500 w-44"
                   />
                 </div>
 
@@ -1194,7 +1196,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                             type="number"
                             value={forceUserScores[m.steamid] ?? 0}
                             onChange={(e) => setForceUserScores(prev => ({ ...prev, [m.steamid]: parseInt(e.target.value) || 0 }))}
-                            className="w-24 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 font-mono text-xs font-bold text-purple-400 focus:outline-none focus:border-purple-500 text-right"
+                            className="w-24 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 font-mono text-xs font-bold text-slate-400 focus:outline-none focus:border-slate-500 text-right"
                           />
                         </div>
                       </div>
@@ -1214,7 +1216,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               <button
                 onClick={handleSaveForcedScores}
                 disabled={isSavingForcedScores}
-                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl bg-slate-500 hover:bg-slate-400 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-50"
               >
                 {isSavingForcedScores ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
                 <span>Apply & Lock Forced Scores</span>
