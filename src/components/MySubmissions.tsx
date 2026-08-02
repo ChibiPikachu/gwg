@@ -1458,9 +1458,9 @@ export default function MySubmissions() {
                       <div className="flex flex-wrap gap-1 items-center mt-0.5">
                         <span className={cn(
                           "text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded border leading-none",
-                          sub.completion_status === 'completed' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
-                          sub.completion_status === 'beaten' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                          sub.completion_status === 'abandoned' ? "bg-slate-500/10 text-slate-400 border-slate-500/20" :
+                          sub.completion_status === 'completed' ? "bg-sky-500/10 text-sky-400 border-sky-500/20" :
+                          sub.completion_status === 'beaten' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                          sub.completion_status === 'abandoned' ? "bg-red-500/10 text-red-400 border-red-500/20" :
                           "bg-white/5 text-white/40 border-white/10"
                         )}>
                           {sub.completion_status}

@@ -239,15 +239,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const theme: ThemeHelper = React.useMemo(() => {
     const team = user?.team;
-    let base = 'purple-500';
-    let text = 'text-purple-400';
-    let bg = 'bg-purple-500';
-    let border = 'border-purple-500/40';
-    let ring = 'ring-purple-500';
-    let shadow = 'shadow-purple-500';
-    let glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-purple-500/30 border-purple-500/40';
-    let secondary = 'bg-purple-500/10';
-    let muted = 'text-purple-400/50';
+    let base = 'slate-500';
+    let text = 'text-slate-400';
+    let bg = 'bg-slate-500';
+    let border = 'border-slate-500/40';
+    let ring = 'ring-slate-500';
+    let shadow = 'shadow-slate-500';
+    let glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-slate-500/30 border-slate-500/40';
+    let secondary = 'bg-slate-500/10';
+    let muted = 'text-slate-400/50';
 
     if (team === 'blue') {
       base = 'sky-500';
@@ -279,6 +279,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-red-500/30 border-red-500/40';
       secondary = 'bg-red-500/10';
       muted = 'text-red-400/50';
+    } else if (team === 'purple') {
+      base = 'purple-500';
+      text = 'text-purple-400';
+      bg = 'bg-purple-500';
+      border = 'border-purple-500/40';
+      ring = 'ring-purple-500';
+      shadow = 'shadow-purple-500';
+      glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-purple-500/30 border-purple-500/40';
+      secondary = 'bg-purple-500/10';
+      muted = 'text-purple-400/50';
     }
 
     return {
