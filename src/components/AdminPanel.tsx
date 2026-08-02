@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2 } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -9,6 +9,8 @@ export interface SubmissionNotesMeta {
   hasNoAchievements: boolean;
   level?: number;
   userNotes: string;
+  adminName?: string;
+  adminId?: string;
 }
 
 export function parseNotesMeta(notes: string): SubmissionNotesMeta {
@@ -22,7 +24,9 @@ export function parseNotesMeta(notes: string): SubmissionNotesMeta {
         return {
           hasNoAchievements: !!meta.hasNoAchievements,
           level: meta.level,
-          userNotes
+          userNotes,
+          adminName: meta.adminName,
+          adminId: meta.adminId
         };
       } catch (e) {
         // Fallback
@@ -67,7 +71,7 @@ export function calculateNonAchievementPoints(level: number, hoursPlayed: number
   }
 }
 
-type AdminTab = 'users' | 'submissions' | 'previous_submissions' | 'team_points';
+type AdminTab = 'users' | 'submissions' | 'previous_submissions' | 'team_points' | 'activity_log';
 
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
   const { user: currentUser, theme } = useAuth();
@@ -120,11 +124,33 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [userTeamFilter, setUserTeamFilter] = React.useState<'all' | 'blue' | 'purple' | 'green' | 'red'>('all');
   const [awardAdjustmentType, setAwardAdjustmentType] = React.useState<'screenshot' | 'bingo'>('screenshot');
 
+  // Activity Log State
+  const [activityLogs, setActivityLogs] = React.useState<any[]>([]);
+  const [loadingActivityLogs, setLoadingActivityLogs] = React.useState(false);
+  const [logSearchQuery, setLogSearchQuery] = React.useState('');
+  const [logTypeFilter, setLogTypeFilter] = React.useState<'all' | 'screenshot' | 'bingo' | 'team'>('all');
+  const [logTeamFilter, setLogTeamFilter] = React.useState<'all' | 'blue' | 'purple' | 'green' | 'red'>('all');
+
   // Bulk Operations State
   const [selectedSubIds, setSelectedSubIds] = React.useState<string[]>([]);
   const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
   const [deleteEventModalOpen, setDeleteEventModalOpen] = React.useState(false);
   const [targetDeleteEventId, setTargetDeleteEventId] = React.useState<string>('');
+
+  const fetchActivityLogs = React.useCallback(async () => {
+    setLoadingActivityLogs(true);
+    try {
+      const res = await fetch('/api/admin/activity-log');
+      if (res.ok) {
+        const data = await res.json();
+        setActivityLogs(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch activity logs:', err);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
+  }, []);
 
   const fetchTeamAdjustments = React.useCallback(async () => {
     try {
@@ -282,9 +308,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents()]);
+    await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents(), fetchActivityLogs()]);
     setLoading(false);
-  }, [fetchUsers, fetchSubmissions, fetchTeamAdjustments, fetchEvents]);
+  }, [fetchUsers, fetchSubmissions, fetchTeamAdjustments, fetchEvents, fetchActivityLogs]);
 
   React.useEffect(() => {
     if (activeAdminTab) {
@@ -847,9 +873,20 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           Team Points
           {activeTab === 'team_points' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
         </button>
+        <button 
+          onClick={() => setActiveTab('activity_log')}
+          className={cn(
+            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+            activeTab === 'activity_log' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+          )}
+        >
+          <History size={16} />
+          Activity Log
+          {activeTab === 'activity_log' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+        </button>
       </div>
 
-      {activeTab !== 'team_points' && (
+      {activeTab !== 'team_points' && activeTab !== 'activity_log' && (
         <section className="dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col gap-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex-1 w-full max-w-xl">
@@ -2235,6 +2272,262 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'activity_log' && (
+        <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+          {/* Header & Stats banner */}
+          <div className="border dark:border-white/5 border-black/5 dark:bg-[#111111] bg-white p-6 rounded-2xl flex flex-col gap-6 shadow-xl">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b dark:border-white/5 border-black/5 pb-5">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+                    <History size={20} />
+                  </span>
+                  <h3 className="text-lg font-bold dark:text-white text-slate-800 font-sans">
+                    Manual Point Additions Activity Log
+                  </h3>
+                </div>
+                <p className="text-xs opacity-60">
+                  Full transparency audit log of screenshot points, bingo points, and team point adjustments with timestamps and approving administrators.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchActivityLogs}
+                disabled={loadingActivityLogs}
+                className="px-4 py-2 rounded-xl border dark:border-white/10 border-black/10 text-xs font-bold dark:text-white text-slate-700 hover:dark:bg-white/5 hover:bg-slate-100 transition-colors flex items-center gap-2 shrink-0 self-start md:self-auto cursor-pointer"
+              >
+                <Clock size={14} className={cn(loadingActivityLogs && "animate-spin")} />
+                {loadingActivityLogs ? "Refreshing..." : "Refresh Activity Log"}
+              </button>
+            </div>
+
+            {/* Summary Stat Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl dark:bg-black/30 bg-slate-50 border dark:border-white/5 border-black/5 flex flex-col justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest opacity-40 dark:text-white text-slate-600">Total Manual Additions</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-black font-mono dark:text-white text-slate-900">{activityLogs.length}</span>
+                  <span className="text-[10px] font-bold opacity-50">records</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl dark:bg-black/30 bg-slate-50 border dark:border-white/5 border-black/5 flex flex-col justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Screenshot Points</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-black font-mono text-emerald-400">
+                    +{activityLogs.filter(l => l.game_name === 'Screenshot Points' || l.platform === 'Screenshot Points').reduce((acc, curr) => acc + (curr.points || 0), 0)}
+                  </span>
+                  <span className="text-[10px] font-bold opacity-50">
+                    ({activityLogs.filter(l => l.game_name === 'Screenshot Points' || l.platform === 'Screenshot Points').length})
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl dark:bg-black/30 bg-slate-50 border dark:border-white/5 border-black/5 flex flex-col justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Bingo Points</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-black font-mono text-blue-400">
+                    +{activityLogs.filter(l => l.game_name === 'Bingo Points' || l.platform === 'Bingo Points').reduce((acc, curr) => acc + (curr.points || 0), 0)}
+                  </span>
+                  <span className="text-[10px] font-bold opacity-50">
+                    ({activityLogs.filter(l => l.game_name === 'Bingo Points' || l.platform === 'Bingo Points').length})
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl dark:bg-black/30 bg-slate-50 border dark:border-white/5 border-black/5 flex flex-col justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">Active Admins</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-black font-mono text-amber-400">
+                    {new Set(activityLogs.map(l => l.admin_name)).size}
+                  </span>
+                  <span className="text-[10px] font-bold opacity-50">approvers</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Controls Bar */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40" />
+                <input
+                  type="text"
+                  placeholder="Filter by recipient, admin, or reason..."
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl dark:bg-black/40 bg-slate-100 border dark:border-white/5 border-black/5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+                <select
+                  value={logTypeFilter}
+                  onChange={(e) => setLogTypeFilter(e.target.value as any)}
+                  className="px-3 py-2 rounded-xl dark:bg-black/40 bg-slate-100 border dark:border-white/5 border-black/5 text-xs font-bold dark:text-white text-slate-800 focus:outline-none"
+                >
+                  <option value="all">All Types</option>
+                  <option value="screenshot">Screenshot Points</option>
+                  <option value="bingo">Bingo Points</option>
+                  <option value="team">Team Awards</option>
+                </select>
+
+                <select
+                  value={logTeamFilter}
+                  onChange={(e) => setLogTeamFilter(e.target.value as any)}
+                  className="px-3 py-2 rounded-xl dark:bg-black/40 bg-slate-100 border dark:border-white/5 border-black/5 text-xs font-bold dark:text-white text-slate-800 focus:outline-none uppercase"
+                >
+                  <option value="all">All Teams</option>
+                  <option value="blue">Blue</option>
+                  <option value="purple">Purple</option>
+                  <option value="green">Green</option>
+                  <option value="red">Red</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Activity Logs List */}
+          <div className="space-y-3">
+            {(() => {
+              const filteredLogs = activityLogs.filter(log => {
+                const matchSearch = !logSearchQuery.trim() ||
+                  (log.user_name || '').toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+                  (log.admin_name || '').toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+                  (log.notes || '').toLowerCase().includes(logSearchQuery.toLowerCase());
+
+                let matchType = true;
+                if (logTypeFilter === 'screenshot') {
+                  matchType = log.game_name === 'Screenshot Points' || log.platform === 'Screenshot Points';
+                } else if (logTypeFilter === 'bingo') {
+                  matchType = log.game_name === 'Bingo Points' || log.platform === 'Bingo Points';
+                } else if (logTypeFilter === 'team') {
+                  matchType = log.game_name === 'Team Award' || String(log.user_id || '').startsWith('team_pts_');
+                }
+
+                let matchTeam = true;
+                if (logTeamFilter !== 'all') {
+                  matchTeam = (log.user_team || 'none').toLowerCase() === logTeamFilter.toLowerCase();
+                }
+
+                return matchSearch && matchType && matchTeam;
+              });
+
+              if (filteredLogs.length === 0) {
+                return (
+                  <div className="p-12 text-center opacity-40 text-xs italic border dark:border-white/5 border-black/5 dark:bg-[#111111] bg-white rounded-2xl">
+                    No manual point additions match your filter criteria.
+                  </div>
+                );
+              }
+
+              return filteredLogs.map(log => {
+                const isScreenshot = log.game_name === 'Screenshot Points' || log.platform === 'Screenshot Points';
+                const isBingo = log.game_name === 'Bingo Points' || log.platform === 'Bingo Points';
+
+                return (
+                  <div
+                    key={log.id}
+                    className="p-4 rounded-2xl dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm hover:border-white/10 transition-colors"
+                  >
+                    {/* Recipient & Details */}
+                    <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                      <div className="relative shrink-0 mt-0.5">
+                        <img
+                          src={log.user_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png'}
+                          alt={log.user_name}
+                          className="w-10 h-10 rounded-xl object-cover border dark:border-white/10 border-black/10"
+                          referrerPolicy="no-referrer"
+                        />
+                        {log.user_team && log.user_team !== 'none' && (
+                          <span className={cn(
+                            "absolute -bottom-1 -right-1 text-[8px] font-black uppercase tracking-tighter px-1 py-0.2 rounded border leading-none shadow-sm",
+                            TEAM_COLORS[log.user_team as Team]?.primary || "text-slate-500",
+                            TEAM_COLORS[log.user_team as Team]?.border || "border-slate-500/15",
+                            TEAM_COLORS[log.user_team as Team]?.secondary || "bg-slate-500/5"
+                          )}>
+                            {log.user_team}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-1 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold dark:text-white text-slate-900 truncate">
+                            {log.user_name}
+                          </span>
+
+                          {/* Type badge */}
+                          {isScreenshot && (
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 shrink-0 flex items-center gap-1">
+                              <Camera size={10} /> Screenshot Points
+                            </span>
+                          )}
+                          {isBingo && (
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20 shrink-0 flex items-center gap-1">
+                              <Grid size={10} /> Bingo Points
+                            </span>
+                          )}
+                          {!isScreenshot && !isBingo && (
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 shrink-0 flex items-center gap-1">
+                              <Shield size={10} /> Team Award
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs opacity-75 dark:text-slate-300 text-slate-700 select-text leading-relaxed">
+                          {log.notes || 'No description provided.'}
+                        </p>
+
+                        <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] font-mono opacity-50">
+                          <span className="flex items-center gap-1">
+                            <Clock size={11} />
+                            {new Date(log.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Admin Approver & Points */}
+                    <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 dark:border-white/5 border-black/5 shrink-0">
+                      {/* Admin info badge */}
+                      <div className="flex items-center gap-2 bg-slate-100 dark:bg-black/30 px-3 py-1.5 rounded-xl border dark:border-white/5 border-black/5">
+                        <ShieldCheck size={14} className="text-amber-400 shrink-0" />
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Approved By</span>
+                          <span className="text-[11px] font-bold dark:text-white text-slate-800 leading-tight">
+                            {log.admin_name}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Point Amount */}
+                      <span className={cn(
+                        "font-mono font-black text-sm px-3 py-1 rounded-xl border shrink-0",
+                        log.points >= 0 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-red-400 bg-red-500/10 border-red-500/20"
+                      )}>
+                        {log.points >= 0 ? `+${log.points}` : log.points} pts
+                      </span>
+
+                      {/* Revoke Action */}
+                      <button
+                        onClick={async () => {
+                          await handleDeleteAdjustment(log.id);
+                          await fetchActivityLogs();
+                        }}
+                        className="p-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-500 text-[10px] font-bold tracking-widest uppercase transition-all cursor-pointer outline-none"
+                        title="Revoke adjustment"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       )}

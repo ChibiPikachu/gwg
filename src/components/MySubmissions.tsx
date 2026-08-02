@@ -9,6 +9,8 @@ export interface SubmissionNotesMeta {
   hasNoAchievements: boolean;
   level?: number;
   userNotes: string;
+  adminName?: string;
+  adminId?: string;
 }
 
 export function parseNotesMeta(notes: string): SubmissionNotesMeta {
@@ -22,7 +24,9 @@ export function parseNotesMeta(notes: string): SubmissionNotesMeta {
         return {
           hasNoAchievements: !!meta.hasNoAchievements,
           level: meta.level,
-          userNotes
+          userNotes,
+          adminName: meta.adminName,
+          adminId: meta.adminId
         };
       } catch (e) {
         // Fallback
@@ -36,9 +40,15 @@ export function parseNotesMeta(notes: string): SubmissionNotesMeta {
   };
 }
 
-export function serializeNotesMeta(hasNoAchievements: boolean, level: number | undefined, userNotes: string): string {
-  if (hasNoAchievements) {
-    return `__META_START__${JSON.stringify({ hasNoAchievements, level })}__META_END__${userNotes}`;
+export function serializeNotesMeta(
+  hasNoAchievements: boolean, 
+  level: number | undefined, 
+  userNotes: string,
+  adminName?: string,
+  adminId?: string
+): string {
+  if (hasNoAchievements || adminName || adminId || level !== undefined) {
+    return `__META_START__${JSON.stringify({ hasNoAchievements, level, adminName, adminId })}__META_END__${userNotes}`;
   }
   return userNotes;
 }
@@ -417,8 +427,10 @@ export default function MySubmissions() {
     const finalHoursBefore = parseFloat(hoursBefore.toFixed(1));
 
     if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
-      alert("You must earn at least 1 achievement during the event (or check 'Game has no achievements').");
-      return;
+      if (hoursBefore <= 0 || achievementsBefore <= 0) {
+        alert("Submitting games without new achievements earned during the event is ONLY allowed if both 'Hours Before' and 'Achievements Before' are greater than 0 (not 0).");
+        return;
+      }
     }
     if (finalHours <= 0) {
       alert("Playtime during the event must be greater than 0 hours.");
@@ -927,10 +939,17 @@ export default function MySubmissions() {
                       {!(formData.hasNoAchievements || formData.platform === 'Nintendo') && (() => {
                         const total = parseInt(formData.achievementsEarned) || 0;
                         const before = parseInt(formData.achievementsBefore) || 0;
+                        const hoursB = parseFloat(formData.hoursBefore) || 0;
                         const finalEarned = Math.max(0, total - before);
+                        const isZeroAchAllowed = before > 0 && hoursB > 0;
                         return (
-                          <div className={cn("text-[10px] font-bold mt-1 shrink-0", finalEarned > 0 ? "text-emerald-500" : "text-slate-400 opacity-60")}>
-                            Achievements unlocked during event: <span className="font-mono text-xs">{finalEarned}</span>
+                          <div className={cn("text-[10px] font-bold mt-1 shrink-0 flex items-center justify-between flex-wrap gap-1", finalEarned > 0 ? "text-emerald-500" : (isZeroAchAllowed ? "text-amber-500" : "text-slate-400 opacity-60"))}>
+                            <span>Achievements unlocked during event: <span className="font-mono text-xs">{finalEarned}</span></span>
+                            {finalEarned === 0 && (
+                              <span className={cn("text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-wider", isZeroAchAllowed ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-amber-500/10 text-amber-500 border-amber-500/20")}>
+                                {isZeroAchAllowed ? "✓ 0 Achievements Allowed (Hours & Ach Before > 0)" : "Requires Hours & Ach Before > 0"}
+                              </span>
+                            )}
                           </div>
                         );
                       })()}

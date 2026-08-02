@@ -296,6 +296,8 @@ interface SubmissionNotesMeta {
   hasNoAchievements: boolean;
   level?: number;
   userNotes: string;
+  adminName?: string;
+  adminId?: string;
 }
 
 function parseNotesMeta(notes: string): SubmissionNotesMeta {
@@ -309,7 +311,9 @@ function parseNotesMeta(notes: string): SubmissionNotesMeta {
         return {
           hasNoAchievements: !!meta.hasNoAchievements,
           level: meta.level,
-          userNotes
+          userNotes,
+          adminName: meta.adminName,
+          adminId: meta.adminId
         };
       } catch (e) {
         // Fallback
@@ -321,6 +325,19 @@ function parseNotesMeta(notes: string): SubmissionNotesMeta {
     level: undefined,
     userNotes: notes || ''
   };
+}
+
+function serializeNotesMeta(
+  hasNoAchievements: boolean, 
+  level: number | undefined, 
+  userNotes: string,
+  adminName?: string,
+  adminId?: string
+): string {
+  if (hasNoAchievements || adminName || adminId || level !== undefined) {
+    return `__META_START__${JSON.stringify({ hasNoAchievements, level, adminName, adminId })}__META_END__${userNotes}`;
+  }
+  return userNotes;
 }
 
 function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltbMain: number, hltbExtras: number, completionStatus: string): number {
@@ -4070,6 +4087,91 @@ async function createServer() {
     }
   });
 
+  app.get('/api/admin/activity-log', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.json([]);
+    try {
+      const { data: allAdjustments, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points,game_name.eq.Team Award,platform.eq.Screenshot Points,platform.eq.Bingo Points')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Collect verifier IDs and user IDs to fetch profile info
+      const profileIds = new Set<string>();
+      (allAdjustments || []).forEach((sub: any) => {
+        if (sub.verifier_id) profileIds.add(String(sub.verifier_id));
+        if (sub.user_id && !sub.user_id.startsWith('team_pts_')) profileIds.add(String(sub.user_id));
+        const meta = parseNotesMeta(sub.notes || '');
+        if (meta.adminId) profileIds.add(String(meta.adminId));
+      });
+
+      const profileIdArr = Array.from(profileIds);
+      let profileMap: Record<string, any> = {};
+      if (profileIdArr.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, role')
+          .in('steamid', profileIdArr);
+
+        (profiles || []).forEach((p: any) => {
+          let avatar = p.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+          if (p.active_avatar === 'discord' && p.discord_avatar) {
+            avatar = p.discord_avatar;
+          }
+          profileMap[p.steamid] = {
+            name: p.steam_name || p.discord_name || 'User',
+            avatar,
+            team: p.team,
+            role: p.role
+          };
+        });
+      }
+
+      const activityLog = (allAdjustments || []).map((sub: any) => {
+        const meta = parseNotesMeta(sub.notes || '');
+        let adminName = meta.adminName || null;
+        let adminId = meta.adminId || sub.verifier_id || null;
+        let adminAvatar = 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+
+        if (adminId && profileMap[adminId]) {
+          if (!adminName) adminName = profileMap[adminId].name;
+          adminAvatar = profileMap[adminId].avatar;
+        }
+
+        if (!adminName) {
+          adminName = 'Administrator';
+        }
+
+        const userProfile = profileMap[sub.user_id];
+        return {
+          id: sub.id,
+          user_id: sub.user_id,
+          user_name: sub.user_name || (userProfile?.name) || 'Team Adjustment',
+          user_avatar: sub.user_avatar || (userProfile?.avatar) || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+          user_team: userProfile?.team || (sub.user_id.startsWith('team_pts_') ? sub.user_id.replace('team_pts_', '') : 'none'),
+          game_name: sub.game_name,
+          platform: sub.platform,
+          points: Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0,
+          notes: meta.userNotes,
+          raw_notes: sub.notes,
+          created_at: sub.created_at,
+          event_id: sub.event_id,
+          admin_name: adminName,
+          admin_id: adminId,
+          admin_avatar: adminAvatar
+        };
+      });
+
+      res.json(activityLog);
+    } catch (err: any) {
+      console.error('Failed to fetch activity log:', err);
+      res.status(500).json({ error: 'Failed to fetch activity log' });
+    }
+  });
+
   app.get('/api/team-adjustments', async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
@@ -4113,6 +4215,10 @@ async function createServer() {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    const currentAdmin = (req as any).user;
+    const adminName = currentAdmin ? (currentAdmin.steamName || currentAdmin.steam_name || currentAdmin.displayName || currentAdmin.discord_name || currentAdmin.username || 'Admin') : 'Admin';
+    const adminId = currentAdmin ? String(currentAdmin.steamid || currentAdmin.steamId || currentAdmin.id || 'admin') : 'admin';
+
     const { team, points, notes, userId, userIds, adjustmentType } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
@@ -4123,6 +4229,7 @@ async function createServer() {
       const activeEventId = activeEvent?.id || null;
 
       const targetUserIds = Array.isArray(userIds) ? userIds : (userId ? [userId] : []);
+      const formattedNotes = serializeNotesMeta(false, undefined, notes || '', adminName, adminId);
 
       if (targetUserIds.length > 0) {
         // Fetch all user profiles for these userIds
@@ -4161,8 +4268,9 @@ async function createServer() {
           completion_status: 'unfinished',
           platform: adjType,
           points: numPoints,
-          notes: notes || '',
+          notes: formattedNotes,
           status: 'verified',
+          verifier_id: adminId,
           event_id: activeEventId,
           created_at: new Date().toISOString()
         }));
@@ -4215,8 +4323,9 @@ async function createServer() {
           completion_status: 'unfinished',
           platform: 'System',
           points: numPoints,
-          notes: notes || '',
+          notes: formattedNotes,
           status: 'verified',
+          verifier_id: adminId,
           event_id: activeEventId,
           created_at: new Date().toISOString()
         };
