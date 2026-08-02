@@ -250,8 +250,7 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           </button>
         )}
         <div className="flex-1 flex items-center gap-2">
-          <Logo />
-          {activeEventToUse && (
+            {activeEventToUse && (
             <div className="lg:hidden flex items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
               <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
               <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
