@@ -14,6 +14,143 @@ const __dirname = path.dirname(__filename);
 
 let supabaseClient: any = null;
 
+async function forceRecalculateEventWinner(supabase: any, eventId: string) {
+  try {
+    const { data: event } = await supabase
+      .from('events')
+      .select('id, is_active, description')
+      .eq('id', eventId)
+      .maybeSingle();
+
+    if (!event) return;
+
+    // Fetch verified submissions for this event or null event_id
+    const { data: verifiedSubs } = await supabase
+      .from('submissions')
+      .select('user_id, points, calculated_score')
+      .or(`event_id.eq.${eventId},event_id.is.null`)
+      .eq('status', 'verified');
+
+    const { data: uets } = await supabase
+      .from('user_event_teams')
+      .select('steamid, team')
+      .eq('event_id', eventId);
+
+    const uetMap = new Map<string, string>();
+    (uets || []).forEach((u: any) => uetMap.set(u.steamid, u.team));
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('steamid, team');
+    const profMap = new Map<string, string>();
+    (profiles || []).forEach((p: any) => profMap.set(p.steamid, p.team));
+
+    const teamPoints: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+    (verifiedSubs || []).forEach((sub: any) => {
+      if (sub.user_id === 'system_notification') return;
+      let team: string | null = null;
+      if (sub.user_id?.startsWith('team_pts_')) {
+        team = sub.user_id.substring('team_pts_'.length);
+      } else {
+        team = uetMap.get(sub.user_id) || profMap.get(sub.user_id) || null;
+      }
+      const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+      if (team && teamPoints[team] !== undefined) {
+        teamPoints[team] += pts;
+      }
+    });
+
+    let maxPts = -1;
+    let bestTeam: string | null = null;
+    for (const t in teamPoints) {
+      if (teamPoints[t] > maxPts && teamPoints[t] > 0) {
+        maxPts = teamPoints[t];
+        bestTeam = t;
+      }
+    }
+
+    if (bestTeam) {
+      const updatedDesc = event.description
+        ? (event.description.includes('<!--WINNER:')
+            ? event.description.replace(/<!--WINNER:.*?-->/, `<!--WINNER:${bestTeam}-->`)
+            : `${event.description}\n<!--WINNER:${bestTeam}-->`)
+        : `<!--WINNER:${bestTeam}-->`;
+
+      await supabase
+        .from('events')
+        .update({ winner_team: bestTeam, description: updatedDesc })
+        .eq('id', eventId);
+      console.log(`[Backfill] Updated winner for event ${eventId} to ${bestTeam}`);
+    }
+  } catch (err) {
+    console.error('[RecalculateWinner] Error:', err);
+  }
+}
+
+async function backfillSubmissionEventIds(supabase: any) {
+  if (!supabase) return;
+  try {
+    console.log('[Backfill] Checking if submissions need event_id backfilling...');
+    const { data: events, error: eventsErr } = await supabase
+      .from('events')
+      .select('id, start_date, end_date, is_active')
+      .order('start_date', { ascending: true });
+
+    if (eventsErr || !events || events.length === 0) {
+      console.log('[Backfill] No events found.');
+      return;
+    }
+
+    const activeEvent = events.find((e: any) => e.is_active) || events[events.length - 1];
+
+    const { data: nullSubs, error: subsErr } = await supabase
+      .from('submissions')
+      .select('id, created_at, user_id')
+      .is('event_id', null);
+
+    if (subsErr) {
+      console.error('[Backfill] Error querying null event_id submissions:', subsErr);
+      return;
+    }
+
+    if (nullSubs && nullSubs.length > 0) {
+      console.log(`[Backfill] Found ${nullSubs.length} submissions with null event_id. Backfilling...`);
+      for (const sub of nullSubs) {
+        if (sub.user_id === 'system_notification') continue;
+        let matchedEventId = activeEvent ? activeEvent.id : events[0].id;
+
+        if (sub.created_at && events.length > 1) {
+          const subDate = new Date(sub.created_at).getTime();
+          for (let i = 0; i < events.length; i++) {
+            const ev = events[i];
+            const start = new Date(ev.start_date).getTime();
+            const end = ev.end_date ? new Date(ev.end_date).getTime() : Date.now();
+            if (subDate >= start && subDate <= end) {
+              matchedEventId = ev.id;
+              break;
+            }
+          }
+        }
+
+        await supabase
+          .from('submissions')
+          .update({ event_id: matchedEventId })
+          .eq('id', sub.id);
+      }
+      console.log('[Backfill] Successfully backfilled submission event_ids.');
+    } else {
+      console.log('[Backfill] All submissions already have an event_id.');
+    }
+
+    // Force recalculate event winners for all events to ensure screenshot/bingo points update winner_team
+    for (const ev of events) {
+      await forceRecalculateEventWinner(supabase, ev.id);
+    }
+  } catch (err) {
+    console.error('[Backfill] Error in backfillSubmissionEventIds:', err);
+  }
+}
+
 async function backfillEventTeams(supabase: any) {
   if (!supabase) return;
   try {
@@ -141,9 +278,11 @@ function getSupabase() {
 
     // Run backfill asynchronously
     setTimeout(() => {
-      backfillEventTeams(supabaseClient).catch(err => {
-        console.error('[Backfill] Failed:', err);
-      });
+      backfillSubmissionEventIds(supabaseClient)
+        .then(() => backfillEventTeams(supabaseClient))
+        .catch(err => {
+          console.error('[Backfill] Failed:', err);
+        });
     }, 1000);
   }
   return supabaseClient;
@@ -2157,12 +2296,27 @@ async function createServer() {
         return res.status(404).json({ error: 'Event not found' });
       }
 
-      // 2. Fetch all verified submissions for this event
-      const { data: eventSubs, error: subErr } = await supabase
+      // 2. Fetch all verified submissions for this event (including null event_id fallback if active)
+      const { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const isCurrentOrActive = activeEvent ? activeEvent.id === eventId : event.is_active;
+
+      let subQuery = supabase
         .from('submissions')
         .select('*')
-        .eq('event_id', eventId)
         .eq('status', 'verified');
+
+      if (isCurrentOrActive) {
+        subQuery = subQuery.or(`event_id.eq.${eventId},event_id.is.null`);
+      } else {
+        subQuery = subQuery.eq('event_id', eventId);
+      }
+
+      const { data: eventSubs, error: subErr } = await subQuery;
 
       if (subErr) throw subErr;
 
@@ -2195,9 +2349,10 @@ async function createServer() {
       (eventSubs || []).forEach((sub: any) => {
         if (sub.user_id === 'system_notification') return;
 
+        const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+
         if (sub.user_id?.startsWith('team_pts_')) {
           const team = sub.user_id.substring('team_pts_'.length);
-          const pts = Number(sub.points || 0);
           if (teamAdjustments[team] !== undefined) {
             teamAdjustments[team] += pts;
           }
@@ -2212,7 +2367,6 @@ async function createServer() {
         }
 
         const steamid = String(sub.user_id);
-        const pts = Number(sub.points || 0);
         userEventPoints[steamid] = (userEventPoints[steamid] || 0) + pts;
       });
 
@@ -3662,7 +3816,7 @@ async function createServer() {
       // Gather verified submissions & adjustments
       const { data: verifiedSubs } = await supabase
         .from('submissions')
-        .select('event_id, user_id, points')
+        .select('event_id, user_id, points, calculated_score')
         .eq('status', 'verified');
 
       const subsByEvent = new Map<string, any[]>();
@@ -3701,7 +3855,8 @@ async function createServer() {
             }
 
             if (team && teamPoints[team] !== undefined) {
-              teamPoints[team] += Number(sub.points || 0);
+              const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+              teamPoints[team] += pts;
             }
           });
 
@@ -3919,11 +4074,21 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
     try {
-      const { data: activeEvent } = await supabase
+      let { data: activeEvent } = await supabase
         .from('events')
         .select('id')
         .eq('is_active', true)
         .maybeSingle();
+
+      if (!activeEvent) {
+        const { data: recentEvent } = await supabase
+          .from('events')
+          .select('id')
+          .order('start_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeEvent = recentEvent;
+      }
 
       let query = supabase
         .from('submissions')
@@ -3932,9 +4097,6 @@ async function createServer() {
 
       if (activeEvent) {
         query = query.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
-      } else {
-        // Return dummy/unmatching event ID to prevent leak of older adjustments
-        query = query.eq('event_id', '99999999-9999-9999-9999-999999999999');
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
