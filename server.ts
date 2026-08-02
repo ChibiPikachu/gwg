@@ -2101,6 +2101,176 @@ async function createServer() {
     }
   });
 
+  app.get('/api/leaderboard/event/:eventId', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { eventId } = req.params;
+
+    try {
+      // 1. Fetch event metadata
+      const { data: event, error: eventErr } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (eventErr || !event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // 2. Fetch all verified submissions for this event
+      const { data: eventSubs, error: subErr } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('event_id', eventId)
+        .eq('status', 'verified');
+
+      if (subErr) throw subErr;
+
+      // 3. Fetch user_event_teams for this event
+      const { data: uets } = await supabase
+        .from('user_event_teams')
+        .select('steamid, team')
+        .eq('event_id', eventId);
+
+      const uetMap = new Map<string, string>();
+      (uets || []).forEach((u: any) => {
+        if (u.steamid) uetMap.set(u.steamid, u.team);
+      });
+
+      // 4. Fetch profiles
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, status, role');
+
+      const profileMap = new Map<string, any>();
+      (profiles || []).forEach((p: any) => {
+        if (p.steamid) profileMap.set(p.steamid, p);
+      });
+
+      // 5. Calculate user event points & team adjustments
+      const userEventPoints: Record<string, number> = {};
+      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+      const adjustmentLogs: any[] = [];
+
+      (eventSubs || []).forEach((sub: any) => {
+        if (sub.user_id === 'system_notification') return;
+
+        if (sub.user_id?.startsWith('team_pts_')) {
+          const team = sub.user_id.substring('team_pts_'.length);
+          const pts = Number(sub.points || 0);
+          if (teamAdjustments[team] !== undefined) {
+            teamAdjustments[team] += pts;
+          }
+          adjustmentLogs.push({
+            id: sub.id,
+            user_id: sub.user_id,
+            notes: sub.notes || 'Bonus points awarded',
+            points: pts,
+            created_at: sub.created_at
+          });
+          return;
+        }
+
+        const steamid = String(sub.user_id);
+        const pts = Number(sub.points || 0);
+        userEventPoints[steamid] = (userEventPoints[steamid] || 0) + pts;
+      });
+
+      // 6. Determine user teams for this event
+      const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
+      
+      (uets || []).forEach((u: any) => {
+        if (u.team && teamMembers[u.team]) {
+          teamMembers[u.team].add(u.steamid);
+        }
+      });
+
+      Object.keys(userEventPoints).forEach((steamid) => {
+        const team = uetMap.get(steamid) || profileMap.get(steamid)?.team;
+        if (team && teamMembers[team]) {
+          teamMembers[team].add(steamid);
+        }
+      });
+
+      // 7. Build User Standings
+      const usersList: any[] = [];
+      const allUserIdsInEvent = new Set([
+        ...Object.keys(userEventPoints),
+        ...(uets || []).map((u: any) => u.steamid)
+      ]);
+
+      allUserIdsInEvent.forEach((steamid) => {
+        const prof = profileMap.get(steamid);
+        const userTeam = uetMap.get(steamid) || prof?.team || 'none';
+        const points = userEventPoints[steamid] || 0;
+        let finalAvatar = prof?.steam_avatar || '';
+        if (prof?.active_avatar === 'discord' && prof?.discord_avatar) {
+          finalAvatar = prof.discord_avatar;
+        }
+
+        if (prof || points > 0) {
+          usersList.push({
+            steamid,
+            steam_name: prof?.steam_name || 'User',
+            steam_avatar: finalAvatar,
+            discord_name: prof?.discord_name || null,
+            team: userTeam,
+            status: prof?.status || '',
+            role: prof?.role || 'user',
+            points: points
+          });
+        }
+      });
+
+      usersList.sort((a, b) => b.points - a.points);
+
+      // Top 16 users
+      const top16Users = usersList.slice(0, 16).map((u, idx) => ({
+        ...u,
+        rank: idx + 1
+      }));
+
+      // 8. Calculate Team Standings
+      const teamStandings = ['blue', 'purple', 'green', 'red'].map((t) => {
+        let userPointsSum = 0;
+        teamMembers[t].forEach((sid) => {
+          userPointsSum += (userEventPoints[sid] || 0);
+        });
+        const totalTeamPoints = userPointsSum + (teamAdjustments[t] || 0);
+        return {
+          team: t,
+          points: totalTeamPoints,
+          members: teamMembers[t].size,
+          rank: 1
+        };
+      });
+
+      teamStandings.sort((a, b) => b.points - a.points);
+      teamStandings.forEach((s, idx) => { s.rank = idx + 1; });
+
+      res.json({
+        event: {
+          id: event.id,
+          title: event.title,
+          is_active: event.is_active,
+          winner_team: event.winner_team,
+          start_date: event.start_date,
+          end_date: event.end_date,
+          description: event.description
+        },
+        standings: teamStandings,
+        topUsers: top16Users,
+        totalParticipants: usersList.length,
+        adjustments: adjustmentLogs
+      });
+    } catch (err: any) {
+      console.error('Failed to fetch event leaderboard:', err);
+      res.status(500).json({ error: 'Internal server error', details: err.message });
+    }
+  });
+
   app.get('/api/users/:steamid', async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
