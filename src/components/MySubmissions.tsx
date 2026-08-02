@@ -897,7 +897,7 @@ export default function MySubmissions() {
                                    className={cn(
                                      "px-3 py-1 text-[10px] font-bold uppercase rounded-md border transition-all",
                                      formData.beatenPrevious === opt
-                                       ? "bg-blue-500 text-white border-blue-600"
+                                       ? `${theme.bg} text-white ${theme.border}`
                                        : "bg-transparent border-black/10 dark:border-white/10 opacity-60 hover:opacity-100"
                                    )}
                                  >
@@ -1033,8 +1033,8 @@ export default function MySubmissions() {
                       const s2 = calculateNonAchievementPoints(2, fh, hVal, formData.completionStatus);
 
                       return (
-                        <div className="col-span-2 space-y-3 bg-purple-500/5 dark:bg-purple-500/10 border border-purple-500/10 dark:border-purple-500/20 rounded-xl p-4">
-                          <label className="text-xs font-bold text-purple-400 uppercase tracking-wider block font-sans">No Achievements Category</label>
+                        <div className={cn("col-span-2 space-y-3 border rounded-xl p-4", theme.secondary, theme.border)}>
+                          <label className={cn("text-xs font-bold uppercase tracking-wider block font-sans", theme.text)}>No Achievements Category</label>
                           <div className="grid grid-cols-3 gap-2">
                             <div className="dark:bg-black/30 bg-white/50 border border-slate-200 dark:border-white/5 rounded-lg p-2.5 text-center">
                               <span className="block text-[9px] uppercase tracking-wider text-slate-500 dark:text-white/40">Level 0 (x0.1)</span>
@@ -1044,9 +1044,9 @@ export default function MySubmissions() {
                               <span className="block text-[9px] uppercase tracking-wider text-slate-500 dark:text-white/40">Level 1 (x0.4)</span>
                               <span className="text-xs sm:text-sm font-black dark:text-white text-slate-800">{s1} pts</span>
                             </div>
-                            <div className="bg-purple-500/10 dark:bg-purple-500/25 border border-purple-500/20 rounded-lg p-2.5 text-center">
-                              <span className="block text-[9px] uppercase tracking-wider text-purple-400 font-bold">Level 2 (Full)</span>
-                              <span className="text-xs sm:text-sm font-black text-purple-300">{s2} pts</span>
+                            <div className={cn("border rounded-lg p-2.5 text-center", theme.secondary, theme.border)}>
+                              <span className={cn("block text-[9px] uppercase tracking-wider font-bold", theme.text)}>Level 2 (Full)</span>
+                              <span className={cn("text-xs sm:text-sm font-black", theme.text)}>{s2} pts</span>
                             </div>
                           </div>
                           <p className="text-[10px] dark:text-white/40 text-slate-500 italic leading-normal">
@@ -1062,7 +1062,7 @@ export default function MySubmissions() {
                       <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">
                         {(formData.hasNoAchievements || formData.platform === 'Nintendo') ? "Award Category" : "Multiplier"}
                       </span>
-                      <span className="text-lg font-black text-blue-400">
+                      <span className={cn("text-lg font-black", theme.text)}>
                         {(formData.hasNoAchievements || formData.platform === 'Nintendo') ? (
                           formData.level === 0 ? "Level 0 (x0.1 HLTB)" : formData.level === 1 ? "Level 1 (x0.4 Time)" : "Level 2 (Full Bracketed)"
                         ) : (

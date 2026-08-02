@@ -301,7 +301,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
               {paginatedGames.map((game) => (
                 <div 
                   key={game.game_id}
-                  className="group relative flex flex-col rounded-2xl overflow-hidden border border-black/5 dark:border-white/5 bg-[#111111] hover:border-blue-500/40 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 min-w-0"
+                  className={cn("group relative flex flex-col rounded-2xl overflow-hidden border border-black/5 dark:border-white/5 bg-[#111111] hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 min-w-0", `hover:${theme.border}`)}
                 >
                   {/* Game cover block */}
                   <div className="aspect-[3/4] relative w-full overflow-hidden bg-black/40">
@@ -324,7 +324,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                         href={`https://store.steampowered.com/app/${game.steam_appid}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="absolute top-2 right-2 p-2 bg-black/75 hover:bg-black text-blue-400 rounded-xl transition-all border border-white/5 opacity-0 group-hover:opacity-100 duration-200 shadow-md z-10"
+                        className={cn("absolute top-2 right-2 p-2 bg-black/75 hover:bg-black rounded-xl transition-all border border-white/5 opacity-0 group-hover:opacity-100 duration-200 shadow-md z-10", theme.text)}
                         title="View on Steam"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -372,7 +372,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                     <div className="flex items-center justify-between text-[10px] opacity-50">
                       <span className="truncate">{game.users.length} {game.users.length === 1 ? 'submitter' : 'submitters'}</span>
                       {game.users.length > 0 && (
-                        <div className="flex items-center gap-1 shrink-0 font-semibold text-blue-400">
+                        <div className={cn("flex items-center gap-1 shrink-0 font-semibold", theme.text)}>
                           <Users2 size={10} />
                           <span>{game.users.length}</span>
                         </div>

@@ -239,20 +239,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const theme: ThemeHelper = React.useMemo(() => {
     const team = user?.team;
-    const teamName = (team && team !== 'none') ? team : 'pink';
-    const isCustom = teamName !== 'pink';
-    const base = isCustom ? `${teamName}-accent` : 'pink-500';
-    
+    let base = 'purple-500';
+    let text = 'text-purple-400';
+    let bg = 'bg-purple-500';
+    let border = 'border-purple-500/40';
+    let ring = 'ring-purple-500';
+    let shadow = 'shadow-purple-500';
+    let glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-purple-500/30 border-purple-500/40';
+    let secondary = 'bg-purple-500/10';
+    let muted = 'text-purple-400/50';
+
+    if (team === 'blue') {
+      base = 'sky-500';
+      text = 'text-sky-400';
+      bg = 'bg-sky-500';
+      border = 'border-sky-500/40';
+      ring = 'ring-sky-500';
+      shadow = 'shadow-sky-500';
+      glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-sky-500/30 border-sky-500/40';
+      secondary = 'bg-sky-500/10';
+      muted = 'text-sky-400/50';
+    } else if (team === 'green') {
+      base = 'green-500';
+      text = 'text-green-400';
+      bg = 'bg-green-500';
+      border = 'border-green-500/40';
+      ring = 'ring-green-500';
+      shadow = 'shadow-green-500';
+      glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-green-500/30 border-green-500/40';
+      secondary = 'bg-green-500/10';
+      muted = 'text-green-400/50';
+    } else if (team === 'red') {
+      base = 'red-500';
+      text = 'text-red-400';
+      bg = 'bg-red-500';
+      border = 'border-red-500/40';
+      ring = 'ring-red-500';
+      shadow = 'shadow-red-500';
+      glow = 'shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-red-500/30 border-red-500/40';
+      secondary = 'bg-red-500/10';
+      muted = 'text-red-400/50';
+    }
+
     return {
       accent: base,
-      text: `text-${base}`,
-      bg: `bg-${base}`,
-      border: `border-${base}/40`,
-      ring: `ring-${base}`,
-      shadow: `shadow-${base}`,
-      glow: `shadow-[0_0_15px_-3px_rgba(0,0,0,0.1)] shadow-${base}/30 border-${base}/40`,
-      secondary: `bg-${base}/10`,
-      muted: `text-${base}/50`,
+      text,
+      bg,
+      border,
+      ring,
+      shadow,
+      glow,
+      secondary,
+      muted,
     };
   }, [user?.team]);
 

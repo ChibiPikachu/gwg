@@ -400,7 +400,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     </button>
                     <button
                       onClick={() => openForceScoresModal(activeEvent.id, activeEvent.title)}
-                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                      className={cn("px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer", theme.secondary, theme.text, theme.border)}
                       title="Force & lock exact score numbers for this event"
                     >
                       <Sparkles size={13} />
@@ -468,7 +468,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-xl font-bold flex items-center gap-3">
-                  <Trophy className="text-purple-400" size={24} />
+                  <Trophy className={theme.text} size={24} />
                   All Members
                 </h2>
                 <p className="text-xs opacity-60 mt-0.5">Search and filter community members by name, handle, or team faction.</p>
@@ -530,7 +530,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                 {(searchQuery || teamFilter !== 'all') && (
                   <button
                     onClick={() => { setSearchQuery(''); setTeamFilter('all'); }}
-                    className="text-purple-400 hover:underline flex items-center gap-1 font-bold"
+                    className={cn("hover:underline flex items-center gap-1 font-bold", theme.text)}
                   >
                     Reset Filters
                   </button>
@@ -583,7 +583,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                            </a>
                            {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className={theme.text} />}
                            {u.discord_name && (
-                            <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
+                            <span className={cn("text-[10px] font-bold opacity-80 shrink-0", theme.text)}>@{u.discord_name}</span>
                            )}
                            {u.team && u.team !== 'none' && (
                              <span className={cn(
@@ -611,9 +611,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       <div className="text-right">
                         <div className={cn(
                           "font-mono font-bold",
-                          u.team === 'blue' ? "text-sky-400" :
-                          u.team === 'green' ? "text-green-400" :
-                          u.team === 'red' ? "text-red-400" : "text-purple-400"
+                          theme.text
                         )}>
                           {hideScores ? '—' : (u.points || 0)}
                         </div>
@@ -781,7 +779,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                           </button>
                           <button
                             onClick={() => openForceScoresModal(previousEventData.event.id, previousEventData.event.title)}
-                            className="px-4 py-2.5 rounded-2xl text-xs font-black bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+                            className={cn("px-4 py-2.5 rounded-2xl text-xs font-black border flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0", theme.secondary, theme.text, theme.border)}
                             title="Force exact score numbers for this event (Useful for Event #4)"
                           >
                             <Sparkles size={14} />
@@ -877,7 +875,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                       <div>
                         <h3 className="text-xl font-bold flex items-center gap-2">
-                          <Trophy className="text-purple-400" size={22} />
+                          <Trophy className={theme.text} size={22} />
                           Event User Standings
                         </h3>
                         <p className="text-xs opacity-60 mt-0.5">Individual member standings in this archived event.</p>
@@ -939,7 +937,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         {(prevSearchQuery || prevTeamFilter !== 'all') && (
                           <button
                             onClick={() => { setPrevSearchQuery(''); setPrevTeamFilter('all'); }}
-                            className="text-purple-400 hover:underline flex items-center gap-1 font-bold"
+                            className={cn("hover:underline flex items-center gap-1 font-bold", theme.text)}
                           >
                             Reset Filters
                           </button>
@@ -967,7 +965,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                               className={cn(
                                 "flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border transition-all shadow-sm",
                                 isTop3 
-                                  ? "border-purple-500/30 dark:bg-purple-500/[0.02]" 
+                                  ? cn(theme.border, theme.secondary) 
                                   : "border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10"
                               )}
                             >
@@ -1014,7 +1012,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                                   </a>
                                   {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className={theme.text} />}
                                   {u.discord_name && (
-                                    <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
+                                    <span className={cn("text-[10px] font-bold opacity-80 shrink-0", theme.text)}>@{u.discord_name}</span>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 mt-0.5">
@@ -1038,9 +1036,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                               <div className="text-right shrink-0">
                                 <div className={cn(
                                   "font-mono font-black text-base",
-                                  u.team === 'blue' ? "text-sky-400" :
-                                  u.team === 'green' ? "text-green-400" :
-                                  u.team === 'red' ? "text-red-400" : "text-purple-400"
+                                  theme.text
                                 )}>
                                   {u.points.toLocaleString()}
                                 </div>

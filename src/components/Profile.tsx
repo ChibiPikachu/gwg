@@ -385,7 +385,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     <span>View Steam Profile</span>
                  </a>
                  {targetUser.discordName && (
-                   <div className="flex items-center gap-2 opacity-60 text-sm bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
+                   <div className={cn("flex items-center gap-2 opacity-60 text-sm px-3 py-1 rounded-full border", theme.secondary, theme.border)}>
                       <img 
                         src="https://cdn.simpleicons.org/discord/5865F2" 
                         className="w-3.5 h-3.5" 

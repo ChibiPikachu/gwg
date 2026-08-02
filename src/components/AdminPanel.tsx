@@ -2248,7 +2248,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 shadow-md">
             <div>
               <h2 className="text-base font-bold dark:text-white text-slate-900 flex items-center gap-2">
-                <Trophy size={18} className="text-purple-400" />
+                <Trophy size={18} className={theme.text} />
                 Score Editor & Team Adjustments
               </h2>
               <p className="text-xs opacity-50 mt-0.5">
@@ -2275,7 +2275,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 className={cn(
                   "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
                   scoreEditMode === 'bulk'
-                    ? "bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-sm font-black"
+                    ? cn(theme.secondary, theme.text, theme.border, "border shadow-sm font-black")
                     : "text-slate-500 dark:text-white/40 hover:text-slate-800 dark:hover:text-white"
                 )}
               >
