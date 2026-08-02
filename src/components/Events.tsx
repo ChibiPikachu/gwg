@@ -560,7 +560,7 @@ export default function EventsPanel() {
               <div className="space-y-2">
                 <label className="text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500 flex items-center justify-between">
                   <span>Event Winner Team (Override / Lock)</span>
-                  <span className="text-[9px] text-amber-500 font-bold uppercase">Badges & Historical Winner</span>
+                  <span className="text-[9px] text-purple-400 font-bold uppercase">Badges & Historical Winner</span>
                 </label>
                 <select
                   value={editingEvent?.winner_team || 'auto'}

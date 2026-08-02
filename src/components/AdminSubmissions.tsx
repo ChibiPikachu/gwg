@@ -83,7 +83,7 @@ export default function AdminSubmissions() {
                     </div>
                     <div className="flex flex-col gap-0.5 md:gap-1 min-w-0">
                        <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 truncate">Points</span>
-                       <span className="text-sm md:text-xl font-mono text-amber-400 truncate">{sub.points}</span>
+                       <span className="text-sm md:text-xl font-mono text-purple-400 truncate">{sub.points}</span>
                     </div>
                  </div>
 

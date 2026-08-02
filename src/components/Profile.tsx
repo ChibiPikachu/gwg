@@ -324,13 +324,24 @@ export default function Profile({ steamId }: { steamId?: string }) {
                               getTeamBadgeClasses(e.winner_team)
                             )}
                           >
-                            <Trophy size={11} className="text-amber-500" />
+                            <Trophy size={11} className={cn(
+                              e.winner_team === 'blue' ? "text-sky-400" :
+                              e.winner_team === 'green' ? "text-green-400" :
+                              e.winner_team === 'purple' ? "text-purple-400" :
+                              e.winner_team === 'red' ? "text-red-400" : "text-purple-400"
+                            )} />
                             <span>Event #{e.event_number} Winner</span>
                           </span>
                           
                           {hoveredBadgeEventId === e.id && (
                             <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-[9999] bg-zinc-950 border border-white/10 text-white p-3 rounded-xl shadow-2xl min-w-[240px] max-w-[280px] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-150">
-                              <div className="text-xs font-black text-amber-400 uppercase tracking-widest mb-1 select-none">
+                              <div className={cn(
+                                "text-xs font-black uppercase tracking-widest mb-1 select-none",
+                                e.winner_team === 'blue' ? "text-sky-400" :
+                                e.winner_team === 'green' ? "text-green-400" :
+                                e.winner_team === 'purple' ? "text-purple-400" :
+                                e.winner_team === 'red' ? "text-red-400" : "text-purple-400"
+                              )}>
                                 Event #{e.event_number} Details
                               </div>
                               <div className="text-sm font-bold text-white leading-tight mb-1 select-none">
@@ -343,7 +354,13 @@ export default function Profile({ steamId }: { steamId?: string }) {
                               )}
                               <div className="mt-2 pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px] text-zinc-400 font-bold select-none">
                                 <span>Winner Team:</span>
-                                <span className="uppercase tracking-wider text-amber-400">{e.winner_team}</span>
+                                <span className={cn(
+                                  "uppercase tracking-wider font-extrabold",
+                                  e.winner_team === 'blue' ? "text-sky-400" :
+                                  e.winner_team === 'green' ? "text-green-400" :
+                                  e.winner_team === 'purple' ? "text-purple-400" :
+                                  e.winner_team === 'red' ? "text-red-400" : "text-purple-400"
+                                )}>{e.winner_team}</span>
                               </div>
                               <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold select-none mt-0.5">
                                 <span>User's Team:</span>
@@ -436,7 +453,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
          <div className="p-8 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 flex flex-col items-center gap-4 text-center shadow-xl">
-            <Trophy size={32} className="text-amber-400" />
+            <Trophy size={32} className={colors.primary} />
             <div>
                <span className="text-4xl font-mono font-bold block dark:text-white text-slate-800">{hideUserScores ? '—' : targetUser.points}</span>
                <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Points Earned</span>
@@ -628,7 +645,14 @@ export default function Profile({ steamId }: { steamId?: string }) {
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                       </span>
                     ) : (
-                      <Trophy size={13} className={cn(isActiveTab ? "text-amber-500 dark:text-amber-600" : "text-slate-400")} />
+                      <Trophy size={13} className={cn(
+                        isActiveTab
+                          ? targetUser.team === 'blue' ? "text-sky-400" :
+                            targetUser.team === 'green' ? "text-green-400" :
+                            targetUser.team === 'purple' ? "text-purple-400" :
+                            targetUser.team === 'red' ? "text-red-400" : "text-purple-400"
+                          : "text-slate-400"
+                      )} />
                     )}
                     <span>Event #{evt.event_number || 1}</span>
                     <span className={cn(
@@ -653,7 +677,13 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   value={submissionSearchQuery}
                   onChange={(e) => setSubmissionSearchQuery(e.target.value)}
                   placeholder="Search submitted game or platform..."
-                  className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
+                  className={cn(
+                    "w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 shadow-sm transition-all placeholder:opacity-40",
+                    targetUser.team === 'blue' ? "focus:ring-sky-500/50" :
+                    targetUser.team === 'green' ? "focus:ring-green-500/50" :
+                    targetUser.team === 'purple' ? "focus:ring-purple-500/50" :
+                    targetUser.team === 'red' ? "focus:ring-red-500/50" : "focus:ring-purple-500/50"
+                  )}
                 />
                 {submissionSearchQuery && (
                   <button
@@ -675,7 +705,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     className={cn(
                       "px-2.5 py-1 rounded-lg capitalize transition-all",
                       submissionStatusFilter === st
-                        ? "bg-amber-500 text-black font-black shadow-sm"
+                        ? targetUser.team === 'blue' ? "bg-sky-500 text-black font-black shadow-sm" :
+                          targetUser.team === 'green' ? "bg-green-500 text-black font-black shadow-sm" :
+                          targetUser.team === 'purple' ? "bg-purple-500 text-white font-black shadow-sm" :
+                          targetUser.team === 'red' ? "bg-red-500 text-white font-black shadow-sm" : "bg-purple-500 text-white font-black shadow-sm"
                         : "opacity-60 hover:opacity-100"
                     )}
                   >
@@ -739,7 +772,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                             </span>
 
                             {selectedEventId === 'all' && subEvent && (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 font-extrabold tracking-wider text-[9px] uppercase">
+                              <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 font-extrabold tracking-wider text-[9px] uppercase">
                                 Event #{subEvent.event_number}
                               </span>
                             )}

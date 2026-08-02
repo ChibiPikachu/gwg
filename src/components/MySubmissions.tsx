@@ -789,7 +789,7 @@ export default function MySubmissions() {
                         )}
                         {hltbInfo && !hltbInfo.notFound && (
                           <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                             <span className="text-amber-500/80">Main: {hltbInfo.hltb_main}h</span>
+                             <span className="text-purple-400/80">Main: {hltbInfo.hltb_main}h</span>
                              <span className="opacity-20">|</span>
                              <span className="text-purple-400/80">Comp: {hltbInfo.hltb_completionist}h</span>
                           </div>
@@ -1033,8 +1033,8 @@ export default function MySubmissions() {
                       const s2 = calculateNonAchievementPoints(2, fh, hVal, formData.completionStatus);
 
                       return (
-                        <div className="col-span-2 space-y-3 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 dark:border-amber-500/20 rounded-xl p-4">
-                          <label className="text-xs font-bold text-amber-500 uppercase tracking-wider block font-sans">No Achievements Category</label>
+                        <div className="col-span-2 space-y-3 bg-purple-500/5 dark:bg-purple-500/10 border border-purple-500/10 dark:border-purple-500/20 rounded-xl p-4">
+                          <label className="text-xs font-bold text-purple-400 uppercase tracking-wider block font-sans">No Achievements Category</label>
                           <div className="grid grid-cols-3 gap-2">
                             <div className="dark:bg-black/30 bg-white/50 border border-slate-200 dark:border-white/5 rounded-lg p-2.5 text-center">
                               <span className="block text-[9px] uppercase tracking-wider text-slate-500 dark:text-white/40">Level 0 (x0.1)</span>
@@ -1044,9 +1044,9 @@ export default function MySubmissions() {
                               <span className="block text-[9px] uppercase tracking-wider text-slate-500 dark:text-white/40">Level 1 (x0.4)</span>
                               <span className="text-xs sm:text-sm font-black dark:text-white text-slate-800">{s1} pts</span>
                             </div>
-                            <div className="bg-amber-500/10 dark:bg-amber-500/25 border border-amber-500/20 rounded-lg p-2.5 text-center">
-                              <span className="block text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-bold">Level 2 (Full)</span>
-                              <span className="text-xs sm:text-sm font-black text-amber-700 dark:text-amber-300">{s2} pts</span>
+                            <div className="bg-purple-500/10 dark:bg-purple-500/25 border border-purple-500/20 rounded-lg p-2.5 text-center">
+                              <span className="block text-[9px] uppercase tracking-wider text-purple-400 font-bold">Level 2 (Full)</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-300">{s2} pts</span>
                             </div>
                           </div>
                           <p className="text-[10px] dark:text-white/40 text-slate-500 italic leading-normal">
@@ -1189,7 +1189,7 @@ export default function MySubmissions() {
                     <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10">
                       {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                         <div 
-                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-600 border border-purple-500 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
                           title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
                         >
                           <span className="text-[8px] sm:text-[10px] font-black text-white leading-none">HLTB</span>
@@ -1199,7 +1199,7 @@ export default function MySubmissions() {
                           <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
-                              <span className="text-[10px] font-bold text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
+                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_main}h</span>
                             </div>
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>
@@ -1357,7 +1357,7 @@ export default function MySubmissions() {
                     {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                       <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10 animate-in fade-in slide-in-from-right-1">
                         <div 
-                          className="w-8 h-8 rounded-lg bg-amber-500 border border-amber-600 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
+                          className="w-8 h-8 rounded-lg bg-purple-600 border border-purple-500 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
                           title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -1367,7 +1367,7 @@ export default function MySubmissions() {
                           <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
-                              <span className="text-[10px] font-bold text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
+                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_main}h</span>
                             </div>
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>

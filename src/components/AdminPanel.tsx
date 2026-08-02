@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -148,6 +148,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [bulkLoading, setBulkLoading] = React.useState(false);
   const [bulkSaving, setBulkSaving] = React.useState(false);
   const [bulkSuccessMsg, setBulkSuccessMsg] = React.useState<string | null>(null);
+
+  // Submission Verification Popup State
+  const [verifyPopupMsg, setVerifyPopupMsg] = React.useState<{
+    title: string;
+    gameTitle: string;
+    userName: string;
+    userTeam: string;
+    points: number;
+    status: 'verified' | 'rejected';
+    rejectionReason?: string;
+  } | null>(null);
 
   const fetchBulkEventData = React.useCallback(async (eventId: string) => {
     if (!eventId) return;
@@ -622,11 +633,24 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
 
       if (res.ok) {
+        const finalPts = Math.round(parseFloat(pointsAwarded) || 0);
+
+        // Trigger custom admin verification popup modal
+        setVerifyPopupMsg({
+          title: status === 'verified' ? 'Submission Approved!' : 'Submission Rejected',
+          gameTitle: sub?.game_name || sub?.gameTitle || 'Game Submission',
+          userName: sub?.steam_name || sub?.user_name || sub?.userName || 'Player',
+          userTeam: sub?.team || 'none',
+          points: finalPts,
+          status,
+          rejectionReason: status === 'rejected' ? rejectionReason : ''
+        });
+
         // UI Live Update: Update local state immediately
         setSubmissions(prev => prev.map(s => s.id === reviewingId ? { 
           ...s, 
           status, 
-          points: Math.round(parseFloat(pointsAwarded) || 0),
+          points: finalPts,
           rejection_reason: status === 'rejected' ? rejectionReason : '',
           hours_during: parseFloat(editHours),
           achievements_during: parseInt(editAchievements),
@@ -1223,7 +1247,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             <div className="p-5 md:p-6 dark:bg-[#121212] bg-white rounded-2xl border dark:border-white/10 border-black/10 shadow-lg flex flex-col gap-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b dark:border-white/5 border-black/5 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
                     <Users size={20} />
                   </div>
                   <div>
@@ -1237,7 +1261,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 </div>
                 
                 {massSelectedUserIds.length > 0 && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-black self-start sm:self-auto">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-black self-start sm:self-auto">
                     <span>{massSelectedUserIds.length} member(s) selected</span>
                   </div>
                 )}
@@ -1316,7 +1340,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   <button
                     onClick={handleMassAssignTeam}
                     disabled={massSelectedUserIds.length === 0 || isMassAssigning}
-                    className="h-10 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-amber-500/20"
+                    className="h-10 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-purple-500/20"
                   >
                     {isMassAssigning ? (
                       <span>Assigning...</span>
@@ -1337,7 +1361,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     onClick={handleSelectAllFilteredUsers}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold dark:bg-white/5 bg-slate-100 hover:dark:bg-white/10 hover:bg-slate-200 dark:text-white text-slate-700 transition-colors flex items-center gap-1.5 border dark:border-white/5 border-black/5"
                   >
-                    <CheckSquare size={13} className="text-amber-500" />
+                    <CheckSquare size={13} className="text-purple-400" />
                     <span>Select All Filtered ({filteredUsers.length})</span>
                   </button>
                   {massSelectedUserIds.length > 0 && (
@@ -1380,7 +1404,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   className={cn(
                     "flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 md:p-6 dark:bg-[#111111] bg-white rounded-2xl border relative group shadow-sm transition-all min-w-0",
                     isMassSelected 
-                      ? "border-amber-500/60 dark:bg-amber-500/5 bg-amber-50/50 ring-1 ring-amber-500/30" 
+                      ? "border-purple-500/60 dark:bg-purple-500/5 bg-purple-50/50 ring-1 ring-purple-500/30" 
                       : "dark:border-white/5 border-black/5 hover:dark:border-white/10 hover:border-black/10"
                   )}
                 >
@@ -1389,7 +1413,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         type="checkbox"
                         checked={isMassSelected}
                         onChange={() => handleToggleSelectUser(userId)}
-                        className="w-4 h-4 rounded border-slate-300 dark:border-white/20 text-amber-500 focus:ring-amber-500 cursor-pointer shrink-0"
+                        className="w-4 h-4 rounded border-slate-300 dark:border-white/20 text-purple-500 focus:ring-purple-500 cursor-pointer shrink-0"
                         title="Select for Mass Team Assignment"
                       />
                       <button 
@@ -1469,7 +1493,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                  onClick={() => { setEditingUserEventTeams(u); setSettingsUserId(null); }}
                                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-[10px] font-bold uppercase dark:text-white text-slate-700 hover:dark:bg-white/10 hover:bg-slate-50 rounded-lg transition-colors"
                                >
-                                 <Trophy size={14} className="text-amber-500" />
+                                 <Trophy size={14} className="text-purple-400" />
                                  Manage Event Teams
                                </button>
                                <div className="h-[1px] dark:bg-white/5 bg-black/5 my-1" />
@@ -1634,7 +1658,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               {activeTab === 'previous_submissions' && (
                 <button
                   onClick={() => setDeleteEventModalOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1.5"
                   title="Delete all submission data for a previous event"
                 >
                   <Trash2 size={13} />
@@ -1753,7 +1777,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                 }
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[9px] md:text-[10px] text-amber-500 dark:text-amber-400 hover:underline flex items-center gap-1 shrink-0 w-fit inline-flex items-center"
+                                className="text-[9px] md:text-[10px] text-purple-400 hover:underline flex items-center gap-1 shrink-0 w-fit inline-flex items-center"
                                 title="View User Steam Achievements"
                               >
                                 <span className="scale-75 select-none font-sans">🏆</span> Achievements
@@ -1771,10 +1795,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                          
                          <div className="flex overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-hide items-center gap-2">
                              {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <div className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-lg shadow-amber-500/5 shrink-0">
+                               <div className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-purple-500/10 border border-purple-500/20 shadow-lg shadow-purple-500/5 shrink-0">
                                  <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
-                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-amber-500">Main</span>
-                                   <span className="text-xs md:text-sm font-black text-amber-500 leading-none">{hltbData[sub.game_name].hltb_main}h</span>
+                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-purple-400">Main</span>
+                                   <span className="text-xs md:text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].hltb_main}h</span>
                                  </div>
                                  <div className="w-px h-5 md:h-6 dark:bg-white/10 bg-black/5 mx-0.5 md:mx-1" />
                                  <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
@@ -1920,7 +1944,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <div className="space-y-2 mt-2">
                           {meta.hasNoAchievements && (
                             <div className="flex flex-wrap gap-1.5">
-                              <span className="text-[10px] font-bold uppercase bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                              <span className="text-[10px] font-bold uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-md">
                                 No Achievements/Nintendo Game
                               </span>
                               {meta.level !== undefined && (
@@ -1972,7 +1996,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           )}
 
                           {sub.beaten_previous === 'yes' && (
-                            <div className="text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full border bg-amber-500/10 text-amber-500 border-amber-500/20">
+                            <div className="text-[8px] md:text-[10px] font-bold uppercase py-1 px-2 md:px-3 rounded-full border bg-purple-500/10 text-purple-400 border-purple-500/20">
                               Prev Beaten
                             </div>
                           )}
@@ -2000,7 +2024,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             rel="noopener noreferrer"
                             className={cn(
                               "flex-1 sm:flex-none px-3 md:px-4 py-2 rounded-lg md:rounded-xl font-bold text-[10px] md:text-xs transition-all border shrink-0 flex items-center justify-center gap-1.5",
-                              "bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                              "bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20"
                             )}
                           >
                             🏆 Achievements Page
@@ -2087,8 +2111,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
                             <div className="flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-white/5 border border-white/10">
                                <div className="flex flex-col items-center">
-                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-amber-500/50">Story</span>
-                                 <span className="text-[10px] md:text-xs font-black text-amber-500">{hltbData[sub.game_name].hltb_main}h</span>
+                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-purple-400/50">Story</span>
+                                 <span className="text-[10px] md:text-xs font-black text-purple-400">{hltbData[sub.game_name].hltb_main}h</span>
                                </div>
                                <div className="w-px h-5 md:h-6 bg-white/10" />
                                <div className="flex flex-col items-center">
@@ -2103,7 +2127,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             </div>
                           )}
                           {fetchingHLTB === sub.game_name && (
-                            <div className="text-[9px] md:text-[10px] font-bold uppercase animate-pulse text-amber-500">Fetching HLTB...</div>
+                            <div className="text-[9px] md:text-[10px] font-bold uppercase animate-pulse text-purple-400">Fetching HLTB...</div>
                           )}
                           <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors ml-auto sm:ml-0 p-2">
                             <Plus className="rotate-45" size={24} />
@@ -2130,9 +2154,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             </div>
                             {reviewingMeta.hasNoAchievements && (
                               <div className="space-y-1 md:space-y-2">
-                                <label className="text-[9px] md:text-[10px] uppercase font-bold text-amber-400">Award Level</label>
+                                <label className="text-[9px] md:text-[10px] uppercase font-bold text-purple-400">Award Level</label>
                                 <select
-                                  className={cn("w-full bg-slate-900 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none text-white text-sm focus:border-amber-500")}
+                                  className={cn("w-full bg-slate-900 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none text-white text-sm focus:border-purple-500")}
                                   value={selectedLevel}
                                   onChange={(e) => {
                                     const lvl = parseInt(e.target.value);
@@ -2224,7 +2248,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 shadow-md">
             <div>
               <h2 className="text-base font-bold dark:text-white text-slate-900 flex items-center gap-2">
-                <Trophy size={18} className="text-amber-400" />
+                <Trophy size={18} className="text-purple-400" />
                 Score Editor & Team Adjustments
               </h2>
               <p className="text-xs opacity-50 mt-0.5">
@@ -2378,7 +2402,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             type="number"
                             value={bulkUserScores[u.steamid] ?? 0}
                             onChange={(e) => setBulkUserScores(prev => ({ ...prev, [u.steamid]: parseInt(e.target.value) || 0 }))}
-                            className="w-28 bg-white dark:bg-black/50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-1.5 font-mono text-xs font-bold text-amber-500 focus:outline-none focus:border-purple-500 text-right"
+                            className="w-28 bg-white dark:bg-black/50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-1.5 font-mono text-xs font-bold text-purple-400 focus:outline-none focus:border-purple-500 text-right"
                           />
                         </div>
                       </div>
@@ -2829,9 +2853,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               </div>
 
               <div className="p-4 rounded-xl dark:bg-black/30 bg-slate-50 border dark:border-white/5 border-black/5 flex flex-col justify-between gap-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">Active Admins</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">Active Admins</span>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black font-mono text-amber-400">
+                  <span className="text-2xl font-black font-mono text-purple-400">
                     {new Set(activityLogs.map(l => l.admin_name)).size}
                   </span>
                   <span className="text-[10px] font-bold opacity-50">approvers</span>
@@ -2961,7 +2985,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             </span>
                           )}
                           {!isScreenshot && !isBingo && (
-                            <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 shrink-0 flex items-center gap-1">
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/20 shrink-0 flex items-center gap-1">
                               <Shield size={10} /> Team Award
                             </span>
                           )}
@@ -2984,7 +3008,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 dark:border-white/5 border-black/5 shrink-0">
                       {/* Admin info badge */}
                       <div className="flex items-center gap-2 bg-slate-100 dark:bg-black/30 px-3 py-1.5 rounded-xl border dark:border-white/5 border-black/5">
-                        <ShieldCheck size={14} className="text-amber-400 shrink-0" />
+                        <ShieldCheck size={14} className="text-purple-400 shrink-0" />
                         <div className="flex flex-col">
                           <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Approved By</span>
                           <span className="text-[11px] font-bold dark:text-white text-slate-800 leading-tight">
@@ -3029,7 +3053,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             {/* Header */}
             <div className="p-5 border-b dark:border-white/5 border-black/5 flex items-center justify-between bg-slate-50 dark:bg-zinc-900/50">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
                   <Trophy size={18} />
                 </div>
                 <div>
@@ -3129,13 +3153,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               </div>
 
               {/* Database Instruction Block */}
-              <div className="p-4 dark:bg-amber-500/5 bg-amber-500/5 border border-amber-500/20 rounded-xl flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-amber-500">
+              <div className="p-4 dark:bg-purple-500/5 bg-purple-500/5 border border-purple-500/20 rounded-xl flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-purple-400">
                   <Database size={16} />
                   <span className="text-xs font-black uppercase tracking-wider">Required Supabase Setup Configuration</span>
                 </div>
                 <p className="text-[10px] dark:text-white/60 text-slate-600 font-medium leading-relaxed">
-                  Custom event team overrides require the <code className="font-mono bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-amber-500">user_event_teams</code> mapping table in Supabase. If you have not created it yet or are getting database errors, run the following script in your <strong className="dark:text-white text-slate-800">Supabase SQL Editor</strong>:
+                  Custom event team overrides require the <code className="font-mono bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-purple-400">user_event_teams</code> mapping table in Supabase. If you have not created it yet or are getting database errors, run the following script in your <strong className="dark:text-white text-slate-800">Supabase SQL Editor</strong>:
                 </p>
                 
                 <div className="relative">
@@ -3238,6 +3262,77 @@ CREATE POLICY "Allow public read access" ON public.user_event_teams
                 Delete All Event Submissions
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submission Verification Popup Modal */}
+      {verifyPopupMsg && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className={cn(
+            "border rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 animate-in zoom-in-95 duration-150 dark:bg-[#141414] bg-white",
+            verifyPopupMsg.status === 'verified' ? "border-emerald-500/30" : "border-red-500/30"
+          )}>
+            <div className={cn(
+              "w-16 h-16 rounded-2xl flex items-center justify-center text-3xl border shadow-lg shrink-0",
+              verifyPopupMsg.status === 'verified'
+                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                : "bg-red-500/20 text-red-400 border-red-500/30"
+            )}>
+              {verifyPopupMsg.status === 'verified' ? <CheckCircle size={32} /> : <XCircle size={32} />}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-black dark:text-white text-slate-900">{verifyPopupMsg.title}</h3>
+              <p className="text-xs font-bold opacity-60 dark:text-white text-slate-700">
+                {verifyPopupMsg.userName} • {verifyPopupMsg.gameTitle}
+              </p>
+            </div>
+
+            <div className="w-full p-4 rounded-2xl dark:bg-black/40 bg-slate-100 border border-black/5 dark:border-white/5 flex flex-col items-center gap-2">
+              {verifyPopupMsg.status === 'verified' ? (
+                <>
+                  <div className="text-2xl font-black font-mono text-emerald-400">
+                    +{verifyPopupMsg.points} PTS
+                  </div>
+                  <p className="text-xs opacity-75 dark:text-slate-300 text-slate-600">
+                    Points verified and synced to <span className={cn(
+                      "font-black uppercase px-1.5 py-0.5 rounded text-[10px] border",
+                      TEAM_COLORS[verifyPopupMsg.userTeam as Team]?.secondary || "bg-purple-500/10",
+                      TEAM_COLORS[verifyPopupMsg.userTeam as Team]?.primary || "text-purple-400",
+                      TEAM_COLORS[verifyPopupMsg.userTeam as Team]?.border || "border-purple-500/20"
+                    )}>Team {verifyPopupMsg.userTeam}</span> total.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs font-bold text-red-400 uppercase tracking-wider">
+                    Submission Status: Rejected
+                  </div>
+                  {verifyPopupMsg.rejectionReason && (
+                    <p className="text-xs italic dark:text-slate-300 text-slate-600 bg-red-500/10 p-2.5 rounded-xl border border-red-500/20 text-left w-full">
+                      "{verifyPopupMsg.rejectionReason}"
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 py-1.5 px-3 rounded-full border border-emerald-500/20 inline-block">
+              ✓ Leaderboard & Event Scores Synchronized
+            </p>
+
+            <button
+              onClick={() => setVerifyPopupMsg(null)}
+              className={cn(
+                "w-full py-3.5 rounded-2xl text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg mt-1",
+                verifyPopupMsg.status === 'verified'
+                  ? "bg-emerald-600 hover:bg-emerald-500"
+                  : "bg-red-600 hover:bg-red-500"
+              )}
+            >
+              Acknowledge
+            </button>
           </div>
         </div>
       )}
