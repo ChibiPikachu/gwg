@@ -219,7 +219,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
       {loading ? (
         <div className="flex justify-center p-12">
-          <div className={cn("w-8 h-8 border-2 border-t-transparent rounded-full animate-spin", theme.border)}></div>
+          <div className={cn("w-8 h-8 border-2 border-t-transparent rounded-full", theme.border)}></div>
         </div>
       ) : filteredAndSortedGames.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 opacity-30 italic">
