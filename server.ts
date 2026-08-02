@@ -2143,15 +2143,15 @@ async function createServer() {
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('steamid, team');
+        .select('steamid, team, points');
       const profMap = new Map<string, string>();
       (profiles || []).forEach((p: any) => {
         if (p.steamid && p.team) profMap.set(p.steamid, p.team);
       });
 
-      // Parse existing saved scores if present and NOT forcing resync
+      // Parse existing saved scores if present
       let existingSaved: any = null;
-      if (!forceResync && event.description && event.description.includes('<!--EVENT_SCORES:')) {
+      if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
         try {
           const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
           if (match && match[1]) {
@@ -2162,14 +2162,13 @@ async function createServer() {
         }
       }
 
-      const userScores: Record<string, number> = forceResync ? {} : { ...(existingSaved?.userScores || {}) };
-      const teamAdjustments: Record<string, number> = forceResync 
-        ? { blue: 0, green: 0, purple: 0, red: 0 } 
-        : { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
+      // Preserve existing userScores from previous snapshots or forced entries so deleted submissions don't zero out members
+      const userScores: Record<string, number> = { ...(existingSaved?.userScores || {}) };
+      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
       const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
       
-      // Seed existing member teams if not forceResync
-      if (!forceResync && existingSaved?.userTeams) {
+      // Seed existing member teams
+      if (existingSaved?.userTeams) {
         for (const [sid, t] of Object.entries(existingSaved.userTeams)) {
           if (typeof t === 'string' && teamMembers[t]) {
             teamMembers[t].add(sid);
@@ -2205,21 +2204,26 @@ async function createServer() {
         }
       });
 
-      const userTeams: Record<string, string> = forceResync ? {} : { ...(existingSaved?.userTeams || {}) };
+      const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
       for (const [sid, pts] of Object.entries(liveUserScores)) {
-        if (forceResync) {
-          userScores[sid] = pts;
-        } else {
-          userScores[sid] = Math.max(userScores[sid] || 0, pts);
-        }
+        userScores[sid] = Math.max(userScores[sid] || 0, pts);
         const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
         if (team !== 'none') userTeams[sid] = team;
       }
 
-      // Also ensure any users from uets are mapped into userTeams
+      // Ensure any users from uets or profiles with points are preserved
       (uets || []).forEach((u: any) => {
         if (u.steamid && u.team && u.team !== 'none') {
           userTeams[u.steamid] = u.team;
+        }
+      });
+
+      (profiles || []).forEach((p: any) => {
+        if (p.steamid && p.points && !userScores[p.steamid]) {
+          const userTeam = uetMap.get(p.steamid) || userTeams[p.steamid] || p.team;
+          if (userTeam && userTeam !== 'none' && teamMembers[userTeam]?.has(p.steamid)) {
+            userScores[p.steamid] = p.points;
+          }
         }
       });
 
@@ -2230,8 +2234,8 @@ async function createServer() {
         teamMembers[t].forEach((sid) => {
           sum += (userScores[sid] || 0);
         });
-        if (forceResync) {
-          teamTotals[t] = sum + (teamAdjustments[t] || 0);
+        if (existingSaved?.forcedByAdmin && existingSaved?.teamTotals?.[t] !== undefined && !forceResync) {
+          teamTotals[t] = existingSaved.teamTotals[t];
         } else {
           teamTotals[t] = Math.max(existingSaved?.teamTotals?.[t] || 0, sum + (teamAdjustments[t] || 0));
         }
@@ -2252,7 +2256,8 @@ async function createServer() {
         teamTotals,
         userScores,
         userTeams,
-        teamAdjustments
+        teamAdjustments,
+        updatedAt: new Date().toISOString()
       };
 
       const snapshotStr = `<!--EVENT_SCORES:${JSON.stringify(newSnapshot)}-->`;
@@ -2280,7 +2285,7 @@ async function createServer() {
         })
         .eq('id', eventId);
 
-      console.log(`[EnsureEventScoresSaved] Successfully saved score snapshot for event ${eventId} (forceResync=${forceResync})`);
+      console.log(`[EnsureEventScoresSaved] Saved score snapshot for event ${eventId} (forceResync=${forceResync})`);
     } catch (err) {
       console.error(`[EnsureEventScoresSaved] Error saving scores for event ${eventId}:`, err);
     }
@@ -2782,6 +2787,107 @@ async function createServer() {
     } catch (err: any) {
       console.error('Failed to resync event scores:', err);
       res.status(500).json({ error: 'Failed to resync event scores', details: err.message });
+    }
+  });
+
+  // Admin route to force explicit score overrides for an event
+  app.post('/api/admin/force-event-scores', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { eventId, teamTotals, userScores, teamAdjustments, winnerTeam } = req.body;
+    if (!eventId) return res.status(400).json({ error: 'eventId is required' });
+
+    try {
+      const { data: event, error: fetchErr } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (fetchErr || !event) return res.status(404).json({ error: 'Event not found' });
+
+      let existingSaved: any = {};
+      if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
+        try {
+          const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+          if (match && match[1]) existingSaved = JSON.parse(match[1]);
+        } catch (e) {}
+      }
+
+      const mergedUserScores = {
+        ...(existingSaved.userScores || {}),
+        ...(userScores || {})
+      };
+
+      const mergedTeamAdjustments = {
+        blue: 0, green: 0, purple: 0, red: 0,
+        ...(existingSaved.teamAdjustments || {}),
+        ...(teamAdjustments || {})
+      };
+
+      const mergedTeamTotals = {
+        blue: 0, green: 0, purple: 0, red: 0,
+        ...(existingSaved.teamTotals || {}),
+        ...(teamTotals || {})
+      };
+
+      // Calculate winning team if not explicitly provided
+      let finalWinner = winnerTeam;
+      if (!finalWinner) {
+        let maxPts = -1;
+        for (const t of ['blue', 'purple', 'green', 'red']) {
+          if (mergedTeamTotals[t] > maxPts && mergedTeamTotals[t] > 0) {
+            maxPts = mergedTeamTotals[t];
+            finalWinner = t;
+          }
+        }
+      }
+      if (!finalWinner) finalWinner = event.winner_team;
+
+      const newSnapshot = {
+        teamTotals: mergedTeamTotals,
+        userScores: mergedUserScores,
+        userTeams: existingSaved.userTeams || {},
+        teamAdjustments: mergedTeamAdjustments,
+        forcedByAdmin: true,
+        forcedAt: new Date().toISOString()
+      };
+
+      const snapshotStr = `<!--EVENT_SCORES:${JSON.stringify(newSnapshot)}-->`;
+      let updatedDesc = event.description || '';
+      if (updatedDesc.includes('<!--EVENT_SCORES:')) {
+        updatedDesc = updatedDesc.replace(/<!--EVENT_SCORES:.*?-->/s, snapshotStr);
+      } else {
+        updatedDesc = updatedDesc ? `${updatedDesc}\n${snapshotStr}` : snapshotStr;
+      }
+
+      if (finalWinner) {
+        const winnerStr = `<!--WINNER:${finalWinner}-->`;
+        if (updatedDesc.includes('<!--WINNER:')) {
+          updatedDesc = updatedDesc.replace(/<!--WINNER:.*?-->/, winnerStr);
+        } else {
+          updatedDesc = `${updatedDesc}\n${winnerStr}`;
+        }
+      }
+
+      await supabase
+        .from('events')
+        .update({
+          winner_team: finalWinner || event.winner_team,
+          description: updatedDesc
+        })
+        .eq('id', eventId);
+
+      res.json({
+        success: true,
+        message: 'Event scores successfully forced and locked!',
+        snapshot: newSnapshot,
+        winnerTeam: finalWinner
+      });
+    } catch (err: any) {
+      console.error('Failed to force event scores:', err);
+      res.status(500).json({ error: 'Failed to force event scores', details: err.message });
     }
   });
 

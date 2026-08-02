@@ -137,6 +137,90 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [deleteEventModalOpen, setDeleteEventModalOpen] = React.useState(false);
   const [targetDeleteEventId, setTargetDeleteEventId] = React.useState<string>('');
 
+  // Bulk Score Editor State
+  const [scoreEditMode, setScoreEditMode] = React.useState<'single' | 'bulk'>('single');
+  const [bulkEditEventId, setBulkEditEventId] = React.useState<string>('');
+  const [bulkUsers, setBulkUsers] = React.useState<any[]>([]);
+  const [bulkUserScores, setBulkUserScores] = React.useState<Record<string, number>>({});
+  const [bulkTeamAdjustments, setBulkTeamAdjustments] = React.useState<Record<string, number>>({ blue: 0, green: 0, purple: 0, red: 0 });
+  const [bulkSearch, setBulkSearch] = React.useState('');
+  const [bulkTeamFilter, setBulkTeamFilter] = React.useState<'all' | 'blue' | 'purple' | 'green' | 'red'>('all');
+  const [bulkLoading, setBulkLoading] = React.useState(false);
+  const [bulkSaving, setBulkSaving] = React.useState(false);
+  const [bulkSuccessMsg, setBulkSuccessMsg] = React.useState<string | null>(null);
+
+  const fetchBulkEventData = React.useCallback(async (eventId: string) => {
+    if (!eventId) return;
+    setBulkLoading(true);
+    try {
+      const res = await fetch(`/api/leaderboard/event/${eventId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const uScores: Record<string, number> = {};
+        const uList: any[] = [];
+        (data.topUsers || []).forEach((u: any) => {
+          uScores[u.steamid] = u.points || 0;
+          uList.push(u);
+        });
+        setBulkUserScores(uScores);
+        setBulkUsers(uList);
+
+        const teamAdj: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+        (data.standings || []).forEach((s: any) => {
+          if (s.team && teamAdj[s.team] !== undefined) {
+            teamAdj[s.team] = s.points || 0;
+          }
+        });
+        setBulkTeamAdjustments(teamAdj);
+      }
+    } catch (err) {
+      console.error('Failed to fetch bulk event data:', err);
+    } finally {
+      setBulkLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (scoreEditMode === 'bulk' && bulkEditEventId) {
+      fetchBulkEventData(bulkEditEventId);
+    }
+  }, [scoreEditMode, bulkEditEventId, fetchBulkEventData]);
+
+  React.useEffect(() => {
+    if (events.length > 0 && !bulkEditEventId) {
+      const active = events.find((e: any) => e.is_active);
+      setBulkEditEventId(active ? active.id : events[0].id);
+    }
+  }, [events, bulkEditEventId]);
+
+  const handleCommitBulkScores = async () => {
+    if (!bulkEditEventId) return;
+    setBulkSaving(true);
+    setBulkSuccessMsg(null);
+    try {
+      const res = await fetch('/api/admin/force-event-scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: bulkEditEventId,
+          userScores: bulkUserScores,
+          teamAdjustments: bulkTeamAdjustments
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to commit bulk score adjustments');
+
+      setBulkSuccessMsg('Bulk member scores updated & event re-synced successfully! (0 notifications sent)');
+      setTimeout(() => setBulkSuccessMsg(null), 6000);
+      fetchBulkEventData(bulkEditEventId);
+    } catch (err: any) {
+      console.error('Failed to commit bulk scores:', err);
+      alert(`Error committing bulk scores: ${err.message}`);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   // Mass Team Assignment State
   const [massSelectedUserIds, setMassSelectedUserIds] = React.useState<string[]>([]);
   const [massTargetEventId, setMassTargetEventId] = React.useState<string>('active');
@@ -2135,13 +2219,196 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         </section>
         )
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Award Form */}
-          <div className="lg:col-span-1 border dark:border-white/5 border-black/5 dark:bg-[#111111] bg-white p-6 rounded-2xl flex flex-col gap-6 h-fit shadow-xl">
+        <div className="space-y-6">
+          {/* Mode Switcher Header */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 shadow-md">
             <div>
-              <h3 className="text-base font-bold dark:text-white text-slate-800 font-sans">Award Team Points</h3>
-              <p className="text-xs opacity-50 mt-1">Directly grant or deduct points from team totals.</p>
+              <h2 className="text-base font-bold dark:text-white text-slate-900 flex items-center gap-2">
+                <Trophy size={18} className="text-amber-400" />
+                Score Editor & Team Adjustments
+              </h2>
+              <p className="text-xs opacity-50 mt-0.5">
+                Award single adjustments or use Bulk Edit mode to adjust multiple member scores for an event simultaneously before re-syncing.
+              </p>
             </div>
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-black/50 p-1 rounded-xl border border-black/5 dark:border-white/5 self-stretch sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => setScoreEditMode('single')}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  scoreEditMode === 'single'
+                    ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-white/40 hover:text-slate-800 dark:hover:text-white"
+                )}
+              >
+                <Plus size={14} />
+                <span>Single Adjustment</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setScoreEditMode('bulk')}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  scoreEditMode === 'bulk'
+                    ? "bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-sm font-black"
+                    : "text-slate-500 dark:text-white/40 hover:text-slate-800 dark:hover:text-white"
+                )}
+              >
+                <CheckSquare size={14} />
+                <span>Bulk Edit Mode</span>
+              </button>
+            </div>
+          </div>
+
+          {scoreEditMode === 'bulk' ? (
+            /* BULK EDIT MODE COMPONENT */
+            <div className="p-6 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 shadow-xl space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-black/5 dark:border-white/5">
+                <div>
+                  <h3 className="text-base font-bold dark:text-white text-slate-800">Bulk Event Score Editor</h3>
+                  <p className="text-xs opacity-50">Select an event and adjust member scores simultaneously before committing the re-sync.</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold uppercase opacity-50 shrink-0">Target Event:</span>
+                  <select
+                    value={bulkEditEventId}
+                    onChange={(e) => setBulkEditEventId(e.target.value)}
+                    className="dark:bg-black/40 bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 dark:text-white text-slate-900"
+                  >
+                    {events.map((evt: any) => (
+                      <option key={evt.id} value={evt.id}>
+                        {evt.title} {evt.is_active ? '(Active)' : '(Archived)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {bulkSuccessMsg && (
+                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-between gap-3 animate-in fade-in">
+                  <span>✓ {bulkSuccessMsg}</span>
+                  <span className="text-[10px] bg-emerald-500/20 px-2.5 py-1 rounded border border-emerald-500/30">0 Notifications Sent</span>
+                </div>
+              )}
+
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <input
+                  type="text"
+                  placeholder="Search member name or Steam ID..."
+                  value={bulkSearch}
+                  onChange={(e) => setBulkSearch(e.target.value)}
+                  className="w-full sm:w-72 h-9 px-3 text-xs bg-slate-50 dark:bg-black/40 border dark:border-white/5 border-black/10 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500 dark:text-white text-slate-900"
+                />
+
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setBulkTeamFilter('all')}
+                    className={cn(
+                      "px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-colors border cursor-pointer",
+                      bulkTeamFilter === 'all'
+                        ? "bg-slate-200 dark:bg-white/10 dark:text-white text-slate-900 border-transparent"
+                        : "bg-transparent dark:text-white/40 text-slate-500 border-black/5 dark:border-white/5"
+                    )}
+                  >
+                    All
+                  </button>
+                  {(['blue', 'purple', 'green', 'red'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setBulkTeamFilter(t)}
+                      className={cn(
+                        "px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-colors border cursor-pointer",
+                        bulkTeamFilter === t
+                          ? "bg-purple-500/20 text-purple-400 border-purple-500/30 font-black"
+                          : "bg-transparent dark:text-white/40 text-slate-500 border-black/5 dark:border-white/5"
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Members Score Grid */}
+              {bulkLoading ? (
+                <div className="py-12 text-center text-xs opacity-50">Loading event member scores...</div>
+              ) : bulkUsers.length === 0 ? (
+                <div className="py-12 text-center text-xs opacity-50">No members found for this event.</div>
+              ) : (
+                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                  {bulkUsers
+                    .filter(u => {
+                      const nameMatch = (u.steam_name || u.discord_name || u.steamid || '').toLowerCase().includes(bulkSearch.toLowerCase());
+                      const teamMatch = bulkTeamFilter === 'all' || u.team === bulkTeamFilter;
+                      return nameMatch && teamMatch;
+                    })
+                    .map((u: any) => (
+                      <div key={u.steamid} className="p-3.5 rounded-xl dark:bg-black/30 bg-slate-50 border dark:border-white/5 border-black/5 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={u.steam_avatar || u.active_avatar || 'https://avatars.githubusercontent.com/u/0'}
+                            alt=""
+                            className="w-9 h-9 rounded-full object-cover border border-white/10 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold dark:text-white text-slate-900 truncate">{u.steam_name || u.discord_name || 'Member'}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className={cn(
+                                "text-[9px] font-black uppercase px-2 py-0.5 rounded border tracking-wider",
+                                TEAM_COLORS[u.team as Team]?.secondary,
+                                TEAM_COLORS[u.team as Team]?.primary,
+                                TEAM_COLORS[u.team as Team]?.border
+                              )}>
+                                Team {u.team || 'none'}
+                              </span>
+                              <span className="text-[10px] opacity-40 font-mono truncate">{u.steamid}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <label className="text-[10px] uppercase font-bold opacity-50 dark:text-white text-slate-800">Event Pts:</label>
+                          <input
+                            type="number"
+                            value={bulkUserScores[u.steamid] ?? 0}
+                            onChange={(e) => setBulkUserScores(prev => ({ ...prev, [u.steamid]: parseInt(e.target.value) || 0 }))}
+                            className="w-28 bg-white dark:bg-black/50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-1.5 font-mono text-xs font-bold text-amber-500 focus:outline-none focus:border-purple-500 text-right"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Footer Commit Button */}
+              <div className="pt-4 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <p className="text-xs opacity-50">
+                  Clicking commit will update all member score overrides for this event and recalculate team totals without notifying users.
+                </p>
+                <button
+                  type="button"
+                  disabled={bulkSaving || bulkLoading}
+                  onClick={handleCommitBulkScores}
+                  className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-50 shrink-0"
+                >
+                  {bulkSaving ? 'Saving & Re-syncing...' : 'Commit & Re-Sync Event Scores'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Award Form */}
+              <div className="lg:col-span-1 border dark:border-white/5 border-black/5 dark:bg-[#111111] bg-white p-6 rounded-2xl flex flex-col gap-6 h-fit shadow-xl">
+                <div>
+                  <h3 className="text-base font-bold dark:text-white text-slate-800 font-sans">Award Team Points</h3>
+                  <p className="text-xs opacity-50 mt-1">Directly grant or deduct points from team totals.</p>
+                </div>
 
             <form onSubmit={handleAwardTeamPoints} className="space-y-4">
               <div className="space-y-1.5">
@@ -2495,6 +2762,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           </div>
         </div>
       )}
+    </div>
+  )}
 
       {activeTab === 'activity_log' && (
         <div className="flex flex-col gap-6 animate-in fade-in duration-200">

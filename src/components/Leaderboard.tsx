@@ -37,7 +37,18 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const [resyncingEventId, setResyncingEventId] = React.useState<string | null>(null);
   const [resyncSuccessMsg, setResyncSuccessMsg] = React.useState<string | null>(null);
 
-  const handleResyncEventScores = async (eventId: string) => {
+  // Force Scores Modal State
+  const [forceScoresModalOpen, setForceScoresModalOpen] = React.useState(false);
+  const [forceModalEventId, setForceModalEventId] = React.useState<string | null>(null);
+  const [forceModalEventTitle, setForceModalEventTitle] = React.useState<string>('');
+  const [forceTeamTotals, setForceTeamTotals] = React.useState<Record<string, number>>({ blue: 0, green: 0, purple: 0, red: 0 });
+  const [forceUserScores, setForceUserScores] = React.useState<Record<string, number>>({});
+  const [forceMemberDetails, setForceMemberDetails] = React.useState<any[]>([]);
+  const [forceMemberSearch, setForceMemberSearch] = React.useState('');
+  const [isSavingForcedScores, setIsSavingForcedScores] = React.useState(false);
+  const [adminPopupMsg, setAdminPopupMsg] = React.useState<{ title: string; message: string } | null>(null);
+
+  const handleResyncEventScores = async (eventId: string, title?: string) => {
     if (!eventId) return;
     setResyncingEventId(eventId);
     setResyncSuccessMsg(null);
@@ -61,13 +72,80 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           if (Array.isArray(evts)) setEvents(evts);
         });
 
-      setResyncSuccessMsg(`Event scores successfully re-synced and recalculated from verified submissions!`);
-      setTimeout(() => setResyncSuccessMsg(null), 5000);
+      setAdminPopupMsg({
+        title: 'Scores Re-Synced Successfully',
+        message: `Scores for ${title || 'Event'} have been recalculated from snapshot data & verified submissions. 0 user notifications were sent.`
+      });
     } catch (err: any) {
       console.error('Failed to resync event scores:', err);
       alert(`Error re-syncing scores: ${err.message}`);
     } finally {
       setResyncingEventId(null);
+    }
+  };
+
+  const openForceScoresModal = async (eventId: string, title: string) => {
+    setForceModalEventId(eventId);
+    setForceModalEventTitle(title);
+    setForceScoresModalOpen(true);
+    setForceMemberSearch('');
+    
+    try {
+      const res = await fetch(`/api/leaderboard/event/${eventId}`);
+      const data = await res.json();
+      if (res.ok) {
+        const totals: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+        (data.standings || []).forEach((s: any) => {
+          if (s.team) totals[s.team] = s.points || 0;
+        });
+        setForceTeamTotals(totals);
+
+        const uScores: Record<string, number> = {};
+        const members: any[] = [];
+        (data.topUsers || []).forEach((u: any) => {
+          uScores[u.steamid] = u.points || 0;
+          members.push(u);
+        });
+        setForceUserScores(uScores);
+        setForceMemberDetails(members);
+      }
+    } catch (err) {
+      console.error('Failed to prefill force scores modal:', err);
+    }
+  };
+
+  const handleSaveForcedScores = async () => {
+    if (!forceModalEventId) return;
+    setIsSavingForcedScores(true);
+    try {
+      const res = await fetch('/api/admin/force-event-scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: forceModalEventId,
+          teamTotals: forceTeamTotals,
+          userScores: forceUserScores
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to force scores');
+
+      setForceScoresModalOpen(false);
+      
+      if (activeTab === 'previous' && selectedPreviousEventId === forceModalEventId) {
+        fetchPreviousEventLeaderboard(forceModalEventId);
+      }
+      fetchUsers();
+
+      setAdminPopupMsg({
+        title: 'Scores Forced Successfully',
+        message: `Scores for ${forceModalEventTitle || 'Event'} have been locked to exact forced values. 0 user notifications were sent.`
+      });
+    } catch (err: any) {
+      console.error('Error forcing scores:', err);
+      alert(`Failed to force scores: ${err.message}`);
+    } finally {
+      setIsSavingForcedScores(false);
     }
   };
 
@@ -310,18 +388,28 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               </div>
               <div className="flex items-center gap-2">
                 {activeEvent && isAdmin && (
-                  <button
-                    onClick={() => handleResyncEventScores(activeEvent.id)}
-                    disabled={resyncingEventId === activeEvent.id}
-                    className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
-                    title="Re-sync current event scores from verified submissions"
-                  >
-                    <RotateCw size={13} className={cn(resyncingEventId === activeEvent.id && "animate-spin")} />
-                    <span>{resyncingEventId === activeEvent.id ? 'Re-syncing...' : 'Re-sync Scores'}</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleResyncEventScores(activeEvent.id, activeEvent.title)}
+                      disabled={resyncingEventId === activeEvent.id}
+                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                      title="Re-sync current event scores from snapshot data & verified submissions"
+                    >
+                      <RotateCw size={13} className={cn(resyncingEventId === activeEvent.id && "animate-spin")} />
+                      <span>{resyncingEventId === activeEvent.id ? 'Re-syncing...' : 'Re-sync Scores'}</span>
+                    </button>
+                    <button
+                      onClick={() => openForceScoresModal(activeEvent.id, activeEvent.title)}
+                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Force & lock exact score numbers for this event"
+                    >
+                      <Sparkles size={13} />
+                      <span>Force Scores Mode</span>
+                    </button>
+                  </>
                 )}
                 {activeEvent && (
-                  <span className={cn("text-xs font-black px-3 py-1 rounded-full border", theme.bg + "/10", theme.border, theme.text)}>
+                  <span className={cn("text-xs font-black px-3 py-1.5 rounded-full border", theme.bg + "/10", theme.border, theme.text)}>
                     {activeEvent.title}
                   </span>
                 )}
@@ -669,16 +757,26 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleResyncEventScores(previousEventData.event.id)}
-                          disabled={resyncingEventId === previousEventData.event.id}
-                          className="px-4 py-2.5 rounded-2xl text-xs font-black bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 shrink-0"
-                          title="Re-sync and recalculate event scores from verified submissions"
-                        >
-                          <RotateCw size={14} className={cn(resyncingEventId === previousEventData.event.id && "animate-spin")} />
-                          <span>{resyncingEventId === previousEventData.event.id ? 'Re-syncing Scores...' : 'Re-sync Event Scores'}</span>
-                        </button>
+                      {isAdmin && previousEventData?.event && (
+                        <>
+                          <button
+                            onClick={() => handleResyncEventScores(previousEventData.event.id, previousEventData.event.title)}
+                            disabled={resyncingEventId === previousEventData.event.id}
+                            className="px-4 py-2.5 rounded-2xl text-xs font-black bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                            title="Re-sync and recalculate event scores from verified submissions and snapshots"
+                          >
+                            <RotateCw size={14} className={cn(resyncingEventId === previousEventData.event.id && "animate-spin")} />
+                            <span>{resyncingEventId === previousEventData.event.id ? 'Re-syncing Scores...' : 'Re-sync Event Scores'}</span>
+                          </button>
+                          <button
+                            onClick={() => openForceScoresModal(previousEventData.event.id, previousEventData.event.title)}
+                            className="px-4 py-2.5 rounded-2xl text-xs font-black bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+                            title="Force exact score numbers for this event (Useful for Event #4)"
+                          >
+                            <Sparkles size={14} />
+                            <span>Force Scores Mode</span>
+                          </button>
+                        </>
                       )}
 
                       {previousEventData.event.winner_team && (
@@ -964,6 +1062,142 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Admin Notification Popup */}
+      {adminPopupMsg && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-[#141414] border border-amber-500/30 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl">
+              <Shield size={28} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white">{adminPopupMsg.title}</h3>
+              <p className="text-xs text-slate-300 mt-2 leading-relaxed">{adminPopupMsg.message}</p>
+              <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mt-3 bg-emerald-500/10 py-1 px-3 rounded-full border border-emerald-500/20 inline-block">
+                ✓ 0 User Notifications Sent
+              </p>
+            </div>
+            <button
+              onClick={() => setAdminPopupMsg(null)}
+              className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider transition-all cursor-pointer mt-2"
+            >
+              Acknowledge
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Force Scores Modal */}
+      {forceScoresModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#121212] border border-purple-500/30 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-purple-500/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">Force Scores Mode (Admin)</h3>
+                  <p className="text-xs text-purple-300/80">
+                    {forceModalEventTitle ? `Target: ${forceModalEventTitle}` : 'Override Scores'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setForceScoresModalOpen(false)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs leading-relaxed">
+                <strong>Admin Override:</strong> Manually force exact team totals or member scores into event metadata. This allows locked scores for events where submissions were removed (e.g. Event #4). No user notifications will be generated.
+              </div>
+
+              {/* Team Totals Override */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">Team Totals Override</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {(['blue', 'purple', 'green', 'red'] as const).map(team => (
+                    <div key={team} className="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-1.5">
+                      <span className={cn("text-[10px] font-black uppercase tracking-wider block", TEAM_COLORS[team]?.primary)}>
+                        {team} Team
+                      </span>
+                      <input
+                        type="number"
+                        value={forceTeamTotals[team] ?? 0}
+                        onChange={(e) => setForceTeamTotals(prev => ({ ...prev, [team]: parseInt(e.target.value) || 0 }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 font-mono text-sm font-bold text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Member Scores Override */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">Member Score Overrides</h4>
+                  <input
+                    type="text"
+                    placeholder="Filter member..."
+                    value={forceMemberSearch}
+                    onChange={(e) => setForceMemberSearch(e.target.value)}
+                    className="px-3 py-1 text-xs bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-purple-500 w-44"
+                  />
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {forceMemberDetails
+                    .filter(m => (m.steam_name || m.discord_name || m.steamid || '').toLowerCase().includes(forceMemberSearch.toLowerCase()))
+                    .map(m => (
+                      <div key={m.steamid} className="p-3 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img src={m.steam_avatar || m.active_avatar || 'https://avatars.githubusercontent.com/u/0'} className="w-8 h-8 rounded-full object-cover border border-white/10 shrink-0" referrerPolicy="no-referrer" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{m.steam_name || m.discord_name || 'Member'}</p>
+                            <p className="text-[10px] text-white/40 font-mono">Team: {m.team || 'none'}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] uppercase text-white/40 font-bold">Pts:</span>
+                          <input
+                            type="number"
+                            value={forceUserScores[m.steamid] ?? 0}
+                            onChange={(e) => setForceUserScores(prev => ({ ...prev, [m.steamid]: parseInt(e.target.value) || 0 }))}
+                            className="w-24 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 font-mono text-xs font-bold text-amber-400 focus:outline-none focus:border-purple-500 text-right"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10 bg-black/40 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setForceScoresModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveForcedScores}
+                disabled={isSavingForcedScores}
+                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-50"
+              >
+                {isSavingForcedScores ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                <span>Apply & Lock Forced Scores</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
