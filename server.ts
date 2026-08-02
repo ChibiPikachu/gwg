@@ -1926,10 +1926,10 @@ async function createServer() {
       let totalPoints = 0;
 
       if (activeEvent) {
-        // We want to sum verified submissions for the user's active/recent event points profile
+        // Sum all verified submissions (games, screenshot points, bingo points, etc.) for active event or null event_id
         const { data: verifiedSubmissions, error: subError } = await supabase
           .from('submissions')
-          .select('points, id, status, user_id, event_id')
+          .select('points, calculated_score, id, status, user_id, event_id, game_name')
           .eq('user_id', steamid)
           .eq('status', 'verified')
           .or(`event_id.eq.${activeEvent.id},event_id.is.null`);
@@ -1942,35 +1942,29 @@ async function createServer() {
         console.log(`[Sync] Found ${verifiedSubmissions?.length || 0} verified submissions in event ${activeEvent.id} for ${steamid}`);
         
         for (const sub of (verifiedSubmissions || [])) {
-          totalPoints += Math.round(Number(sub.points || 0));
+          if (sub.game_name === 'Event Update') continue; // Skip system notification row
+          const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+          totalPoints += Math.round(pts);
         }
       } else {
         const { data: allVerified } = await supabase
           .from('submissions')
-          .select('points')
+          .select('points, calculated_score, game_name')
           .eq('user_id', steamid)
           .eq('status', 'verified');
 
         for (const sub of (allVerified || [])) {
-          totalPoints += Math.round(Number(sub.points || 0));
+          if (sub.game_name === 'Event Update') continue;
+          const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+          totalPoints += Math.round(pts);
         }
       }
-      
-      // Preserve existing profile points so deleting previous event submissions does NOT decrease user points
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('points')
-        .eq('steamid', steamid)
-        .maybeSingle();
 
-      const currentPoints = Number(existingProfile?.points || 0);
-      const finalPoints = Math.max(currentPoints, totalPoints);
-
-      console.log(`[Sync] Calculated totalPoints: ${totalPoints}, currentPoints: ${currentPoints} -> finalPoints: ${finalPoints} for user ${steamid}`);
+      console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
 
       const { data: updateResult, error: profileError } = await supabase
         .from('profiles')
-        .update({ points: finalPoints })
+        .update({ points: totalPoints })
         .eq('steamid', steamid)
         .select();
 
@@ -1980,7 +1974,7 @@ async function createServer() {
         console.log(`[Sync] Successfully updated profile for ${steamid}. New data:`, updateResult?.[0]);
       }
         
-      return finalPoints;
+      return totalPoints;
     } catch (err) {
       console.error('Failed to sync points for user:', steamid, err);
       return null;
@@ -2011,28 +2005,72 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    // Publicly return profiles assigned to a team
-    const { data: users, error } = await supabase
-      .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
-      .not('team', 'is', null)
-      .neq('team', 'none')
-      .order('points', { ascending: false });
+    try {
+      let { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
 
-    if (error) return res.status(500).json({ error: error.message });
-
-    const transformedUsers = (users || []).map((u: any) => {
-      let finalAvatar = u.steam_avatar;
-      if (u.active_avatar === 'discord' && u.discord_avatar) {
-        finalAvatar = u.discord_avatar;
+      if (!activeEvent) {
+        const { data: recentEvent } = await supabase
+          .from('events')
+          .select('id')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeEvent = recentEvent;
       }
-      return {
-        ...u,
-        steam_avatar: finalAvatar
-      };
-    });
-    
-    res.json(transformedUsers);
+
+      // Fetch all verified submissions for active event
+      let subQuery = supabase
+        .from('submissions')
+        .select('user_id, points, calculated_score, game_name')
+        .eq('status', 'verified');
+
+      if (activeEvent) {
+        subQuery = subQuery.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
+      }
+
+      const { data: verifiedSubs } = await subQuery;
+
+      const userPointsMap: Record<string, number> = {};
+      (verifiedSubs || []).forEach((sub: any) => {
+        if (!sub.user_id || sub.user_id === 'system_notification' || sub.user_id.startsWith('team_pts_')) return;
+        if (sub.game_name === 'Event Update') return;
+        const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
+        userPointsMap[sub.user_id] = (userPointsMap[sub.user_id] || 0) + pts;
+      });
+
+      // Publicly return profiles assigned to a team
+      const { data: users, error } = await supabase
+        .from('profiles')
+        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
+        .not('team', 'is', null)
+        .neq('team', 'none');
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      const transformedUsers = (users || []).map((u: any) => {
+        let finalAvatar = u.steam_avatar;
+        if (u.active_avatar === 'discord' && u.discord_avatar) {
+          finalAvatar = u.discord_avatar;
+        }
+        const calcPoints = userPointsMap[u.steamid] !== undefined ? userPointsMap[u.steamid] : (u.points || 0);
+        return {
+          ...u,
+          points: calcPoints,
+          steam_avatar: finalAvatar
+        };
+      });
+
+      transformedUsers.sort((a, b) => b.points - a.points);
+      
+      res.json(transformedUsers);
+    } catch (err: any) {
+      console.error('Failed to fetch leaderboard users:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.get('/api/leaderboard/games', async (req, res) => {
