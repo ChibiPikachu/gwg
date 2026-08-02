@@ -2111,6 +2111,173 @@ async function createServer() {
     }
   }
 
+  // Helper to calculate and permanently snapshot event scores into event metadata
+  async function ensureEventScoresSaved(supabase: any, eventId: string) {
+    if (!supabase || !eventId) return;
+    try {
+      const { data: event } = await supabase
+        .from('events')
+        .select('id, is_active, winner_team, description')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (!event) return;
+
+      // 1. Fetch current verified submissions for this event
+      const { data: verifiedSubs } = await supabase
+        .from('submissions')
+        .select('id, user_id, points, calculated_score')
+        .eq('event_id', eventId)
+        .eq('status', 'verified');
+
+      // 2. Fetch user_event_teams & profiles
+      const { data: uets } = await supabase
+        .from('user_event_teams')
+        .select('steamid, team')
+        .eq('event_id', eventId);
+
+      const uetMap = new Map<string, string>();
+      (uets || []).forEach((u: any) => {
+        if (u.steamid && u.team) uetMap.set(u.steamid, u.team);
+      });
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('steamid, team');
+      const profMap = new Map<string, string>();
+      (profiles || []).forEach((p: any) => {
+        if (p.steamid && p.team) profMap.set(p.steamid, p.team);
+      });
+
+      // Parse existing saved scores if present so we NEVER lose previously saved member/team scores
+      let existingSaved: any = null;
+      if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
+        try {
+          const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+          if (match && match[1]) {
+            existingSaved = JSON.parse(match[1]);
+          }
+        } catch (e) {
+          console.warn('Failed to parse existing EVENT_SCORES tag:', e);
+        }
+      }
+
+      const userScores: Record<string, number> = { ...(existingSaved?.userScores || {}) };
+      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
+      const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
+      
+      // Seed existing member teams
+      if (existingSaved?.userTeams) {
+        for (const [sid, t] of Object.entries(existingSaved.userTeams)) {
+          if (typeof t === 'string' && teamMembers[t]) {
+            teamMembers[t].add(sid);
+          }
+        }
+      }
+
+      (uets || []).forEach((u: any) => {
+        if (u.team && teamMembers[u.team]) {
+          teamMembers[u.team].add(u.steamid);
+        }
+      });
+
+      // Calculate points from live verified submissions
+      const liveUserScores: Record<string, number> = {};
+      (verifiedSubs || []).forEach((sub: any) => {
+        if (sub.user_id === 'system_notification') return;
+        const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+
+        if (sub.user_id?.startsWith('team_pts_')) {
+          const team = sub.user_id.substring('team_pts_'.length);
+          if (teamAdjustments[team] !== undefined) {
+            teamAdjustments[team] += pts;
+          }
+          return;
+        }
+
+        const sid = String(sub.user_id);
+        liveUserScores[sid] = (liveUserScores[sid] || 0) + pts;
+        const team = uetMap.get(sid) || profMap.get(sid);
+        if (team && teamMembers[team]) {
+          teamMembers[team].add(sid);
+        }
+      });
+
+      // Merge live user scores (max of existing saved and live)
+      const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
+      for (const [sid, pts] of Object.entries(liveUserScores)) {
+        userScores[sid] = Math.max(userScores[sid] || 0, pts);
+        const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
+        if (team !== 'none') userTeams[sid] = team;
+      }
+
+      // Also ensure any users from uets are mapped into userTeams
+      (uets || []).forEach((u: any) => {
+        if (u.steamid && u.team && u.team !== 'none') {
+          userTeams[u.steamid] = u.team;
+        }
+      });
+
+      // Calculate team totals
+      const teamTotals: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+      ['blue', 'green', 'purple', 'red'].forEach((t) => {
+        let sum = 0;
+        teamMembers[t].forEach((sid) => {
+          sum += (userScores[sid] || 0);
+        });
+        teamTotals[t] = Math.max(existingSaved?.teamTotals?.[t] || 0, sum + (teamAdjustments[t] || 0));
+      });
+
+      // Determine winner team if not set
+      let winnerTeam = event.winner_team || null;
+      if (!winnerTeam) {
+        let maxPts = -1;
+        for (const t in teamTotals) {
+          if (teamTotals[t] > maxPts && teamTotals[t] > 0) {
+            maxPts = teamTotals[t];
+            winnerTeam = t;
+          }
+        }
+      }
+
+      const newSnapshot = {
+        teamTotals,
+        userScores,
+        userTeams,
+        teamAdjustments
+      };
+
+      const snapshotStr = `<!--EVENT_SCORES:${JSON.stringify(newSnapshot)}-->`;
+      let updatedDesc = event.description || '';
+      if (updatedDesc.includes('<!--EVENT_SCORES:')) {
+        updatedDesc = updatedDesc.replace(/<!--EVENT_SCORES:.*?-->/s, snapshotStr);
+      } else {
+        updatedDesc = updatedDesc ? `${updatedDesc}\n${snapshotStr}` : snapshotStr;
+      }
+
+      if (winnerTeam) {
+        const winnerStr = `<!--WINNER:${winnerTeam}-->`;
+        if (updatedDesc.includes('<!--WINNER:')) {
+          updatedDesc = updatedDesc.replace(/<!--WINNER:.*?-->/, winnerStr);
+        } else {
+          updatedDesc = `${updatedDesc}\n${winnerStr}`;
+        }
+      }
+
+      await supabase
+        .from('events')
+        .update({
+          winner_team: winnerTeam || event.winner_team,
+          description: updatedDesc
+        })
+        .eq('id', eventId);
+
+      console.log(`[EnsureEventScoresSaved] Successfully saved score snapshot for event ${eventId}`);
+    } catch (err) {
+      console.error(`[EnsureEventScoresSaved] Error saving scores for event ${eventId}:`, err);
+    }
+  }
+
   // Helper to sync points
   async function syncUserPoints(supabase: any, steamid: string) {
     try {
@@ -2360,7 +2527,7 @@ async function createServer() {
 
     try {
       // 1. Fetch event metadata
-      const { data: event, error: eventErr } = await supabase
+      let { data: event, error: eventErr } = await supabase
         .from('events')
         .select('*')
         .eq('id', eventId)
@@ -2368,6 +2535,31 @@ async function createServer() {
 
       if (eventErr || !event) {
         return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // 1.5 Parse saved score snapshot if available
+      let savedScores: any = null;
+      if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
+        try {
+          const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+          if (match && match[1]) {
+            savedScores = JSON.parse(match[1]);
+          }
+        } catch (e) {
+          console.warn('Failed to parse saved EVENT_SCORES:', e);
+        }
+      }
+
+      // If event is not active and missing snapshot, generate & save snapshot now
+      if (!event.is_active && !savedScores) {
+        await ensureEventScoresSaved(supabase, eventId);
+        const { data: reFetchedEv } = await supabase.from('events').select('description').eq('id', eventId).maybeSingle();
+        if (reFetchedEv?.description && reFetchedEv.description.includes('<!--EVENT_SCORES:')) {
+          try {
+            const match = reFetchedEv.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+            if (match && match[1]) savedScores = JSON.parse(match[1]);
+          } catch (e) {}
+        }
       }
 
       // 2. Fetch all verified submissions for this event (including null event_id fallback if active)
@@ -2391,7 +2583,6 @@ async function createServer() {
       }
 
       const { data: eventSubs, error: subErr } = await subQuery;
-
       if (subErr) throw subErr;
 
       // 3. Fetch user_event_teams for this event
@@ -2417,7 +2608,7 @@ async function createServer() {
 
       // 5. Calculate user event points & team adjustments
       const userEventPoints: Record<string, number> = {};
-      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(savedScores?.teamAdjustments || {}) };
       const adjustmentLogs: any[] = [];
 
       (eventSubs || []).forEach((sub: any) => {
@@ -2444,9 +2635,24 @@ async function createServer() {
         userEventPoints[steamid] = (userEventPoints[steamid] || 0) + pts;
       });
 
+      // Combine with savedScores if present
+      if (savedScores?.userScores) {
+        for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
+          userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, Number(savedPts) || 0);
+        }
+      }
+
       // 6. Determine user teams for this event
       const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
       
+      if (savedScores?.userTeams) {
+        for (const [sid, t] of Object.entries(savedScores.userTeams)) {
+          if (typeof t === 'string' && teamMembers[t]) {
+            teamMembers[t].add(sid);
+          }
+        }
+      }
+
       (uets || []).forEach((u: any) => {
         if (u.team && teamMembers[u.team]) {
           teamMembers[u.team].add(u.steamid);
@@ -2454,7 +2660,7 @@ async function createServer() {
       });
 
       Object.keys(userEventPoints).forEach((steamid) => {
-        const team = uetMap.get(steamid) || profileMap.get(steamid)?.team;
+        const team = uetMap.get(steamid) || savedScores?.userTeams?.[steamid] || profileMap.get(steamid)?.team;
         if (team && teamMembers[team]) {
           teamMembers[team].add(steamid);
         }
@@ -2464,12 +2670,14 @@ async function createServer() {
       const usersList: any[] = [];
       const allUserIdsInEvent = new Set([
         ...Object.keys(userEventPoints),
-        ...(uets || []).map((u: any) => u.steamid)
+        ...(uets || []).map((u: any) => u.steamid),
+        ...Object.keys(savedScores?.userTeams || {}),
+        ...Object.keys(savedScores?.userScores || {})
       ]);
 
       allUserIdsInEvent.forEach((steamid) => {
         const prof = profileMap.get(steamid);
-        const userTeam = uetMap.get(steamid) || prof?.team || 'none';
+        const userTeam = uetMap.get(steamid) || savedScores?.userTeams?.[steamid] || prof?.team || 'none';
         const points = userEventPoints[steamid] || 0;
         let finalAvatar = prof?.steam_avatar || '';
         if (prof?.active_avatar === 'discord' && prof?.discord_avatar) {
@@ -2504,7 +2712,8 @@ async function createServer() {
         teamMembers[t].forEach((sid) => {
           userPointsSum += (userEventPoints[sid] || 0);
         });
-        const totalTeamPoints = userPointsSum + (teamAdjustments[t] || 0);
+        const liveTotal = userPointsSum + (teamAdjustments[t] || 0);
+        const totalTeamPoints = Math.max(liveTotal, Number(savedScores?.teamTotals?.[t]) || 0);
         return {
           team: t,
           points: totalTeamPoints,
@@ -3105,6 +3314,11 @@ async function createServer() {
         return res.status(404).json({ error: 'Submission not found or unauthorized' });
       }
 
+      if (sub.event_id) {
+        await ensureEventWinnerSaved(supabase, sub.event_id);
+        await ensureEventScoresSaved(supabase, sub.event_id);
+      }
+
       const { error } = await supabase
         .from('submissions')
         .delete()
@@ -3265,11 +3479,16 @@ async function createServer() {
 
     try {
 
-      // 1. Get the submission to find out who submitted it (for point sync)
-      const { data: sub, error: fetchError } = await supabase.from('submissions').select('user_id').eq('id', id).single();
+      // 1. Get the submission to find out who submitted it (for point sync) and event_id
+      const { data: sub, error: fetchError } = await supabase.from('submissions').select('user_id, event_id').eq('id', id).single();
       
       if (fetchError || !sub) {
         return res.status(404).json({ error: 'Submission not found' });
+      }
+
+      if (sub.event_id) {
+        await ensureEventWinnerSaved(supabase, sub.event_id);
+        await ensureEventScoresSaved(supabase, sub.event_id);
       }
 
       // 2. Delete the submission
@@ -3361,13 +3580,14 @@ async function createServer() {
         return res.json({ success: true, count: 0, message: 'No matching submissions found to delete.' });
       }
 
-      // Lock in / preserve event winner badge info BEFORE deleting any submissions!
+      // Lock in / preserve event winner badge info AND score totals BEFORE deleting any submissions!
       const affectedEventIds = Array.from(new Set(targetSubs.map((s: any) => s.event_id).filter(Boolean)));
       if (eventId && !affectedEventIds.includes(eventId)) {
         affectedEventIds.push(eventId);
       }
       for (const eid of affectedEventIds) {
         await ensureEventWinnerSaved(supabase, eid as string);
+        await ensureEventScoresSaved(supabase, eid as string);
       }
 
       const idsToDelete = targetSubs.map((s: any) => s.id);
@@ -4123,8 +4343,9 @@ async function createServer() {
       // Snapshot all current member team allocations in user_event_teams for this event before closing
       await snapshotEventTeams(supabase, id);
 
-      // Ensure winner team is permanently locked in before closing event
+      // Ensure winner team & event scores are permanently locked in before closing event
       await ensureEventWinnerSaved(supabase, id);
+      await ensureEventScoresSaved(supabase, id);
 
       // 1. Mark event as inactive
       const { data: updatedEvent, error: eventError } = await supabase

@@ -22,7 +22,7 @@ export default function EventsPanel() {
 
   const getCleanDescription = (desc: string | undefined): string => {
     if (!desc) return '';
-    return desc.replace(/<!--VOTING:.*?-->/g, '').trim();
+    return desc.replace(/<!--.*?-->/gs, '').trim();
   };
 
   const parseDateTimeToLocalParts = (isoStr: string | undefined) => {
@@ -61,13 +61,14 @@ export default function EventsPanel() {
 
   const handleStartEdit = (event: any) => {
     const rawDesc = event.description || '';
-    const cleanDesc = rawDesc.replace(/<!--VOTING:.*?-->/g, '').trim();
+    const cleanDesc = rawDesc.replace(/<!--.*?-->/gs, '').trim();
 
     const startParts = parseDateTimeToLocalParts(event.start_date);
     const endParts = parseDateTimeToLocalParts(event.end_date);
 
     setEditingEvent({
       ...event,
+      raw_description: rawDesc,
       description: cleanDesc,
       start_date: startParts ? `${startParts.year}-${startParts.month}-${startParts.day}` : event.start_date,
       end_date: endParts ? `${endParts.year}-${endParts.month}-${endParts.day}` : event.end_date
