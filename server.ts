@@ -2112,7 +2112,7 @@ async function createServer() {
   }
 
   // Helper to calculate and permanently snapshot event scores into event metadata
-  async function ensureEventScoresSaved(supabase: any, eventId: string) {
+  async function ensureEventScoresSaved(supabase: any, eventId: string, forceResync: boolean = false) {
     if (!supabase || !eventId) return;
     try {
       const { data: event } = await supabase
@@ -2149,9 +2149,9 @@ async function createServer() {
         if (p.steamid && p.team) profMap.set(p.steamid, p.team);
       });
 
-      // Parse existing saved scores if present so we NEVER lose previously saved member/team scores
+      // Parse existing saved scores if present and NOT forcing resync
       let existingSaved: any = null;
-      if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
+      if (!forceResync && event.description && event.description.includes('<!--EVENT_SCORES:')) {
         try {
           const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
           if (match && match[1]) {
@@ -2162,12 +2162,14 @@ async function createServer() {
         }
       }
 
-      const userScores: Record<string, number> = { ...(existingSaved?.userScores || {}) };
-      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
+      const userScores: Record<string, number> = forceResync ? {} : { ...(existingSaved?.userScores || {}) };
+      const teamAdjustments: Record<string, number> = forceResync 
+        ? { blue: 0, green: 0, purple: 0, red: 0 } 
+        : { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
       const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
       
-      // Seed existing member teams
-      if (existingSaved?.userTeams) {
+      // Seed existing member teams if not forceResync
+      if (!forceResync && existingSaved?.userTeams) {
         for (const [sid, t] of Object.entries(existingSaved.userTeams)) {
           if (typeof t === 'string' && teamMembers[t]) {
             teamMembers[t].add(sid);
@@ -2203,10 +2205,13 @@ async function createServer() {
         }
       });
 
-      // Merge live user scores (max of existing saved and live)
-      const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
+      const userTeams: Record<string, string> = forceResync ? {} : { ...(existingSaved?.userTeams || {}) };
       for (const [sid, pts] of Object.entries(liveUserScores)) {
-        userScores[sid] = Math.max(userScores[sid] || 0, pts);
+        if (forceResync) {
+          userScores[sid] = pts;
+        } else {
+          userScores[sid] = Math.max(userScores[sid] || 0, pts);
+        }
         const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
         if (team !== 'none') userTeams[sid] = team;
       }
@@ -2225,20 +2230,23 @@ async function createServer() {
         teamMembers[t].forEach((sid) => {
           sum += (userScores[sid] || 0);
         });
-        teamTotals[t] = Math.max(existingSaved?.teamTotals?.[t] || 0, sum + (teamAdjustments[t] || 0));
+        if (forceResync) {
+          teamTotals[t] = sum + (teamAdjustments[t] || 0);
+        } else {
+          teamTotals[t] = Math.max(existingSaved?.teamTotals?.[t] || 0, sum + (teamAdjustments[t] || 0));
+        }
       });
 
-      // Determine winner team if not set
-      let winnerTeam = event.winner_team || null;
-      if (!winnerTeam) {
-        let maxPts = -1;
-        for (const t in teamTotals) {
-          if (teamTotals[t] > maxPts && teamTotals[t] > 0) {
-            maxPts = teamTotals[t];
-            winnerTeam = t;
-          }
+      // Determine winner team
+      let winnerTeam: string | null = null;
+      let maxPts = -1;
+      for (const t of ['blue', 'purple', 'green', 'red']) {
+        if (teamTotals[t] > maxPts && teamTotals[t] > 0) {
+          maxPts = teamTotals[t];
+          winnerTeam = t;
         }
       }
+      if (!winnerTeam) winnerTeam = event.winner_team;
 
       const newSnapshot = {
         teamTotals,
@@ -2272,7 +2280,7 @@ async function createServer() {
         })
         .eq('id', eventId);
 
-      console.log(`[EnsureEventScoresSaved] Successfully saved score snapshot for event ${eventId}`);
+      console.log(`[EnsureEventScoresSaved] Successfully saved score snapshot for event ${eventId} (forceResync=${forceResync})`);
     } catch (err) {
       console.error(`[EnsureEventScoresSaved] Error saving scores for event ${eventId}:`, err);
     }
@@ -2713,7 +2721,9 @@ async function createServer() {
           userPointsSum += (userEventPoints[sid] || 0);
         });
         const liveTotal = userPointsSum + (teamAdjustments[t] || 0);
-        const totalTeamPoints = Math.max(liveTotal, Number(savedScores?.teamTotals?.[t]) || 0);
+        const totalTeamPoints = isCurrentOrActive
+          ? Math.max(liveTotal, Number(savedScores?.teamTotals?.[t]) || 0)
+          : (savedScores?.teamTotals?.[t] !== undefined ? Number(savedScores.teamTotals[t]) : liveTotal);
         return {
           team: t,
           points: totalTeamPoints,
@@ -2743,6 +2753,35 @@ async function createServer() {
     } catch (err: any) {
       console.error('Failed to fetch event leaderboard:', err);
       res.status(500).json({ error: 'Internal server error', details: err.message });
+    }
+  });
+
+  // Admin route to forcefully re-sync/recompute event scores from verified submissions & team assignments
+  app.post('/api/admin/resync-event-scores', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const { eventId } = req.body;
+    if (!eventId) return res.status(400).json({ error: 'eventId is required' });
+
+    try {
+      await ensureEventWinnerSaved(supabase, eventId);
+      await ensureEventScoresSaved(supabase, eventId, true);
+
+      const { data: updatedEvent, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (error || !updatedEvent) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      res.json({ success: true, event: updatedEvent });
+    } catch (err: any) {
+      console.error('Failed to resync event scores:', err);
+      res.status(500).json({ error: 'Failed to resync event scores', details: err.message });
     }
   });
 

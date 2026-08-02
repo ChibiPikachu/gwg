@@ -1,12 +1,13 @@
 import React from 'react';
-import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter } from 'lucide-react';
+import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter, RotateCw, RefreshCw, CheckCircle } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
-  const { theme } = useAuth();
+  const { theme, user } = useAuth();
+  const isAdmin = user?.isAdmin || user?.role === 'admin' || user?.role === 'admins';
   
   // Tabs: 'current' | 'previous'
   const [activeTab, setActiveTab] = React.useState<'current' | 'previous'>('current');
@@ -31,6 +32,44 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const [selectedPreviousEventId, setSelectedPreviousEventId] = React.useState<string | null>(null);
   const [previousEventData, setPreviousEventData] = React.useState<any | null>(null);
   const [loadingPrevious, setLoadingPrevious] = React.useState(false);
+
+  // Admin Resync state
+  const [resyncingEventId, setResyncingEventId] = React.useState<string | null>(null);
+  const [resyncSuccessMsg, setResyncSuccessMsg] = React.useState<string | null>(null);
+
+  const handleResyncEventScores = async (eventId: string) => {
+    if (!eventId) return;
+    setResyncingEventId(eventId);
+    setResyncSuccessMsg(null);
+    try {
+      const res = await fetch('/api/admin/resync-event-scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to re-sync event scores');
+
+      if (activeTab === 'previous' && selectedPreviousEventId === eventId) {
+        fetchPreviousEventLeaderboard(eventId);
+      }
+      fetchUsers();
+
+      fetch('/api/events')
+        .then(r => r.json())
+        .then(evts => {
+          if (Array.isArray(evts)) setEvents(evts);
+        });
+
+      setResyncSuccessMsg(`Event scores successfully re-synced and recalculated from verified submissions!`);
+      setTimeout(() => setResyncSuccessMsg(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to resync event scores:', err);
+      alert(`Error re-syncing scores: ${err.message}`);
+    } finally {
+      setResyncingEventId(null);
+    }
+  };
 
   const fetchUsers = React.useCallback(() => {
     fetch('/api/leaderboard/users')
@@ -252,7 +291,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             <History size={14} className={activeTab === 'previous' ? theme.text : ''} />
             Previous Events
             {previousEvents.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-500/20 text-slate-500 border border-slate-500/30">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-500 border border-amber-500/30">
                 {previousEvents.length}
               </span>
             )}
@@ -269,15 +308,35 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                 <h2 className="text-xl font-bold">Team Standings</h2>
                 <p className="text-xs opacity-60">Real-time competition progress for active event.</p>
               </div>
-              {activeEvent && (
-                <span className={cn("text-xs font-black px-3 py-1 rounded-full border", theme.bg + "/10", theme.border, theme.text)}>
-                  {activeEvent.title}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {activeEvent && isAdmin && (
+                  <button
+                    onClick={() => handleResyncEventScores(activeEvent.id)}
+                    disabled={resyncingEventId === activeEvent.id}
+                    className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                    title="Re-sync current event scores from verified submissions"
+                  >
+                    <RotateCw size={13} className={cn(resyncingEventId === activeEvent.id && "animate-spin")} />
+                    <span>{resyncingEventId === activeEvent.id ? 'Re-syncing...' : 'Re-sync Scores'}</span>
+                  </button>
+                )}
+                {activeEvent && (
+                  <span className={cn("text-xs font-black px-3 py-1 rounded-full border", theme.bg + "/10", theme.border, theme.text)}>
+                    {activeEvent.title}
+                  </span>
+                )}
+              </div>
             </div>
 
+            {resyncSuccessMsg && (
+              <div className="mb-6 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-2.5 shadow-sm animate-in fade-in">
+                <CheckCircle size={18} className="shrink-0" />
+                <span>{resyncSuccessMsg}</span>
+              </div>
+            )}
+
             {hideScores && (
-              <div className="mb-8 p-4 rounded-xl bg-slate-500/10 border border-slate-500/25 text-slate-500 font-bold text-center text-sm tracking-wide animate-pulse">
+              <div className="mb-8 p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-500 font-bold text-center text-sm tracking-wide animate-pulse">
                 Leaderboard is hidden right now!
               </div>
             )}
@@ -321,7 +380,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-xl font-bold flex items-center gap-3">
-                  <Trophy className="text-slate-400" size={24} />
+                  <Trophy className="text-amber-400" size={24} />
                   All Members
                 </h2>
                 <p className="text-xs opacity-60 mt-0.5">Search and filter community members by name, handle, or team faction.</p>
@@ -336,7 +395,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search player, tag, steamid..."
-                    className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-slate-500/50 shadow-sm transition-all placeholder:opacity-40"
+                    className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
                   />
                   {searchQuery && (
                     <button
@@ -377,7 +436,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                 {(searchQuery || teamFilter !== 'all') && (
                   <button
                     onClick={() => { setSearchQuery(''); setTeamFilter('all'); }}
-                    className="text-slate-500 hover:underline flex items-center gap-1 font-bold"
+                    className="text-amber-500 hover:underline flex items-center gap-1 font-bold"
                   >
                     Reset Filters
                   </button>
@@ -456,7 +515,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         <p className="text-xs opacity-50 italic truncate">"{u.status || 'Chasing achievements...'}"</p>
                       </div>
                       <div className="text-right">
-                        <div className="font-mono font-bold text-slate-400">
+                        <div className="font-mono font-bold text-amber-400">
                           {hideScores ? '—' : (u.points || 0)}
                         </div>
                         <div className="text-[10px] uppercase opacity-30 font-bold">Points</div>
@@ -552,7 +611,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       className={cn(
                         "px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 border flex items-center gap-2.5",
                         isSelected
-                          ? "bg-slate-500/10 border-slate-500/30 text-slate-500 shadow-sm"
+                          ? "bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-sm"
                           : "dark:bg-zinc-900/50 bg-slate-100 border-transparent dark:text-white/50 text-slate-600 hover:dark:text-white hover:text-slate-900"
                       )}
                     >
@@ -561,8 +620,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       {evt.winner_team && (
                         <span className={cn(
                           "text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider",
-                          TEAM_COLORS[evt.winner_team as Team]?.secondary || "bg-slate-500/20",
-                          TEAM_COLORS[evt.winner_team as Team]?.primary || "text-slate-400"
+                          TEAM_COLORS[evt.winner_team as Team]?.secondary || "bg-amber-500/20",
+                          TEAM_COLORS[evt.winner_team as Team]?.primary || "text-amber-400"
                         )}>
                           🏆 {evt.winner_team}
                         </span>
@@ -588,7 +647,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                   <div className="p-6 md:p-8 rounded-3xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-500/10 text-slate-500 border border-slate-500/20">
+                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20">
                           Archived Event Standings
                         </span>
                         {previousEventData.event.winner_team && (
@@ -609,23 +668,37 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       </p>
                     </div>
 
-                    {previousEventData.event.winner_team && (
-                      <div className={cn(
-                        "p-4 rounded-2xl border flex items-center gap-3 shrink-0",
-                        TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-slate-500/10",
-                        TEAM_COLORS[previousEventData.event.winner_team as Team]?.border || "border-slate-500/20"
-                      )}>
-                        <div className="w-10 h-10 rounded-xl bg-slate-500/20 flex items-center justify-center text-xl shrink-0">
-                          🏆
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-black uppercase tracking-wider opacity-60">Event Champion</div>
-                          <div className={cn("text-base font-black capitalize", TEAM_COLORS[previousEventData.event.winner_team as Team]?.primary)}>
-                            Team {previousEventData.event.winner_team}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleResyncEventScores(previousEventData.event.id)}
+                          disabled={resyncingEventId === previousEventData.event.id}
+                          className="px-4 py-2.5 rounded-2xl text-xs font-black bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                          title="Re-sync and recalculate event scores from verified submissions"
+                        >
+                          <RotateCw size={14} className={cn(resyncingEventId === previousEventData.event.id && "animate-spin")} />
+                          <span>{resyncingEventId === previousEventData.event.id ? 'Re-syncing Scores...' : 'Re-sync Event Scores'}</span>
+                        </button>
+                      )}
+
+                      {previousEventData.event.winner_team && (
+                        <div className={cn(
+                          "p-4 rounded-2xl border flex items-center gap-3 shrink-0",
+                          TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-amber-500/10",
+                          TEAM_COLORS[previousEventData.event.winner_team as Team]?.border || "border-amber-500/20"
+                        )}>
+                          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-xl shrink-0">
+                            🏆
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-black uppercase tracking-wider opacity-60">Event Champion</div>
+                            <div className={cn("text-base font-black capitalize", TEAM_COLORS[previousEventData.event.winner_team as Team]?.primary)}>
+                              Team {previousEventData.event.winner_team}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
 
                   {/* Team Standings Section */}
@@ -647,11 +720,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                             className={cn(
                               "p-5 md:p-6 rounded-2xl border dark:bg-[#111111] bg-white flex flex-col items-center justify-between gap-4 shadow-md transition-all relative overflow-hidden",
                               TEAM_COLORS[s.team as Team]?.border || "border-black/5 dark:border-white/5",
-                              isWinner && "ring-2 ring-slate-500/50 shadow-slate-500/10"
+                              isWinner && "ring-2 ring-amber-500/50 shadow-amber-500/10"
                             )}
                           >
                             {isWinner && (
-                              <div className="absolute top-0 right-0 bg-slate-500 text-black text-[9px] font-black uppercase px-2.5 py-0.5 rounded-bl-xl tracking-wider">
+                              <div className="absolute top-0 right-0 bg-amber-500 text-black text-[9px] font-black uppercase px-2.5 py-0.5 rounded-bl-xl tracking-wider">
                                 Winner
                               </div>
                             )}
@@ -690,7 +763,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                       <div>
                         <h3 className="text-xl font-bold flex items-center gap-2">
-                          <Trophy className="text-slate-400" size={22} />
+                          <Trophy className="text-amber-400" size={22} />
                           Event User Standings
                         </h3>
                         <p className="text-xs opacity-60 mt-0.5">Individual member standings in this archived event.</p>
@@ -705,7 +778,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                             value={prevSearchQuery}
                             onChange={(e) => setPrevSearchQuery(e.target.value)}
                             placeholder="Search archived player..."
-                            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-slate-500/50 shadow-sm transition-all placeholder:opacity-40"
+                            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
                           />
                           {prevSearchQuery && (
                             <button
@@ -746,7 +819,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         {(prevSearchQuery || prevTeamFilter !== 'all') && (
                           <button
                             onClick={() => { setPrevSearchQuery(''); setPrevTeamFilter('all'); }}
-                            className="text-slate-500 hover:underline flex items-center gap-1 font-bold"
+                            className="text-amber-500 hover:underline flex items-center gap-1 font-bold"
                           >
                             Reset Filters
                           </button>
@@ -774,7 +847,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                               className={cn(
                                 "flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border transition-all shadow-sm",
                                 isTop3 
-                                  ? "border-slate-500/30 dark:bg-slate-500/[0.02]" 
+                                  ? "border-amber-500/30 dark:bg-amber-500/[0.02]" 
                                   : "border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10"
                               )}
                             >
@@ -843,7 +916,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
                               {/* Points */}
                               <div className="text-right shrink-0">
-                                <div className="font-mono font-black text-slate-400 text-base">
+                                <div className="font-mono font-black text-amber-400 text-base">
                                   {u.points.toLocaleString()}
                                 </div>
                                 <div className="text-[9px] uppercase opacity-40 font-bold">Event Pts</div>
