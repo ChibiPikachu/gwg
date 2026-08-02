@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight } from 'lucide-react';
+import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -17,6 +17,14 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const [loadingEvent, setLoadingEvent] = React.useState(true);
   const [activeEvent, setActiveEvent] = React.useState<any | null>(null);
   const [adjustments, setAdjustments] = React.useState<any[]>([]);
+
+  // Search & Filter state for Current Event
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [teamFilter, setTeamFilter] = React.useState<string>('all');
+
+  // Search & Filter state for Previous Events
+  const [prevSearchQuery, setPrevSearchQuery] = React.useState('');
+  const [prevTeamFilter, setPrevTeamFilter] = React.useState<string>('all');
 
   // Previous Events state
   const [events, setEvents] = React.useState<any[]>([]);
@@ -132,6 +140,45 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         return (Number(b.points) || 0) - (Number(a.points) || 0);
       }) 
     : [];
+
+  const filteredUsers = React.useMemo(() => {
+    return safeUsers.map((u, originalRankIndex) => ({ ...u, originalRank: originalRankIndex + 1 })).filter(u => {
+      const matchesTeam = teamFilter === 'all' || u.team === teamFilter;
+      const nameStr = (u.steam_name || u.steamName || '').toLowerCase();
+      const discordStr = (u.discord_name || u.discordName || '').toLowerCase();
+      const idStr = String(u.steamid || u.steamId || '').toLowerCase();
+      const statusStr = (u.status || '').toLowerCase();
+      const query = searchQuery.toLowerCase().trim();
+      
+      const matchesSearch = !query || 
+        nameStr.includes(query) || 
+        discordStr.includes(query) || 
+        idStr.includes(query) || 
+        statusStr.includes(query);
+
+      return matchesTeam && matchesSearch;
+    });
+  }, [safeUsers, teamFilter, searchQuery]);
+
+  const filteredPreviousUsers = React.useMemo(() => {
+    if (!previousEventData?.topUsers) return [];
+    return previousEventData.topUsers.filter((u: any) => {
+      const matchesTeam = prevTeamFilter === 'all' || u.team === prevTeamFilter;
+      const nameStr = (u.steam_name || '').toLowerCase();
+      const discordStr = (u.discord_name || '').toLowerCase();
+      const idStr = String(u.steamid || '').toLowerCase();
+      const statusStr = (u.status || '').toLowerCase();
+      const query = prevSearchQuery.toLowerCase().trim();
+
+      const matchesSearch = !query || 
+        nameStr.includes(query) || 
+        discordStr.includes(query) || 
+        idStr.includes(query) || 
+        statusStr.includes(query);
+
+      return matchesTeam && matchesSearch;
+    });
+  }, [previousEventData, prevTeamFilter, prevSearchQuery]);
 
   const getTeamAdjustmentPoints = (teamName: string) => {
     return adjustments
@@ -271,21 +318,90 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           </section>
 
           <section>
-            <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
-              <Trophy className="text-amber-400" size={24} />
-              All Members
-            </h2>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-3">
+                  <Trophy className="text-amber-400" size={24} />
+                  All Members
+                </h2>
+                <p className="text-xs opacity-60 mt-0.5">Search and filter community members by name, handle, or team faction.</p>
+              </div>
+
+              {/* Search & Team Filter Bar */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="relative flex-1 sm:w-64 min-w-[200px]">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search player, tag, steamid..."
+                    className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 transition-opacity p-0.5"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Team Selector Filter */}
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-900/80 p-1 rounded-xl border border-black/5 dark:border-white/5 text-[11px] font-bold">
+                  {['all', 'blue', 'purple', 'green', 'red'].map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTeamFilter(t)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg capitalize transition-all",
+                        teamFilter === t
+                          ? t === 'all'
+                            ? "bg-white dark:bg-[#1e1e1e] shadow-sm text-slate-900 dark:text-white font-black"
+                            : cn("shadow-sm font-black", TEAM_COLORS[t as Team]?.secondary, TEAM_COLORS[t as Team]?.primary, TEAM_COLORS[t as Team]?.border, "border")
+                          : "opacity-50 hover:opacity-100"
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Members Counter */}
+            {!loading && (
+              <div className="mb-4 flex items-center justify-between text-[11px] font-bold opacity-50 px-1">
+                <span>Showing {filteredUsers.length} of {safeUsers.length} members</span>
+                {(searchQuery || teamFilter !== 'all') && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setTeamFilter('all'); }}
+                    className="text-amber-500 hover:underline flex items-center gap-1 font-bold"
+                  >
+                    Reset Filters
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {loading ? (
                 <div className="p-8 text-center opacity-30 col-span-2">Loading...</div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-12 text-center col-span-2 border-2 border-dashed dark:border-white/5 border-black/5 rounded-2xl flex flex-col items-center justify-center gap-2">
+                  <Search size={32} className="opacity-20" />
+                  <p className="text-sm font-bold opacity-60">No members match your search or filter</p>
+                  <p className="text-xs opacity-40">Try searching with a different username, Steam ID, or team faction.</p>
+                </div>
               ) : (
-                safeUsers.map((u, i) => {
+                filteredUsers.map((u) => {
                   const hasScreenshotPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Screenshot Points');
                   const hasBingoPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Bingo Points');
                   return (
                     <div key={u.steamid} className="flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 group hover:border-black/10 dark:hover:border-white/10 transition-all shadow-sm dark:shadow-none">
                       <div className="text-sm font-bold opacity-30 w-4 dark:text-white text-slate-500">
-                        {hideScores ? '—' : i + 1}
+                        {hideScores ? '—' : u.originalRank}
                       </div>
                       <button 
                         onClick={(e) => {
@@ -296,7 +412,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         className={cn(
                           "w-12 h-12 rounded-full p-1 border-2 transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 shrink-0", 
                           `focus:${theme.ring}/50`,
-                          u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team].border : 'border-white/10'
+                          u.team && u.team !== 'none' ? TEAM_COLORS[u.team as Team]?.border : 'border-white/10'
                         )}
                       >
                         <img src={u.steam_avatar} className="w-full h-full rounded-full object-cover" alt="" referrerPolicy="no-referrer" />
@@ -315,6 +431,16 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                            {(u.role === 'admin' || u.role === 'admins') && <Shield size={12} className={theme.text} />}
                            {u.discord_name && (
                             <span className="text-[10px] text-purple-400 font-bold opacity-80 shrink-0">@{u.discord_name}</span>
+                           )}
+                           {u.team && u.team !== 'none' && (
+                             <span className={cn(
+                               "text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0",
+                               TEAM_COLORS[u.team as Team]?.secondary,
+                               TEAM_COLORS[u.team as Team]?.primary,
+                               TEAM_COLORS[u.team as Team]?.border
+                             )}>
+                               Team {u.team}
+                             </span>
                            )}
                            {hasScreenshotPoints && (
                              <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 shrink-0">
@@ -561,26 +687,86 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
                   {/* All Event Users Section */}
                   <section>
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                       <div>
                         <h3 className="text-xl font-bold flex items-center gap-2">
                           <Trophy className="text-amber-400" size={22} />
                           Event User Standings
                         </h3>
-                        <p className="text-xs opacity-60 mt-0.5">Individual member standings in this previous event.</p>
+                        <p className="text-xs opacity-60 mt-0.5">Individual member standings in this archived event.</p>
                       </div>
-                      <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                        {previousEventData.topUsers.length} Members
-                      </span>
+
+                      {/* Search & Team Filter Bar */}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="relative flex-1 sm:w-64 min-w-[200px]">
+                          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={prevSearchQuery}
+                            onChange={(e) => setPrevSearchQuery(e.target.value)}
+                            placeholder="Search archived player..."
+                            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
+                          />
+                          {prevSearchQuery && (
+                            <button
+                              onClick={() => setPrevSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 transition-opacity p-0.5"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Team Selector Filter */}
+                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-900/80 p-1 rounded-xl border border-black/5 dark:border-white/5 text-[11px] font-bold">
+                          {['all', 'blue', 'purple', 'green', 'red'].map((t) => (
+                            <button
+                              key={t}
+                              onClick={() => setPrevTeamFilter(t)}
+                              className={cn(
+                                "px-2.5 py-1 rounded-lg capitalize transition-all",
+                                prevTeamFilter === t
+                                  ? t === 'all'
+                                    ? "bg-white dark:bg-[#1e1e1e] shadow-sm text-slate-900 dark:text-white font-black"
+                                    : cn("shadow-sm font-black", TEAM_COLORS[t as Team]?.secondary, TEAM_COLORS[t as Team]?.primary, TEAM_COLORS[t as Team]?.border, "border")
+                                  : "opacity-50 hover:opacity-100"
+                              )}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Members Counter */}
+                    {previousEventData.topUsers.length > 0 && (
+                      <div className="mb-4 flex items-center justify-between text-[11px] font-bold opacity-50 px-1">
+                        <span>Showing {filteredPreviousUsers.length} of {previousEventData.topUsers.length} members</span>
+                        {(prevSearchQuery || prevTeamFilter !== 'all') && (
+                          <button
+                            onClick={() => { setPrevSearchQuery(''); setPrevTeamFilter('all'); }}
+                            className="text-amber-500 hover:underline flex items-center gap-1 font-bold"
+                          >
+                            Reset Filters
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {previousEventData.topUsers.length === 0 ? (
                       <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 opacity-40 italic font-bold">
                         No user points logged for this event.
                       </div>
+                    ) : filteredPreviousUsers.length === 0 ? (
+                      <div className="p-12 text-center border-2 border-dashed dark:border-white/5 border-black/5 rounded-2xl flex flex-col items-center justify-center gap-2">
+                        <Search size={32} className="opacity-20" />
+                        <p className="text-sm font-bold opacity-60">No archived members match your filter</p>
+                        <p className="text-xs opacity-40">Try searching with a different name or team faction.</p>
+                      </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {previousEventData.topUsers.map((u: any) => {
+                        {filteredPreviousUsers.map((u: any) => {
                           const isTop3 = u.rank <= 3;
                           return (
                             <div 

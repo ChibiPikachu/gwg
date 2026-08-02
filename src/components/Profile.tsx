@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull } from 'lucide-react';
+import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull, Search, X, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
 
@@ -19,6 +19,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [showSurvivorTooltip, setShowSurvivorTooltip] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>('all');
   const [hoveredBadgeEventId, setHoveredBadgeEventId] = useState<string | null>(null);
+
+  const [submissionSearchQuery, setSubmissionSearchQuery] = useState('');
+  const [submissionStatusFilter, setSubmissionStatusFilter] = useState<'all' | 'verified' | 'pending' | 'rejected'>('all');
 
   const [activeAvatar, setActiveAvatar] = useState('steam');
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
@@ -70,9 +73,18 @@ export default function Profile({ steamId }: { steamId?: string }) {
   }, [submissions]);
 
   const filteredSubmissions = React.useMemo(() => {
-    if (selectedEventId === 'all') return userGameSubmissions;
-    return userGameSubmissions.filter((s: any) => s.event_id === selectedEventId);
-  }, [userGameSubmissions, selectedEventId]);
+    return userGameSubmissions.filter((s: any) => {
+      const matchesEvent = selectedEventId === 'all' || s.event_id === selectedEventId;
+      const matchesStatus = submissionStatusFilter === 'all' || s.status === submissionStatusFilter;
+      const query = submissionSearchQuery.toLowerCase().trim();
+      const matchesSearch = !query || 
+        (s.game_name || '').toLowerCase().includes(query) || 
+        (s.platform || '').toLowerCase().includes(query) ||
+        (s.completion_status || '').toLowerCase().includes(query);
+
+      return matchesEvent && matchesStatus && matchesSearch;
+    });
+  }, [userGameSubmissions, selectedEventId, submissionStatusFilter, submissionSearchQuery]);
 
   React.useEffect(() => {
     fetch('/api/events')
@@ -632,10 +644,52 @@ export default function Profile({ steamId }: { steamId?: string }) {
               })}
             </div>
 
+            {/* Search and Status Filter controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-2xl border border-black/5 dark:border-white/5">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none" />
+                <input
+                  type="text"
+                  value={submissionSearchQuery}
+                  onChange={(e) => setSubmissionSearchQuery(e.target.value)}
+                  placeholder="Search submitted game or platform..."
+                  className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
+                />
+                {submissionSearchQuery && (
+                  <button
+                    onClick={() => setSubmissionSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 transition-opacity p-0.5"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter Pills */}
+              <div className="flex items-center gap-1 bg-white/50 dark:bg-black/40 p-1 rounded-xl border border-black/5 dark:border-white/5 text-[11px] font-bold shrink-0">
+                {(['all', 'verified', 'pending', 'rejected'] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setSubmissionStatusFilter(st)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg capitalize transition-all",
+                      submissionStatusFilter === st
+                        ? "bg-amber-500 text-black font-black shadow-sm"
+                        : "opacity-60 hover:opacity-100"
+                    )}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Filtered submissions grid */}
             {filteredSubmissions.length === 0 ? (
-              <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 dark:text-white/40 text-slate-400 opacity-60 italic font-bold text-xs uppercase tracking-wider">
-                No submissions found for this event.
+              <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 dark:text-white/40 text-slate-400 opacity-60 italic font-bold text-xs uppercase tracking-wider flex flex-col items-center justify-center gap-2">
+                <Search size={28} className="opacity-40" />
+                <span>No submissions match your search or filter</span>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
