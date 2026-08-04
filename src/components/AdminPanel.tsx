@@ -2861,7 +2861,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           <div className="flex flex-col">
                             <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Approved By</span>
                             <span className="text-[11px] font-bold dark:text-white text-slate-800 leading-tight">
-                              {admin_Name}
+                              {adminName}
                             </span>
                           </div>
                         </div>
