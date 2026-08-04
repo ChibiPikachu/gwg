@@ -16,5 +16,9 @@
       "source": "/api/:path*",
       "destination": "https://girlswhogame.onrender.com/api/:path*"
     }
+    {
+      "source": "/((?!api/.*).*)",
+      "destination": "/index.html"
+    }
   ]
 }
