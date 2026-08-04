@@ -10,5 +10,11 @@
     { "src": "/(api|auth)(.*)", "dest": "server.ts" },
     { "src": "/(.*)", "dest": "/$1", "check": true },
     { "src": "/(.*)", "dest": "/index.html" }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://girlswhogame.onrender.com/api/:path*"
+    }
   ]
 }
