@@ -1189,35 +1189,6 @@ export default function MySubmissions() {
                       referrerPolicy="no-referrer"
                     />
                     
-                    {/* Link Overlays */}
-                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10">
-                      {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                        <div 
-                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-600 border border-purple-500 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
-                          title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
-                        >
-                          <span className="text-[8px] sm:text-[10px] font-black text-white leading-none">HLTB</span>
-                          <span className="text-[7px] sm:text-[8px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hltb_main}h</span>
-                          
-                          {/* Hover Details Popover */}
-                          <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
-                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_main}h</span>
-                            </div>
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>
-                              <span className="text-[10px] font-bold text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
-                            </div>
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[8px] uppercase font-bold text-white/40">Complete</span>
-                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
                     {/* The Click/Hover Overlay */}
                     <div className={cn(
                       "absolute inset-0 bg-black/70 transition-opacity flex flex-col items-center justify-center p-2 sm:p-4 gap-2 sm:gap-4",
@@ -1266,12 +1237,6 @@ export default function MySubmissions() {
                     <div className="flex items-center gap-2">
                       <h4 className="font-bold text-sm truncate dark:text-white text-slate-800 capitalize flex-1">{sub.game_name}</h4>
                     </div>
-                    {hltbData[sub.game_name]?.notFound && (
-                       <div className="text-[9px] font-bold text-slate-400 opacity-40 uppercase">HLTB Stats Not Found</div>
-                    )}
-                    {(!hltbData[sub.game_name]) && (
-                       <div className="text-[9px] font-bold text-blue-400 animate-pulse uppercase">Fetching HLTB data...</div>
-                    )}
                     <div className="flex items-center gap-2">
                       {sub.status === 'verified' ? (
                         <>
@@ -1358,34 +1323,6 @@ export default function MySubmissions() {
                       </div>
                     )}
 
-                    {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                      <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 z-10 animate-in fade-in slide-in-from-right-1">
-                        <div 
-                          className="w-8 h-8 rounded-lg bg-purple-600 border border-purple-500 flex flex-col items-center justify-center shadow-xl transition-all hover:scale-110 group/hltb relative"
-                          title={`HLTB Main: ${hltbData[sub.game_name].hltb_main}h | Extra: ${hltbData[sub.game_name].hltb_extras}h | Completionist: ${hltbData[sub.game_name].hltb_completionist}h`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span className="text-[8px] font-black text-white leading-none">HLTB</span>
-                          <span className="text-[7px] font-bold text-white/80 mt-0.5">{hltbData[sub.game_name].hltb_main}h</span>
-                          
-                          <div className="absolute top-0 right-full mr-2 opacity-0 group-hover/hltb:opacity-100 transition-opacity pointer-events-none bg-black/90 border border-white/10 p-2 rounded-lg shadow-2xl flex flex-col gap-1 min-w-[100px] z-50">
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[8px] uppercase font-bold text-white/40">Main</span>
-                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_main}h</span>
-                            </div>
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[8px] uppercase font-bold text-white/40">Extra</span>
-                              <span className="text-[10px] font-bold text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
-                            </div>
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[8px] uppercase font-bold text-white/40">Complete</span>
-                              <span className="text-[10px] font-bold text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     <div className={cn(
                       "absolute inset-0 bg-black/80 transition-opacity flex flex-col items-center justify-center p-2 gap-2 z-10",
                       activeMobileCard === sub.id 
@@ -1432,13 +1369,6 @@ export default function MySubmissions() {
                     <h3 className="font-bold text-sm dark:text-white text-slate-800 truncate capitalize" title={sub.game_name}>
                       {sub.game_name}
                     </h3>
-                    
-                    {hltbData[sub.game_name]?.notFound && (
-                       <div className="text-[9px] font-bold text-slate-400 opacity-40 uppercase">HLTB Not Found</div>
-                    )}
-                    {(!hltbData[sub.game_name]) && (
-                       <div className="text-[9px] font-bold text-blue-400 animate-pulse uppercase">Fetching HLTB...</div>
-                    )}
 
                     <div className="flex items-center gap-2">
                       {sub.status === 'verified' ? (

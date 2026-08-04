@@ -4625,17 +4625,18 @@ async function createServer() {
 
       const activityLog = (allAdjustments || []).map((sub: any) => {
         const meta = parseNotesMeta(sub.notes || '');
-        let adminName = meta.adminName || null;
         let adminId = meta.adminId || sub.verifier_id || null;
         let adminAvatar = 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+        let resolvedProfileName = (adminId && profileMap[adminId]) ? profileMap[adminId].name : null;
 
         if (adminId && profileMap[adminId]) {
-          if (!adminName) adminName = profileMap[adminId].name;
           adminAvatar = profileMap[adminId].avatar;
         }
 
-        if (!adminName) {
-          adminName = 'Administrator';
+        // Prefer real profile name over generic 'Admin' or 'Administrator'
+        let adminName = meta.adminName;
+        if (!adminName || adminName === 'Admin' || adminName === 'Administrator') {
+          adminName = resolvedProfileName || meta.adminName || 'Administrator';
         }
 
         const userProfile = profileMap[sub.user_id];
@@ -4662,6 +4663,69 @@ async function createServer() {
     } catch (err: any) {
       console.error('Failed to fetch activity log:', err);
       res.status(500).json({ error: 'Failed to fetch activity log' });
+    }
+  });
+
+  // Cleanup endpoint: purge or archive audit logs older than specified days (default 90 days)
+  app.post(['/api/admin/activity-log/cleanup', '/api/admin/audit-logs/cleanup'], async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    try {
+      const days = Number(req.body.days) || 90;
+      const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      // Find matching audit log adjustment submissions older than cutoffDate
+      const { data: oldLogs, error: findError } = await supabase
+        .from('submissions')
+        .select('id, user_id, game_name, platform, points, calculated_score')
+        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points,game_name.eq.Team Award,platform.eq.Screenshot Points,platform.eq.Bingo Points')
+        .lt('created_at', cutoffDate);
+
+      if (findError) throw findError;
+
+      if (!oldLogs || oldLogs.length === 0) {
+        return res.json({
+          success: true,
+          purgedCount: 0,
+          cutoffDate,
+          days,
+          message: `No audit log records found older than ${days} days.`
+        });
+      }
+
+      const logIds = oldLogs.map((l: any) => l.id);
+      const affectedUserIds = Array.from(new Set(oldLogs.map((l: any) => l.user_id).filter((uid: string) => uid && !uid.startsWith('team_pts_'))));
+
+      // Delete the old logs from submissions
+      const { error: deleteError } = await supabase
+        .from('submissions')
+        .delete()
+        .in('id', logIds);
+
+      if (deleteError) throw deleteError;
+
+      // Resync points for all affected users
+      for (const uid of affectedUserIds) {
+        await syncUserPoints(supabase, uid as string);
+      }
+
+      console.log(`[Admin] Purged ${logIds.length} audit logs older than ${days} days (cutoff: ${cutoffDate})`);
+
+      res.json({
+        success: true,
+        purgedCount: logIds.length,
+        cutoffDate,
+        days,
+        message: `Successfully purged ${logIds.length} audit log entries older than ${days} days (${new Date(cutoffDate).toLocaleDateString()}).`
+      });
+    } catch (err: any) {
+      console.error('Audit log cleanup error:', err);
+      res.status(500).json({ error: err.message || 'Failed to cleanup audit logs' });
     }
   });
 
@@ -4709,12 +4773,28 @@ async function createServer() {
     }
 
     const currentAdmin = (req as any).user;
-    const adminName = currentAdmin ? (currentAdmin.steamName || currentAdmin.steam_name || currentAdmin.displayName || currentAdmin.discord_name || currentAdmin.username || 'Admin') : 'Admin';
-    const adminId = currentAdmin ? String(currentAdmin.steamid || currentAdmin.steamId || currentAdmin.id || 'admin') : 'admin';
+    let adminId = (req.body.adminId && req.body.adminId !== 'admin')
+      ? String(req.body.adminId)
+      : (currentAdmin ? String(currentAdmin.steamid || currentAdmin.steamId || currentAdmin.id || currentAdmin._json?.steamid || 'admin') : 'admin');
+    
+    let adminName = req.body.adminName || (currentAdmin ? (currentAdmin.steam_name || currentAdmin.steamName || currentAdmin.displayName || currentAdmin._json?.personaname || currentAdmin.discord_name || currentAdmin.username || 'Admin') : 'Admin');
 
-    const { team, points, notes, userId, userIds, adjustmentType, eventId, event_id } = req.body;
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    // Look up true profile name from profiles table for admin
+    if (adminId && adminId !== 'admin') {
+      try {
+        const { data: adminProfile } = await supabase.from('profiles').select('steam_name, discord_name').eq('steamid', adminId).maybeSingle();
+        if (adminProfile) {
+          adminName = adminProfile.steam_name || adminProfile.discord_name || adminName;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch admin profile for team adjustment:', e);
+      }
+    }
+
+    const { team, points, notes, userId, userIds, adjustmentType, eventId, event_id } = req.body;
 
     try {
       // Detect active event dynamically or use explicitly provided eventId

@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare, Calendar, Filter, RotateCcw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -127,6 +127,20 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [userSearchQuery, setUserSearchQuery] = React.useState('');
   const [userTeamFilter, setUserTeamFilter] = React.useState<'all' | 'blue' | 'purple' | 'green' | 'red'>('all');
   const [awardAdjustmentType, setAwardAdjustmentType] = React.useState<'screenshot' | 'bingo'>('screenshot');
+
+  // Point Adjustments Log Filter State
+  const [adjSearchQuery, setAdjSearchQuery] = React.useState('');
+  const [adjUserFilter, setAdjUserFilter] = React.useState('all');
+  const [adjAdminFilter, setAdjAdminFilter] = React.useState('all');
+  const [adjTypeFilter, setAdjTypeFilter] = React.useState<'all' | 'screenshot' | 'bingo' | 'team'>('all');
+  const [adjDateFilter, setAdjDateFilter] = React.useState<'all' | 'today' | '7d' | '30d' | '90d' | 'older_90d' | 'custom'>('all');
+  const [adjStartDate, setAdjStartDate] = React.useState('');
+  const [adjEndDate, setAdjEndDate] = React.useState('');
+
+  // Audit Logs Cleanup State
+  const [cleanupModalOpen, setCleanupModalOpen] = React.useState(false);
+  const [cleanupDays, setCleanupDays] = React.useState(90);
+  const [isCleaningUp, setIsCleaningUp] = React.useState(false);
 
   // Activity Log State
   const [activityLogs, setActivityLogs] = React.useState<any[]>([]);
@@ -298,6 +312,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     setIsAwarding(true);
     try {
       const teamToSend = isUser ? 'mixed' : awardTeam;
+      const currentAdminName = user?.steam_name || user?.discord_name || user?.displayName || 'Admin';
+      const currentAdminId = user?.steamId || user?.steamid || user?.id;
 
       const res = await fetch('/api/admin/team-adjustments', {
         method: 'POST',
@@ -307,7 +323,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           points: parseInt(awardPoints),
           notes: awardNotes,
           userIds: isUser ? selectedUserIds : null,
-          adjustmentType: isUser ? awardAdjustmentType : 'screenshot'
+          adjustmentType: isUser ? awardAdjustmentType : 'screenshot',
+          adminName: currentAdminName,
+          adminId: currentAdminId
         })
       });
       if (res.ok) {
@@ -327,6 +345,33 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       alert('An error occurred while awarding points.');
     } finally {
       setIsAwarding(false);
+    }
+  };
+
+  const handleCleanupAuditLogs = async () => {
+    if (!window.confirm(`Are you sure you want to permanently purge audit log adjustments older than ${cleanupDays} days? This will remove old audit trail records to maintain performance while preserving all current user scores.`)) {
+      return;
+    }
+    setIsCleaningUp(true);
+    try {
+      const res = await fetch('/api/admin/audit-logs/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: cleanupDays })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(data.message || `Successfully purged ${data.purgedCount} audit logs!`);
+        setCleanupModalOpen(false);
+        await Promise.all([fetchTeamAdjustments(), fetchActivityLogs(), fetchUsers()]);
+      } else {
+        alert(`Cleanup failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Failed to cleanup audit logs:', err);
+      alert('An error occurred during audit log cleanup.');
+    } finally {
+      setIsCleaningUp(false);
     }
   };
 

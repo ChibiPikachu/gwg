@@ -314,7 +314,7 @@ export default function EventsPanel() {
         {isAdmin && (
           <button 
             onClick={() => {
-              setEditingEvent({ title: '', start_date: '', end_date: '', is_active: false, hide_scores: false });
+              setEditingEvent({ title: '', start_date: '', end_date: '', is_active: false, hide_scores: false, winner_team: 'auto' });
               setStartTime('00:00');
               setEndTime('23:59');
               setVotingDate('');
