@@ -1331,7 +1331,7 @@ export default function MySubmissions() {
                     )}>
                       <div className="flex flex-col items-center gap-0.5">
                         <div className="flex items-center gap-1 text-[10px] font-bold text-white">
-                          🏆 {sub.achievements_during} Ach
+                          🏆 {sub.achievements_during} Ach.
                         </div>
                         <div className="flex items-center gap-1 text-[10px] font-bold text-white">
                           🕒 {Math.max(0, Number(sub.hours_during || 0) - Number(sub.hours_before || 0)).toFixed(1)}h Played

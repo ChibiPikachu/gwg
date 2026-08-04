@@ -3614,7 +3614,7 @@ function TeamPointContributionChart({
                     />
                   );
                 })}
-                {/* Center cut-out circle to make it a donut */}
+                {/* Center cutout circle to make it a donut */}
                 <circle 
                   cx="100" 
                   cy="100" 

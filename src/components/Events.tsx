@@ -601,7 +601,7 @@ export default function EventsPanel() {
                   />
                   <div className="flex flex-col">
                     <span className="font-bold text-xs uppercase tracking-tight dark:text-white text-slate-900">Hide Scores</span>
-                    <span className="text-[9px] opacity-45 dark:text-white text-slate-500">Hides scores & rankings</span>
+                    <span className="text-[9px] opacity-45 dark:text-white text-slate-500">Hides scores and rankings</span>
                   </div>
                 </label>
               </div>

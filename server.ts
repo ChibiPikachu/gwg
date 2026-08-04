@@ -5100,7 +5100,7 @@ async function createServer() {
 let serverApp: any = null;
 const serverSetupPromise = createServer();
 
-// For non-Vercel environments (like local and container/Cloud Run environments)
+// For non-Vercel environments (like local and container or Cloud Run environments)
 if (!process.env.VERCEL) {
   serverSetupPromise.then(({ app, PORT }) => {
     serverApp = app;
