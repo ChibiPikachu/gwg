@@ -358,22 +358,26 @@ interface SubmissionNotesMeta {
 }
 
 function parseNotesMeta(notes: string): SubmissionNotesMeta {
-  if (notes && notes.startsWith('__META_START__')) {
-    const endIdx = notes.indexOf('__META_END__');
-    if (endIdx !== -1) {
-      try {
-        const jsonStr = notes.slice('__META_START__'.length, endIdx);
-        const meta = JSON.parse(jsonStr);
-        const userNotes = notes.slice(endIdx + '__META_END__'.length);
-        return {
-          hasNoAchievements: !!meta.hasNoAchievements,
-          level: meta.level,
-          userNotes,
-          adminName: meta.adminName,
-          adminId: meta.adminId
-        };
-      } catch (e) {
-        // Fallback
+  if (notes && typeof notes === 'string') {
+    const trimmed = notes.trim();
+    const startIdx = trimmed.indexOf('__META_START__');
+    if (startIdx !== -1) {
+      const endIdx = trimmed.indexOf('__META_END__', startIdx);
+      if (endIdx !== -1) {
+        try {
+          const jsonStr = trimmed.slice(startIdx + '__META_START__'.length, endIdx);
+          const meta = JSON.parse(jsonStr);
+          const userNotes = (trimmed.slice(0, startIdx) + trimmed.slice(endIdx + '__META_END__'.length)).trim();
+          return {
+            hasNoAchievements: !!meta.hasNoAchievements,
+            level: meta.level,
+            userNotes,
+            adminName: meta.adminName,
+            adminId: meta.adminId
+          };
+        } catch (e) {
+          // Fallback
+        }
       }
     }
   }
@@ -2163,8 +2167,20 @@ async function createServer() {
       }
 
       // Preserve existing userScores from previous snapshots or forced entries so deleted submissions don't zero out members
-      const userScores: Record<string, number> = { ...(existingSaved?.userScores || {}) };
-      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
+      const userScores: Record<string, number> = {};
+      if (existingSaved?.userScores) {
+        for (const [sid, val] of Object.entries(existingSaved.userScores)) {
+          userScores[sid] = Number(val) || 0;
+        }
+      }
+
+      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+      if (existingSaved?.teamAdjustments) {
+        for (const [t, val] of Object.entries(existingSaved.teamAdjustments)) {
+          teamAdjustments[t] = Number(val) || 0;
+        }
+      }
+
       const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
       
       // Seed existing member teams
@@ -2191,13 +2207,13 @@ async function createServer() {
         if (sub.user_id?.startsWith('team_pts_')) {
           const team = sub.user_id.substring('team_pts_'.length);
           if (teamAdjustments[team] !== undefined) {
-            teamAdjustments[team] += pts;
+            teamAdjustments[team] = (Number(teamAdjustments[team]) || 0) + pts;
           }
           return;
         }
 
         const sid = String(sub.user_id);
-        liveUserScores[sid] = (liveUserScores[sid] || 0) + pts;
+        liveUserScores[sid] = (Number(liveUserScores[sid]) || 0) + pts;
         const team = uetMap.get(sid) || profMap.get(sid);
         if (team && teamMembers[team]) {
           teamMembers[team].add(sid);
@@ -2206,7 +2222,9 @@ async function createServer() {
 
       const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
       for (const [sid, pts] of Object.entries(liveUserScores)) {
-        userScores[sid] = Math.max(userScores[sid] || 0, pts);
+        const currentPts = Number(userScores[sid]) || 0;
+        const livePts = Number(pts) || 0;
+        userScores[sid] = Math.max(currentPts, livePts);
         const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
         if (team !== 'none') userTeams[sid] = team;
       }
@@ -2222,7 +2240,7 @@ async function createServer() {
         if (p.steamid && p.points && !userScores[p.steamid]) {
           const userTeam = uetMap.get(p.steamid) || userTeams[p.steamid] || p.team;
           if (userTeam && userTeam !== 'none' && teamMembers[userTeam]?.has(p.steamid)) {
-            userScores[p.steamid] = p.points;
+            userScores[p.steamid] = Number(p.points) || 0;
           }
         }
       });
@@ -2232,12 +2250,14 @@ async function createServer() {
       ['blue', 'green', 'purple', 'red'].forEach((t) => {
         let sum = 0;
         teamMembers[t].forEach((sid) => {
-          sum += (userScores[sid] || 0);
+          sum += (Number(userScores[sid]) || 0);
         });
+        const existingTot = Number(existingSaved?.teamTotals?.[t]) || 0;
+        const adj = Number(teamAdjustments[t]) || 0;
         if (existingSaved?.forcedByAdmin && existingSaved?.teamTotals?.[t] !== undefined && !forceResync) {
-          teamTotals[t] = existingSaved.teamTotals[t];
+          teamTotals[t] = existingTot;
         } else {
-          teamTotals[t] = Math.max(existingSaved?.teamTotals?.[t] || 0, sum + (teamAdjustments[t] || 0));
+          teamTotals[t] = Math.max(existingTot, sum + adj);
         }
       });
 

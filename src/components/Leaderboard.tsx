@@ -4,6 +4,7 @@ import { Team, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { parseNotesMeta } from '@/components/AdminPanel';
 
 export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { theme, user } = useAuth();
@@ -633,9 +634,14 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               </h2>
               <div className="grid grid-cols-1 gap-3">
                 {adjustments.map((adj) => {
+                  const meta = parseNotesMeta(adj.notes || '');
                   const isUserAdj = !adj.user_id.startsWith('team_pts_');
                   const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
                   const teamName = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
+                  const cleanReason = meta.userNotes || (isUserAdj ? 'No description provided.' : (adj.notes && !adj.notes.startsWith('__META_START__') ? adj.notes : 'Bonus points awarded by Admin'));
+                  const isScreenshot = adj.game_name === 'Screenshot Points' || adj.platform === 'Screenshot Points';
+                  const isBingo = adj.game_name === 'Bingo Points' || adj.platform === 'Bingo Points';
+
                   return (
                     <div key={adj.id} className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 shadow-sm">
                       <div className="flex items-center gap-3">
@@ -651,17 +657,24 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                           <p className="text-sm dark:text-white/80 text-slate-705">
                             {isUserAdj ? (
                               <>
-                                Awarded to <span className="font-bold underline underline-offset-2">{adj.user_name}</span>: {adj.notes}
+                                Awarded to <span className="font-bold underline underline-offset-2">{adj.user_name}</span>: {cleanReason}
                               </>
                             ) : (
-                              adj.notes || "Bonus points awarded by Admin"
+                              cleanReason
                             )}
                           </p>
                           {isUserAdj && (
-                            <div className="mt-1">
-                              <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
-                                screenshot points
-                              </span>
+                            <div className="mt-1 flex items-center gap-2">
+                              {isScreenshot && (
+                                <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                                  screenshot points
+                                </span>
+                              )}
+                              {isBingo && (
+                                <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 shrink-0">
+                                  bingo points
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1060,7 +1073,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       </h3>
                       <div className="grid grid-cols-1 gap-2.5">
                         {previousEventData.adjustments.map((adj: any) => {
+                          const meta = parseNotesMeta(adj.notes || '');
                           const teamName = adj.user_id?.startsWith('team_pts_') ? adj.user_id.replace('team_pts_', '') : 'none';
+                          const cleanReason = meta.userNotes || (adj.notes && !adj.notes.startsWith('__META_START__') ? adj.notes : 'Bonus points awarded');
                           return (
                             <div key={adj.id} className="p-3.5 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 text-xs">
                               <div className="flex items-center gap-2.5">
@@ -1072,7 +1087,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                                 )}>
                                   Team {teamName}
                                 </span>
-                                <span className="opacity-80">{adj.notes || 'Bonus points awarded'}</span>
+                                <span className="opacity-80">{cleanReason}</span>
                               </div>
                               <span className="font-mono font-bold text-emerald-500">
                                 {adj.points >= 0 ? `+${adj.points}` : adj.points} pts

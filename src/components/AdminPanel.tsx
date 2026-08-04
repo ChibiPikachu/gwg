@@ -14,22 +14,26 @@ export interface SubmissionNotesMeta {
 }
 
 export function parseNotesMeta(notes: string): SubmissionNotesMeta {
-  if (notes && notes.startsWith('__META_START__')) {
-    const endIdx = notes.indexOf('__META_END__');
-    if (endIdx !== -1) {
-      try {
-        const jsonStr = notes.slice('__META_START__'.length, endIdx);
-        const meta = JSON.parse(jsonStr);
-        const userNotes = notes.slice(endIdx + '__META_END__'.length);
-        return {
-          hasNoAchievements: !!meta.hasNoAchievements,
-          level: meta.level,
-          userNotes,
-          adminName: meta.adminName,
-          adminId: meta.adminId
-        };
-      } catch (e) {
-        // Fallback
+  if (notes && typeof notes === 'string') {
+    const trimmed = notes.trim();
+    const startIdx = trimmed.indexOf('__META_START__');
+    if (startIdx !== -1) {
+      const endIdx = trimmed.indexOf('__META_END__', startIdx);
+      if (endIdx !== -1) {
+        try {
+          const jsonStr = trimmed.slice(startIdx + '__META_START__'.length, endIdx);
+          const meta = JSON.parse(jsonStr);
+          const userNotes = (trimmed.slice(0, startIdx) + trimmed.slice(endIdx + '__META_END__'.length)).trim();
+          return {
+            hasNoAchievements: !!meta.hasNoAchievements,
+            level: meta.level,
+            userNotes,
+            adminName: meta.adminName,
+            adminId: meta.adminId
+          };
+        } catch (e) {
+          // Fallback
+        }
       }
     }
   }
@@ -311,9 +315,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         setAwardNotes('');
         setAwardUserId('');
         setSelectedUserIds([]);
-        // Reload all data (including user points and adjustments log)
-        await fetchTeamAdjustments();
-        await fetchUsers(); // Refresh leaderboard data
+        // Reload all data (including user points, adjustments log, and activity log)
+        await Promise.all([fetchTeamAdjustments(), fetchUsers(), fetchActivityLogs()]);
         alert(isUser ? `Points successfully awarded to ${selectedUserIds.length} users!` : 'Points successfully awarded to the team!');
       } else {
         const data = await res.json().catch(() => ({ error: 'Unknown server error' }));
@@ -334,8 +337,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         method: 'DELETE'
       });
       if (res.ok) {
-        await fetchTeamAdjustments();
-        await fetchUsers();
+        await Promise.all([fetchTeamAdjustments(), fetchUsers(), fetchActivityLogs()]);
         alert('Adjustment successfully revoked!');
       } else {
         const data = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -2723,59 +2725,117 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {teamAdjustments.map((adj) => {
-                  const isUserAdj = !adj.user_id.startsWith('team_pts_');
+                  const meta = parseNotesMeta(adj.notes || '');
+                  const isUserAdj = !adj.user_id?.startsWith('team_pts_');
                   const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
-                  const teamName = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
+                  const userName = isUserAdj
+                    ? (targetUser?.steam_name || adj.user_name || 'Member')
+                    : (adj.user_name || `Team ${adj.user_id.replace('team_pts_', '').toUpperCase()}`);
+                  const userAvatar = isUserAdj
+                    ? (targetUser?.steam_avatar || adj.user_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png')
+                    : (adj.user_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png');
+                  const userTeam = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
+
+                  const isScreenshot = adj.game_name === 'Screenshot Points' || adj.platform === 'Screenshot Points';
+                  const isBingo = adj.game_name === 'Bingo Points' || adj.platform === 'Bingo Points';
+
+                  const adminUser = users.find(u => u.steamid === (meta.adminId || adj.verifier_id));
+                  const adminName = meta.adminName || adminUser?.steam_name || 'Admin';
+
+                  const points = Number(adj.points !== undefined && adj.points !== null ? adj.points : adj.calculated_score) || 0;
+                  const cleanReason = meta.userNotes || (isUserAdj ? 'No description provided.' : (adj.notes && !adj.notes.startsWith('__META_START__') ? adj.notes : 'Bonus points awarded'));
+
                   return (
-                    <div key={adj.id} className="p-4 rounded-xl dark:bg-black/20 bg-slate-50 border dark:border-white/5 border-black/5 flex items-center justify-between gap-4 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <span className={cn(
-                          "font-black tracking-widest text-[9px] uppercase px-2 py-0.5 rounded border shrink-0",
-                          TEAM_COLORS[teamName as Team]?.primary || "text-slate-500",
-                          TEAM_COLORS[teamName as Team]?.border || "border-slate-500/15",
-                          TEAM_COLORS[teamName as Team]?.secondary || "bg-slate-500/5"
-                        )}>
-                          {teamName}
-                        </span>
-                        <div>
-                          <p className="text-xs font-bold dark:text-white text-slate-850 select-text">
-                            {isUserAdj ? (
-                              <>
-                                Awarded to <span className="underline decoration-slate-200 dark:decoration-white/10 underline-offset-2">{adj.user_name}</span>: {adj.notes}
-                              </>
-                            ) : (
-                              adj.notes
+                    <div
+                      key={adj.id}
+                      className="p-4 rounded-2xl dark:bg-black/20 bg-slate-50 border dark:border-white/5 border-black/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm hover:border-white/10 transition-colors"
+                    >
+                      {/* Left: [user avatar + team badge] [user name] [badge screenshots/bingo] [new line: reason] [timestamp] */}
+                      <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                        <div className="relative shrink-0 mt-0.5">
+                          <img
+                            src={userAvatar}
+                            alt={userName}
+                            className="w-10 h-10 rounded-xl object-cover border dark:border-white/10 border-black/10"
+                            referrerPolicy="no-referrer"
+                          />
+                          {userTeam && userTeam !== 'none' && (
+                            <span className={cn(
+                              "absolute -bottom-1 -right-1 text-[8px] font-black uppercase tracking-tighter px-1 py-0.2 rounded border leading-none shadow-sm",
+                              TEAM_COLORS[userTeam as Team]?.primary || "text-slate-500",
+                              TEAM_COLORS[userTeam as Team]?.border || "border-slate-500/15",
+                              TEAM_COLORS[userTeam as Team]?.secondary || "bg-slate-500/5"
+                            )}>
+                              {userTeam}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold dark:text-white text-slate-900 truncate">
+                              {userName}
+                            </span>
+
+                            {/* Type badge */}
+                            {isScreenshot && (
+                              <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 shrink-0 flex items-center gap-1">
+                                <Camera size={10} /> Screenshot Points
+                              </span>
                             )}
+                            {isBingo && (
+                              <span className="text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20 shrink-0 flex items-center gap-1">
+                                <Grid size={10} /> Bingo Points
+                              </span>
+                            )}
+                            {!isScreenshot && !isBingo && (
+                              <span className="text-[9px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/20 shrink-0 flex items-center gap-1">
+                                <Shield size={10} /> Team Award
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs opacity-75 dark:text-slate-300 text-slate-700 select-text leading-relaxed">
+                            {cleanReason}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[9px] opacity-40 font-mono">{new Date(adj.created_at).toLocaleString()}</span>
-                            {isUserAdj && adj.game_name === 'Screenshot Points' && (
-                              <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0">
-                                Screenshot Points
-                              </span>
-                            )}
-                            {isUserAdj && adj.game_name === 'Bingo Points' && (
-                              <span className="text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 px-1.5 py-0.2 rounded border border-blue-500/20 shrink-0">
-                                Bingo Points
-                              </span>
-                            )}
+
+                          <div className="flex items-center gap-3 mt-0.5 flex-wrap text-[10px] font-mono opacity-50">
+                            <span className="flex items-center gap-1">
+                              <Clock size={11} />
+                              {new Date(adj.created_at).toLocaleString()}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
+                      {/* Right: approved by: [name of admin] [points] [delete button] */}
+                      <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 dark:border-white/5 border-black/5 shrink-0">
+                        {/* Admin info badge */}
+                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-black/30 px-3 py-1.5 rounded-xl border dark:border-white/5 border-black/5">
+                          <ShieldCheck size={14} className={theme.text} />
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Approved By</span>
+                            <span className="text-[11px] font-bold dark:text-white text-slate-800 leading-tight">
+                              {adminName}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Point Amount */}
                         <span className={cn(
-                          "font-mono font-bold text-xs shrink-0 px-2 py-0.5 rounded",
-                          adj.points >= 0 ? "text-emerald-500 bg-emerald-500/5 border border-emerald-500/10" : "text-red-500 bg-red-500/5 border border-red-500/10"
+                          "font-mono font-black text-sm px-3 py-1 rounded-xl border shrink-0",
+                          points >= 0 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-red-400 bg-red-500/10 border-red-500/20"
                         )}>
-                          {adj.points >= 0 ? `+${adj.points}` : adj.points} pts
+                          {points >= 0 ? `+${points}` : points} pts
                         </span>
 
+                        {/* Delete button */}
                         <button
                           onClick={() => handleDeleteAdjustment(adj.id)}
-                          className="p-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-500 text-[10px] font-bold tracking-widest uppercase transition-all cursor-pointer outline-none"
+                          className="p-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-500 text-[10px] font-bold tracking-widest uppercase transition-all cursor-pointer outline-none shrink-0"
+                          title="Revoke adjustment"
                         >
-                          Revoke
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>

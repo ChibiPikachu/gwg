@@ -14,22 +14,26 @@ export interface SubmissionNotesMeta {
 }
 
 export function parseNotesMeta(notes: string): SubmissionNotesMeta {
-  if (notes && notes.startsWith('__META_START__')) {
-    const endIdx = notes.indexOf('__META_END__');
-    if (endIdx !== -1) {
-      try {
-        const jsonStr = notes.slice('__META_START__'.length, endIdx);
-        const meta = JSON.parse(jsonStr);
-        const userNotes = notes.slice(endIdx + '__META_END__'.length);
-        return {
-          hasNoAchievements: !!meta.hasNoAchievements,
-          level: meta.level,
-          userNotes,
-          adminName: meta.adminName,
-          adminId: meta.adminId
-        };
-      } catch (e) {
-        // Fallback
+  if (notes && typeof notes === 'string') {
+    const trimmed = notes.trim();
+    const startIdx = trimmed.indexOf('__META_START__');
+    if (startIdx !== -1) {
+      const endIdx = trimmed.indexOf('__META_END__', startIdx);
+      if (endIdx !== -1) {
+        try {
+          const jsonStr = trimmed.slice(startIdx + '__META_START__'.length, endIdx);
+          const meta = JSON.parse(jsonStr);
+          const userNotes = (trimmed.slice(0, startIdx) + trimmed.slice(endIdx + '__META_END__'.length)).trim();
+          return {
+            hasNoAchievements: !!meta.hasNoAchievements,
+            level: meta.level,
+            userNotes,
+            adminName: meta.adminName,
+            adminId: meta.adminId
+          };
+        } catch (e) {
+          // Fallback
+        }
       }
     }
   }
