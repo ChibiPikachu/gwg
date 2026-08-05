@@ -694,12 +694,13 @@ export default function MySubmissions() {
       let secondaryUrl = '';
       
       if (appId && String(appId) !== 'undefined' && String(appId) !== 'null' && String(appId).trim() !== '' && String(appId) !== '0') {
-        primaryUrl = `/api/steam/check-ownership/${encodeURIComponent(String(appId).trim())}`;
-        if (selectedGame.title || selectedGame.name) {
-          secondaryUrl = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
+        const gameTitle = selectedGame.title || selectedGame.name || '';
+        primaryUrl = `/api/steam/check-ownership/${encodeURIComponent(String(appId).trim())}${gameTitle ? `?name=${encodeURIComponent(gameTitle)}` : ''}`;
+        if (gameTitle) {
+          secondaryUrl = `/api/steam/check-ownership?name=${encodeURIComponent(gameTitle)}`;
         }
       } else if (selectedGame.title || selectedGame.name) {
-        primaryUrl = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
+        primaryUrl = `/api/steam/check-ownership?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
       } else {
         setSteamVerifyMsg({ type: 'error', text: 'Game name or Steam App ID missing for verification.' });
         setVerifyingSteam(false);
