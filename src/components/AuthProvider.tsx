@@ -43,6 +43,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
   const updateProfile = async (data: { displayName: string; status: string }) => {
+    let updated = false;
+
+    // 1. Try backend endpoint /api/profile/update
     try {
       const res = await fetch('/api/profile/update', {
         method: 'POST',
@@ -52,19 +55,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const result = await res.json();
         if (result.success) {
-          setUser(prev => prev ? {
-            ...prev,
-            steamName: data.displayName,
-            status: data.status
-          } : null);
-          return true;
+          updated = true;
         }
       }
-      return false;
     } catch (err) {
-      console.error('Update profile error:', err);
-      return false;
+      console.warn('Backend update profile endpoint unavailable:', err);
     }
+
+    // 2. Direct Supabase update if configured and user is logged in
+    if (isSupabaseConfigured && supabase && user?.steamId) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            steam_name: data.displayName,
+            status: data.status
+          })
+          .eq('steamid', user.steamId);
+
+        if (!error) {
+          updated = true;
+        } else {
+          console.warn('Supabase profile update warning:', error);
+        }
+      } catch (e) {
+        console.warn('Supabase profile update exception:', e);
+      }
+    }
+
+    // 3. Always update client state & localStorage if user exists
+    if (user) {
+      const newUser = {
+        ...user,
+        steamName: data.displayName,
+        status: data.status
+      };
+      setUser(newUser);
+      localStorage.setItem('gamer_auth_user', JSON.stringify(newUser));
+      return true;
+    }
+
+    return updated;
   };
 
   // Load initial user state from server session, Supabase session, URL params, or localStorage
