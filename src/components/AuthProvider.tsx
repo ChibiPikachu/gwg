@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, ThemeHelper } from '@/types';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured, buildProfileOrFilter } from '@/lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { data: matchedProfile, error: selectErr } = await supabase
             .from('profiles')
             .select('*')
-            .or(`steamid.eq.${steamIdParam},id.eq.${steamIdParam}`)
+            .or(buildProfileOrFilter(steamIdParam))
             .maybeSingle();
 
           if (selectErr) {
@@ -250,7 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: dbProfile, error: profileErr } = await supabase
           .from('profiles')
           .select('*')
-          .or(`steamid.eq.${targetUserId},id.eq.${targetUserId},discord_id.eq.${targetUserId}`)
+          .or(buildProfileOrFilter(targetUserId))
           .maybeSingle();
 
         if (profileErr) {
@@ -298,7 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { data: profile } = await supabase
             .from('profiles')
             .select('*')
-            .or(`discord_id.eq.${session.user.id},steamid.eq.${session.user.id},id.eq.${session.user.id}`)
+            .or(buildProfileOrFilter(session.user.id))
             .maybeSingle();
 
           let userProfile = profile;
@@ -403,7 +403,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let { data: dbProfile, error } = await supabase
           .from('profiles')
           .select('*')
-          .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
+          .or(buildProfileOrFilter(userId))
           .maybeSingle();
 
         if (error) {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured, buildProfileOrFilter } from '@/lib/supabase';
 import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull, Search, X, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
@@ -173,7 +173,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
             const { data: profile, error } = await supabase
               .from('profiles')
               .select('*')
-              .or(`steamid.eq.${steamId},id.eq.${steamId},discord_id.eq.${steamId}`)
+              .or(buildProfileOrFilter(steamId))
               .maybeSingle();
 
             if (profile && !error) {
