@@ -108,13 +108,20 @@ export default function MySubmissions() {
     hasNoAchievements: false,
     level: 2
   });
-  const [verifyingSteam, setVerifyingSteam] = React.useState(false);
-  const [steamVerifyMsg, setSteamVerifyMsg] = React.useState<{type: 'error' | 'success' | 'info', text: string} | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
-  const [steamTotalStats, setSteamTotalStats] = React.useState<{hours: number, achievements: number} | null>(null);
   const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned' | 'pending'>('all');
   const [submissionsSearchQuery, setSubmissionsSearchQuery] = React.useState('');
   const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
+
+  const getAuthHeaders = React.useCallback(() => {
+    const userIdHeader = user?.steamId || user?.uid || user?.discordId || '';
+    return {
+      'Content-Type': 'application/json',
+      'x-user-id': userIdHeader,
+      'x-steam-id': user?.steamId || '',
+      'x-discord-id': user?.discordId || '',
+    };
+  }, [user]);
 
   const [events, setEvents] = React.useState<any[]>([]);
   const [pastEventsPage, setPastEventsPage] = React.useState(1);
@@ -176,17 +183,6 @@ export default function MySubmissions() {
   React.useEffect(() => {
     setPastEventsPage(1);
   }, [submissionsSearchQuery, completionFilter]);
-
-  // Auto-fill total stats from Verified Steam
-  React.useEffect(() => {
-    if (formData.platform === 'Steam' && steamTotalStats) {
-      setFormData(prev => ({
-        ...prev,
-        achievementsEarned: String(steamTotalStats.achievements),
-        hoursPlayed: steamTotalStats.hours.toFixed(1)
-      }));
-    }
-  }, [steamTotalStats, formData.platform]);
 
   const multiplierPreview = React.useMemo(() => {
     const totalHours = parseFloat(formData.hoursPlayed) || 0;
@@ -335,7 +331,9 @@ export default function MySubmissions() {
     }
 
     try {
-      const res = await fetch('/api/submissions');
+      const res = await fetch('/api/submissions', {
+        headers: getAuthHeaders()
+      });
       const contentType = res.headers.get('content-type');
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
@@ -557,7 +555,7 @@ export default function MySubmissions() {
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           gameId: selectedGame.id,
           gameTitle: selectedGame.title,
@@ -615,8 +613,6 @@ export default function MySubmissions() {
       level: meta.level !== undefined ? meta.level : 2,
       beatenPrevious: sub.beaten_previous || 'no'
     });
-    setSteamVerifyMsg(null);
-    setSteamTotalStats(null);
     setShowForm(true);
   };
 
@@ -637,7 +633,8 @@ export default function MySubmissions() {
 
     try {
       const res = await fetch(`/api/submissions/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       if (res.ok) {
         setSubmissions(prev => prev.filter(s => s.id !== id));
@@ -671,94 +668,6 @@ export default function MySubmissions() {
     setGameSearch('');
     setIgdbIdSearch('');
     setSteamAppIdSearch('');
-    setSteamVerifyMsg(null);
-    setSteamTotalStats(null);
-  };
-
-  const handleVerifySteam = async () => {
-    if (!selectedGame) return;
-    setVerifyingSteam(true);
-    setSteamVerifyMsg({ type: 'info', text: 'Verifying ownership...' });
-    setSteamTotalStats(null);
-
-    const userIdHeader = user?.steamId || user?.uid || user?.discordId || '';
-    const reqHeaders = {
-      'x-user-id': userIdHeader,
-      'x-steam-id': user?.steamId || '',
-      'x-discord-id': user?.discordId || '',
-    };
-
-    try {
-      let appId = selectedGame.steam_appid || selectedGame.steamAppId || selectedGame.appid;
-      let primaryUrl = '';
-      let secondaryUrl = '';
-      
-      if (appId && String(appId) !== 'undefined' && String(appId) !== 'null' && String(appId).trim() !== '' && String(appId) !== '0') {
-        const gameTitle = selectedGame.title || selectedGame.name || '';
-        primaryUrl = `/api/steam/check-ownership/${encodeURIComponent(String(appId).trim())}${gameTitle ? `?name=${encodeURIComponent(gameTitle)}` : ''}`;
-        if (gameTitle) {
-          secondaryUrl = `/api/steam/check-ownership?name=${encodeURIComponent(gameTitle)}`;
-        }
-      } else if (selectedGame.title || selectedGame.name) {
-        primaryUrl = `/api/steam/check-ownership?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
-      } else {
-        setSteamVerifyMsg({ type: 'error', text: 'Game name or Steam App ID missing for verification.' });
-        setVerifyingSteam(false);
-        return;
-      }
-
-      let res = await fetch(primaryUrl, { headers: reqHeaders });
-      let data = await res.json().catch(() => ({}));
-
-      // If primary check failed with 404 or not owned, try secondary URL (by name) if available
-      if ((!res.ok || (data && !data.owned)) && secondaryUrl) {
-        console.log('[Ownership Verification] Primary check unsuccessful, trying secondary by name:', secondaryUrl);
-        const secondRes = await fetch(secondaryUrl, { headers: reqHeaders });
-        const secondData = await secondRes.json().catch(() => ({}));
-        if (secondRes.ok) {
-          res = secondRes;
-          data = secondData;
-        }
-      }
-
-      if (!res.ok) {
-        setSteamVerifyMsg({ 
-          type: 'error', 
-          text: data.error || `Verification request failed (${res.status}). Please ensure Steam ID is linked in settings.` 
-        });
-        return;
-      }
-
-      if (data.owned) {
-        const totalHours = (data.playtime_forever || 0) / 60;
-        const totalAchievements = data.achievements || 0;
-        
-        setSteamTotalStats({
-          hours: totalHours,
-          achievements: totalAchievements
-        });
-
-        setFormData(prev => ({
-          ...prev,
-          achievementsEarned: String(totalAchievements),
-          hoursPlayed: totalHours.toFixed(1)
-        }));
-        
-        setSteamVerifyMsg({ 
-          type: 'success', 
-          text: `Verified! Found game on Steam.` 
-        });
-      } else {
-        setSteamVerifyMsg({ 
-          type: 'error', 
-          text: 'Game not found in your Steam library. Please verify the game name or check your profile privacy.' 
-        });
-      }
-    } catch (err: any) {
-      setSteamVerifyMsg({ type: 'error', text: err?.message || 'Failed to verify with Steam. API error.' });
-    } finally {
-      setVerifyingSteam(false);
-    }
   };
 
   return (
@@ -898,8 +807,6 @@ export default function MySubmissions() {
                             key={game.id}
                             onClick={() => {
                               setSelectedGame(game);
-                              setSteamVerifyMsg(null);
-                              setSteamTotalStats(null);
                             }}
                             type="button"
                             className="w-full flex gap-4 p-3 dark:bg-white/5 bg-slate-50 hover:dark:bg-white/10 hover:bg-slate-100 border dark:border-white/5 border-slate-200 rounded-xl transition-all text-left items-center group"
@@ -957,8 +864,8 @@ export default function MySubmissions() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-6">
-                    <div className="col-span-1 space-y-2">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                    <div className="col-span-2 space-y-2">
                        <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Platform</label>
                        <select 
                          className={cn("w-full dark:bg-[#111] bg-slate-50 border dark:border-white/5 border-slate-200 rounded-xl p-3 focus:outline-none dark:text-white text-slate-900", `focus:${theme.border}/50`)}
@@ -972,11 +879,6 @@ export default function MySubmissions() {
                              hasNoAchievements: isNintendo ? true : prev.hasNoAchievements,
                              achievementsEarned: isNintendo ? '0' : prev.achievementsEarned === '0' ? '' : prev.achievementsEarned
                            }));
-                           if (val === 'Steam') {
-                             handleVerifySteam();
-                           } else {
-                             setSteamVerifyMsg(null);
-                           }
                          }}
                        >
                          {['Steam', 'Epic Games', 'Nintendo', 'Xbox', 'PlayStation', 'GoG', 'Others'].map(p => (
@@ -984,42 +886,6 @@ export default function MySubmissions() {
                          ))}
                        </select>
                     </div>
-
-                    <div className="col-span-1 space-y-2">
-                      <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Steam Verification</label>
-                      <div className="h-11 flex items-center">
-                        {formData.platform === 'Steam' ? (
-                          <button 
-                            type="button"
-                            disabled={verifyingSteam}
-                            onClick={handleVerifySteam}
-                            className={cn(
-                              "text-[10px] font-bold px-4 py-2 rounded-lg border transition-all flex items-center gap-2",
-                              verifyingSteam ? "opacity-50" : "hover:bg-white/5"
-                            )}
-                          >
-                            {verifyingSteam ? <Loader2 size={12} className="animate-spin" /> : <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-3.5 h-3.5 filter invert" alt="" />}
-                            {verifyingSteam ? 'Verifying...' : 'Check Ownership'}
-                          </button>
-                        ) : (
-                          <span className="text-[10px] opacity-20 italic">Only for Steam</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {steamVerifyMsg && (
-                      <div className={cn(
-                        "col-span-2 p-3 rounded-xl text-[10px] font-bold flex items-center gap-2",
-                        steamVerifyMsg.type === 'error' ? "bg-red-500/10 border border-red-500/20 text-red-400" :
-                        steamVerifyMsg.type === 'success' ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" :
-                        "bg-blue-500/10 border border-blue-500/20 text-blue-400"
-                      )}>
-                        {steamVerifyMsg.type === 'error' && <AlertCircle size={14} />}
-                        {steamVerifyMsg.type === 'success' && <CheckCircle2 size={14} />}
-                        {steamVerifyMsg.type === 'info' && <Loader2 size={14} className="animate-spin" />}
-                        {steamVerifyMsg.text}
-                      </div>
-                    )}
 
                     <div className="space-y-2 col-span-2">
                        <label className="text-xs font-bold opacity-40 dark:text-white text-slate-500">Completion Status</label>

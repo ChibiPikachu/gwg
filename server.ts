@@ -660,11 +660,15 @@ async function fetchSteamAchievementCount(appId: number | string) {
 }
 
 const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string, steamAppId?: number | string) => {
+    const safeGameId = (gameId && String(gameId) !== 'undefined' && String(gameId) !== 'null' && String(gameId).trim() !== '') 
+      ? String(gameId).trim() 
+      : (steamAppId ? `steam_${steamAppId}` : `custom_${Date.now()}`);
+
     // 1. Check if game already exists in our 'games' table
     const { data: existingGame } = await supabase
       .from('games')
       .select('*')
-      .eq('id', String(gameId))
+      .eq('id', safeGameId)
       .maybeSingle();
 
     // If game exists and has HLTB data (> 0) and total achievements (if steam), return existing ID
@@ -695,9 +699,9 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
 
     // 3. Upsert into the 'games' table
     const gameData: any = {
-      id: String(gameId),
-      title: title,
-      image_url: image,
+      id: safeGameId,
+      title: title || 'Unknown Game',
+      image_url: image || '',
       hltb_main: hltb?.notFound ? -1 : (hltb?.hltb_main || existingGame?.hltb_main || 0),
       hltb_extras: hltb?.hltb_extras || existingGame?.hltb_extras || 0,
       hltb_completionist: hltb?.hltb_completionist || existingGame?.hltb_completionist || 0,
@@ -717,7 +721,7 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
       console.error('Failed to sync game record:', upsertError);
     }
 
-    return gameId;
+    return safeGameId;
 };
 
 import { getHLTBData } from './hltb.js';
@@ -3102,7 +3106,7 @@ async function createServer() {
         completion_status: completionStatus || 'beaten',
         beaten_previous: finalBeatenPrevious,
         platform: platform || 'Others',
-        steam_appid: finalSteamAppId || null, // Saved to DB here!
+        steam_appid: (finalSteamAppId && !isNaN(parseInt(String(finalSteamAppId)))) ? parseInt(String(finalSteamAppId)) : null,
         points: serverPoints, 
         notes: notes || '',
         status: 'pending',
@@ -3153,13 +3157,14 @@ async function createServer() {
   });
 
   app.put('/api/submissions/:id', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const supabase = getSupabase();
+    const currentUser = await getAuthUser(req, supabase);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Unauthorized: Please log in first.' });
     }
 
     const { id } = req.params;
-    const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const steamId = String(currentUser.steamid || currentUser.id || currentUser.steam_id || currentUser.discord_id || '');
     const { 
       achievements, 
       hours, 
@@ -3173,7 +3178,6 @@ async function createServer() {
 
     const finalBeatenPrevious = beatenPrevious || beaten_previous || 'no';
 
-    const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
@@ -3280,15 +3284,15 @@ async function createServer() {
   });
 
   app.delete('/api/submissions/:id', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const supabase = getSupabase();
+    const currentUser = await getAuthUser(req, supabase);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Unauthorized: Please log in first.' });
     }
 
     const { id } = req.params;
-    const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const steamId = String(currentUser.steamid || currentUser.id || currentUser.steam_id || currentUser.discord_id || '');
     
-    const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
@@ -4809,156 +4813,6 @@ async function createServer() {
       }
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch steam data' });
-    }
-  });
-
-  app.get('/api/steam/check-ownership-by-name', async (req, res) => {
-    const supabase = getSupabase();
-    const currentUser = await getAuthUser(req, supabase);
-    if (!currentUser) {
-      return res.status(401).json({ error: 'Unauthorized: Please log in to verify ownership.' });
-    }
-
-    const { name } = req.query;
-    if (!name || String(name).trim() === '') return res.status(400).json({ error: 'Name parameter is required' });
-
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
-
-    const steamId = await resolveSteamId(currentUser, supabase);
-
-    if (!steamId) {
-      return res.status(400).json({ error: 'Steam ID not found. Please ensure your Steam account is linked in your profile.' });
-    }
-
-    try {
-      const games = await fetchSteamOwnedGames(steamId, supabase);
-      if (!games) {
-        return res.status(500).json({ error: 'Could not fetch Steam library. Ensure server has STEAM_API_KEY set or profile/game details on Steam are public.' });
-      }
-
-      const normalize = (str: string) => str.toLowerCase().replace(/[®™©]/g, '').replace(/[^a-z0-9]/g, '');
-      const searchName = normalize(name as string);
-
-      // 1. Try exact normalized match
-      let game = games.find((g: any) => normalize(g.name) === searchName);
-      
-      // 2. Try prefix match if not found
-      if (!game) {
-        game = games.find((g: any) => {
-          const gn = normalize(g.name);
-          return gn.startsWith(searchName) || searchName.startsWith(gn);
-        });
-      }
-
-      // 3. Try fuzzy/contains match if still not found
-      if (!game) {
-        game = games.find((g: any) => {
-          const gn = normalize(g.name);
-          return gn.includes(searchName) || searchName.includes(gn);
-        });
-      }
-
-      if (game) {
-        const achievements = await fetchSteamAchievementCountForUser(steamId, game.appid);
-        return res.json({ 
-          owned: true, 
-          appId: game.appid,
-          playtime_forever: game.playtime_forever,
-          name: game.name,
-          achievements: achievements
-        });
-      }
-
-      res.json({ owned: false });
-    } catch (err) {
-      console.error('Steam ownership check by name failed:', err);
-      res.status(500).json({ error: 'Internal server error while verifying Steam ownership' });
-    }
-  });
-
-  app.get(['/api/steam/check-ownership', '/api/steam/check-ownership/:appId'], async (req, res) => {
-    const rawAppId = req.params.appId || req.query.appId || req.query.gameId;
-    const gameName = (req.query.name || req.query.title) as string;
-
-    const appId = rawAppId && String(rawAppId) !== 'undefined' && String(rawAppId) !== 'null' ? String(rawAppId).trim() : null;
-
-    if (!appId && (!gameName || gameName.trim() === '')) {
-      return res.status(400).json({ error: 'App ID or game name is required for verification.' });
-    }
-
-    const supabase = getSupabase();
-    const currentUser = await getAuthUser(req, supabase);
-    if (!currentUser) {
-      return res.status(401).json({ error: 'Unauthorized: Please log in to verify ownership.' });
-    }
-
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
-
-    const steamId = await resolveSteamId(currentUser, supabase);
-
-    if (!steamId) {
-      return res.status(400).json({ error: 'Steam ID not found. Please ensure your Steam account is linked in your profile or Discord login.' });
-    }
-
-    try {
-      const games = await fetchSteamOwnedGames(steamId, supabase);
-      if (!games) {
-        return res.status(500).json({ error: 'Could not fetch Steam library. Ensure profile details/games on Steam are set to Public.' });
-      }
-
-      // 1. Try App ID match if valid numeric App ID
-      if (appId && /^\d+$/.test(appId) && appId !== '0') {
-        const gameByAppId = games.find((g: any) => String(g.appid) === String(appId));
-        if (gameByAppId) {
-          const achievements = await fetchSteamAchievementCountForUser(steamId, appId);
-          return res.json({ 
-            owned: true, 
-            appId: gameByAppId.appid,
-            playtime_forever: gameByAppId.playtime_forever || 0,
-            playtime_2weeks: gameByAppId.playtime_2weeks || 0,
-            name: gameByAppId.name,
-            achievements: achievements
-          });
-        }
-      }
-
-      // 2. Try Name match if gameName provided or if appId search failed
-      const searchTarget = gameName || (appId && !/^\d+$/.test(appId) ? appId : null);
-      if (searchTarget && searchTarget.trim() !== '') {
-        const normalize = (str: string) => str.toLowerCase().replace(/[®™©]/g, '').replace(/[^a-z0-9]/g, '');
-        const targetNormalized = normalize(searchTarget);
-
-        let matchedGame = games.find((g: any) => normalize(g.name) === targetNormalized);
-        if (!matchedGame) {
-          matchedGame = games.find((g: any) => {
-            const gn = normalize(g.name);
-            return gn.startsWith(targetNormalized) || targetNormalized.startsWith(gn);
-          });
-        }
-        if (!matchedGame) {
-          matchedGame = games.find((g: any) => {
-            const gn = normalize(g.name);
-            return gn.includes(targetNormalized) || targetNormalized.includes(gn);
-          });
-        }
-
-        if (matchedGame) {
-          const achievements = await fetchSteamAchievementCountForUser(steamId, matchedGame.appid);
-          return res.json({ 
-            owned: true, 
-            appId: matchedGame.appid,
-            playtime_forever: matchedGame.playtime_forever || 0,
-            playtime_2weeks: matchedGame.playtime_2weeks || 0,
-            name: matchedGame.name,
-            achievements: achievements
-          });
-        }
-      }
-
-      res.json({ owned: false, message: 'Game not found in your Steam library' });
-    } catch (err: any) {
-      console.error('Steam ownership check failed:', err);
-      res.status(500).json({ error: 'Internal server error while verifying Steam ownership: ' + (err.message || 'Unknown error') });
     }
   });
 
