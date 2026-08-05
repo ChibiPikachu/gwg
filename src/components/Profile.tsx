@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull, Search, X, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
@@ -123,23 +124,65 @@ export default function Profile({ steamId }: { steamId?: string }) {
       setLoading(false);
     } else {
       setLoading(true);
-      fetch(`/api/users/${steamId}`)
-        .then(async res => {
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || 'Failed to fetch user');
+      const fetchUserProfile = async () => {
+        if (isSupabaseConfigured && supabase && steamId) {
+          try {
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .or(`steamid.eq.${steamId},id.eq.${steamId},discord_id.eq.${steamId}`)
+              .maybeSingle();
+
+            if (profile && !error) {
+              const isAdmin = profile.role === 'admin' || profile.role === 'admins' || profile.role === 'owner' || profile.is_admin === true || profile.isAdmin === true;
+              const formattedUser = {
+                uid: String(profile.steamid || profile.id || steamId),
+                steamId: String(profile.steamid || profile.id || steamId),
+                steamName: profile.steam_name || profile.display_name || profile.discord_name || 'Gamer',
+                steamAvatar: (profile.active_avatar === 'discord' && profile.discord_avatar)
+                  ? profile.discord_avatar
+                  : (profile.steam_avatar || profile.discord_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg'),
+                team: profile.team || 'none',
+                isAdmin: Boolean(isAdmin),
+                role: profile.role || (isAdmin ? 'admin' : 'member'),
+                status: profile.status || 'Ready for Event',
+                points: typeof profile.points === 'number' ? profile.points : 0,
+                discordId: profile.discord_id,
+                discordName: profile.discord_name,
+                discordAvatar: profile.discord_avatar,
+                createdAt: profile.created_at,
+                eventTeams: profile.eventTeams || {},
+                needs_registration: profile.needs_registration || false
+              };
+              setTargetUser(formattedUser);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.warn('Supabase fetch target profile error:', e);
           }
-          return res.json();
-        })
-        .then(data => {
-          setTargetUser(data);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error('Failed to fetch user:', err);
-          setTargetUser({ error: err.message || 'Failed to load user profile' });
-          setLoading(false);
-        });
+        }
+
+        fetch(`/api/users/${steamId}`)
+          .then(async res => {
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || 'Failed to fetch user');
+            }
+            return res.json();
+          })
+          .then(data => {
+            setTargetUser(data);
+            setLoading(false);
+          })
+          .catch(err => {
+            console.error('Failed to fetch user:', err);
+            setTargetUser({ error: err.message || 'Failed to load user profile' });
+            setLoading(false);
+          });
+      };
+
+      fetchUserProfile();
     }
   }, [steamId, currentUser, isOwnProfile]);
 

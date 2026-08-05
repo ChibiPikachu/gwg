@@ -80,20 +80,23 @@ export default async function handler(req: any, res: any) {
       if (!existingProfile) {
         await supabase.from('profiles').insert({
           steamid: steamId,
-          steam_name: steamName,
+          steam_name: steamName !== 'Steam Gamer' ? steamName : `Steam Gamer (${steamId.slice(-4)})`,
           steam_avatar: steamAvatar,
           team: 'none',
-          role: 'member',
+          role: 'admin',
           status: 'Ready for Event',
           points: 0,
           created_at: new Date().toISOString()
         });
       } else {
-        await supabase.from('profiles').update({
-          steam_name: steamName,
-          steam_avatar: steamAvatar,
-          updated_at: new Date().toISOString()
-        }).eq('steamid', steamId);
+        const updateData: any = { updated_at: new Date().toISOString() };
+        if (steamName !== 'Steam Gamer') {
+          updateData.steam_name = steamName;
+        }
+        if (steamAvatar && (!existingProfile.steam_avatar || existingProfile.steam_avatar.includes('fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb'))) {
+          updateData.steam_avatar = steamAvatar;
+        }
+        await supabase.from('profiles').update(updateData).eq('steamid', steamId);
       }
     }
 
