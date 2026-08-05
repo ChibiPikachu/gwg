@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { createClient } from '@supabase/supabase-js';
+import gameSearchHandler from './api/game-search';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1582,7 +1583,12 @@ async function createServer() {
     res.json(null);
   });
 
-  // IGDB Game Search
+  // IGDB Game Search Vercel Serverless Function Route
+  app.all('/api/game-search', (req, res) => {
+    return gameSearchHandler(req, res);
+  });
+
+  // IGDB Game Search Legacy Route
   app.get('/api/games/search', async (req, res) => {
     const { query, igdbId, steamAppId } = req.query;
     if (!query && !igdbId && !steamAppId) return res.json([]);

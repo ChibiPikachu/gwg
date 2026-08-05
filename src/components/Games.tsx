@@ -18,6 +18,8 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   const [searchQuery, setSearchQuery] = React.useState('');
   const [currentPage, setCurrentPage] = React.useState(1);
   const [viewMode, setViewMode] = React.useState<'list' | 'grid'>('grid'); // Defaulting to grid or list as needed, let's default to list
+  const [igdbSearchResults, setIgdbSearchResults] = React.useState<any[]>([]);
+  const [isSearchingIgdb, setIsSearchingIgdb] = React.useState(false);
   const itemsPerPage = 40;
 
   // Fetch events list first
@@ -82,6 +84,30 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
   React.useEffect(() => {
     setCurrentPage(1);
+
+    const query = searchQuery.trim();
+    if (!query) {
+      setIgdbSearchResults([]);
+      setIsSearchingIgdb(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setIsSearchingIgdb(true);
+      fetch(`/api/game-search?query=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+          setIgdbSearchResults(Array.isArray(data) ? data : []);
+          setIsSearchingIgdb(false);
+        })
+        .catch(err => {
+          console.warn('IGDB game search error:', err);
+          setIgdbSearchResults([]);
+          setIsSearchingIgdb(false);
+        });
+    }, 350);
+
+    return () => clearTimeout(timer);
   }, [searchQuery]);
 
   const filteredAndSortedGames = React.useMemo(() => {
@@ -240,6 +266,56 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
               {e.title}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Global IGDB Search Results via Vercel Function */}
+      {searchQuery.trim() !== '' && (
+        <div className="flex flex-col gap-4 p-5 rounded-2xl bg-black/10 dark:bg-white/5 border border-black/5 dark:border-white/5 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Search size={16} className={theme.text} />
+              <h2 className="font-bold text-sm md:text-base dark:text-white text-slate-800">
+                IGDB Database Results for "{searchQuery}"
+              </h2>
+            </div>
+            {isSearchingIgdb && <span className="text-xs opacity-50 animate-pulse font-medium">Searching IGDB...</span>}
+          </div>
+
+          {!isSearchingIgdb && igdbSearchResults.length === 0 ? (
+            <p className="text-xs opacity-50 italic">No games returned from IGDB for "{searchQuery}".</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {igdbSearchResults.map((game) => (
+                <div
+                  key={game.id}
+                  className="flex flex-col gap-2 p-2.5 rounded-xl bg-black/20 dark:bg-black/40 border border-white/5 hover:border-white/20 transition-all min-w-0"
+                >
+                  <div className="aspect-[3/4] relative rounded-lg overflow-hidden bg-white/5">
+                    <img
+                      src={game.image || game.game_image}
+                      alt={game.title || game.game_name}
+                      className="w-full h-full object-cover"
+                    />
+                    {game.steam_appid && (
+                      <a
+                        href={`https://store.steampowered.com/app/${game.steam_appid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute top-1.5 right-1.5 p-1 bg-black/80 rounded-md text-blue-400 hover:text-blue-300 transition-colors shadow"
+                        title="View on Steam"
+                      >
+                        <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </div>
+                  <h4 className="font-bold text-xs truncate dark:text-white text-slate-100" title={game.title || game.game_name}>
+                    {game.title || game.game_name}
+                  </h4>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
