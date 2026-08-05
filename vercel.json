@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/games/search",
+      "destination": "/api/game-search"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
