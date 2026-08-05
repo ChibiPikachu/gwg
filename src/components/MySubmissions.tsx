@@ -270,6 +270,39 @@ export default function MySubmissions() {
   }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus, formData.beatenPrevious]);
 
   const fetchSubmissions = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase && user?.steamId) {
+      try {
+        const { data, error } = await supabase
+          .from('submissions')
+          .select('*')
+          .eq('user_id', user.steamId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          setSubmissions(data);
+          setLoading(false);
+
+          // Batch fetch HLTB data for these submissions
+          const uniqueTitles = Array.from(new Set(data.map((s: any) => s.game_name)));
+          if (uniqueTitles.length > 0) {
+            fetch('/api/hltb-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ titles: uniqueTitles })
+            })
+            .then(r => r.json())
+            .then(hltb => {
+              setHltbData(prev => ({ ...prev, ...hltb }));
+            })
+            .catch(err => console.error('HLTB batch fetch failed:', err));
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('Direct Supabase fetch for my submissions failed:', err);
+      }
+    }
+
     try {
       const res = await fetch('/api/submissions');
       if (res.ok) {
@@ -297,7 +330,7 @@ export default function MySubmissions() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.steamId]);
 
   React.useEffect(() => {
     fetchSubmissions();
@@ -516,6 +549,18 @@ export default function MySubmissions() {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this submission?')) return;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('submissions').delete().eq('id', id);
+        if (!error) {
+          setSubmissions(prev => prev.filter(s => s.id !== id));
+          return;
+        }
+      } catch (err) {
+        console.warn('Direct Supabase delete failed, falling back to API:', err);
+      }
+    }
 
     try {
       const res = await fetch(`/api/submissions/${id}`, {
@@ -1331,7 +1376,7 @@ export default function MySubmissions() {
                     )}>
                       <div className="flex flex-col items-center gap-0.5">
                         <div className="flex items-center gap-1 text-[10px] font-bold text-white">
-                          🏆 {sub.achievements_during} Ach.
+                          🏆 {sub.achievements_during} Ach
                         </div>
                         <div className="flex items-center gap-1 text-[10px] font-bold text-white">
                           🕒 {Math.max(0, Number(sub.hours_during || 0) - Number(sub.hours_before || 0)).toFixed(1)}h Played

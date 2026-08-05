@@ -3,6 +3,7 @@ import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2, Histo
 import { CompetitionEvent, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function EventsPanel() {
   const { user, theme } = useAuth();
@@ -150,6 +151,23 @@ export default function EventsPanel() {
   // State values are synced on click in the button handlers to avoid race conditions and dependency synchronization loops
 
   const fetchEvents = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .order('start_date', { ascending: false });
+
+        if (!error && data) {
+          setEvents(data);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Direct Supabase query for events failed:', err);
+      }
+    }
+
     try {
       const res = await fetch('/api/events');
       if (res.ok) {
@@ -601,7 +619,7 @@ export default function EventsPanel() {
                   />
                   <div className="flex flex-col">
                     <span className="font-bold text-xs uppercase tracking-tight dark:text-white text-slate-900">Hide Scores</span>
-                    <span className="text-[9px] opacity-45 dark:text-white text-slate-500">Hides scores and rankings</span>
+                    <span className="text-[9px] opacity-45 dark:text-white text-slate-500">Hides scores & rankings</span>
                   </div>
                 </label>
               </div>

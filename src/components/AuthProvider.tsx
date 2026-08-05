@@ -199,19 +199,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('message', handleMessage);
   }, [fetchMe]);
 
+  // Subscribe to Supabase auth state changes for OAuth login flows
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        fetchMe();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fetchMe]);
+
   const loginWithSteam = async () => {
     try {
-      const res = await fetch('/api/auth/steam/url');
-      const { url } = await res.json();
-      window.location.href = url;
+      const res = await fetch('/api/auth/steam/login?json=true');
+      if (res.ok) {
+        const { url } = await res.json();
+        if (url) {
+          window.location.href = url;
+          return;
+        }
+      }
+      window.location.href = '/api/auth/steam/login';
     } catch (error) {
-      console.error('Failed to get Steam auth URL:', error);
-      // Fallback to old behavior if API fails for some reason
-      window.location.href = '/auth/steam';
+      console.error('Failed to initiate Steam login:', error);
+      window.location.href = '/api/auth/steam/login';
     }
   };
 
   const syncWithDiscord = async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'discord',
+          options: {
+            redirectTo: window.location.origin
+          }
+        });
+        if (error) {
+          console.error('Discord OAuth error:', error);
+          alert('Discord OAuth failed: ' + error.message);
+        }
+        return;
+      } catch (err) {
+        console.error('Discord OAuth exception:', err);
+      }
+    }
+
     try {
       const res = await fetch('/api/auth/discord/url');
       const data = await res.json();

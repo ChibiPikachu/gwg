@@ -11,7 +11,30 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
 
-  const fetchTeammates = React.useCallback(() => {
+  const fetchTeammates = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase && user?.team && user.team !== 'none') {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
+          .eq('team', user.team);
+
+        if (!error && data) {
+          const transformed = data.map((u: any) => ({
+            ...u,
+            steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
+            points: u.points || 0
+          })).sort((a: any, b: any) => b.points - a.points);
+
+          setMembers(transformed);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Direct Supabase fetch for team members failed:', err);
+      }
+    }
+
     fetch('/api/leaderboard/users')
       .then(res => res.json())
       .then(data => {
@@ -120,7 +143,12 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                value={searchQuery}
                onChange={(e) => setSearchQuery(e.target.value)}
                placeholder="Search teammate name, handle..."
-               className="w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-sm transition-all placeholder:opacity-40"
+               className={cn(
+                 "w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 shadow-sm transition-all placeholder:opacity-40",
+                 user?.team === 'blue' ? "focus:ring-sky-500/50" :
+                 user?.team === 'green' ? "focus:ring-green-500/50" :
+                 user?.team === 'red' ? "focus:ring-red-500/50" : "focus:ring-purple-500/50"
+               )}
              />
              {searchQuery && (
                <button

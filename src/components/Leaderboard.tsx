@@ -150,7 +150,31 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
   };
 
-  const fetchUsers = React.useCallback(() => {
+  const fetchUsers = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
+          .not('team', 'is', null)
+          .neq('team', 'none');
+
+        if (error) throw error;
+
+        const transformed = (data || []).map((u: any) => ({
+          ...u,
+          steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
+          points: u.points || 0
+        })).sort((a: any, b: any) => b.points - a.points);
+
+        setUsers(transformed);
+        setLoading(false);
+        return;
+      } catch (err) {
+        console.warn('Direct Supabase fetch for users failed, trying API fallback:', err);
+      }
+    }
+
     fetch('/api/leaderboard/users')
       .then(res => res.json())
       .then(data => {
@@ -163,7 +187,23 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       });
   }, []);
 
-  const fetchAdjustments = React.useCallback(() => {
+  const fetchAdjustments = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('team_adjustments')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          setAdjustments(data);
+          return;
+        }
+      } catch (err) {
+        console.warn('Direct Supabase fetch for team adjustments failed:', err);
+      }
+    }
+
     fetch('/api/team-adjustments')
       .then(res => res.json())
       .then(data => {
@@ -193,29 +233,58 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     fetchAdjustments();
 
     // Fetch all events for active check & previous events list
-    fetch('/api/events')
-      .then(res => res.json())
-      .then(data => {
-        const allEvts = Array.isArray(data) ? data : [];
-        setEvents(allEvts);
-        
-        const active = allEvts.find((e: any) => e.is_active);
-        setActiveEvent(active);
+    const loadEvents = async () => {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: true });
 
-        // Auto select the latest previous event if available
-        const pastEvts = allEvts.filter((e: any) => !e.is_active);
-        if (pastEvts.length > 0) {
-          const lastPast = pastEvts[pastEvts.length - 1];
-          setSelectedPreviousEventId(lastPast.id);
-          fetchPreviousEventLeaderboard(lastPast.id);
+          if (!error && data && Array.isArray(data)) {
+            setEvents(data);
+            const active = data.find((e: any) => e.is_active);
+            setActiveEvent(active);
+
+            const pastEvts = data.filter((e: any) => !e.is_active);
+            if (pastEvts.length > 0) {
+              const lastPast = pastEvts[pastEvts.length - 1];
+              setSelectedPreviousEventId(lastPast.id);
+              fetchPreviousEventLeaderboard(lastPast.id);
+            }
+            setLoadingEvent(false);
+            return;
+          }
+        } catch (err) {
+          console.warn('Direct Supabase fetch for events failed:', err);
         }
+      }
 
-        setLoadingEvent(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch events for leaderboard:', err);
-        setLoadingEvent(false);
-      });
+      fetch('/api/events')
+        .then(res => res.json())
+        .then(data => {
+          const allEvts = Array.isArray(data) ? data : [];
+          setEvents(allEvts);
+          
+          const active = allEvts.find((e: any) => e.is_active);
+          setActiveEvent(active);
+
+          const pastEvts = allEvts.filter((e: any) => !e.is_active);
+          if (pastEvts.length > 0) {
+            const lastPast = pastEvts[pastEvts.length - 1];
+            setSelectedPreviousEventId(lastPast.id);
+            fetchPreviousEventLeaderboard(lastPast.id);
+          }
+
+          setLoadingEvent(false);
+        })
+        .catch(err => {
+          console.error('Failed to fetch events for leaderboard:', err);
+          setLoadingEvent(false);
+        });
+    };
+
+    loadEvents();
 
     if (!isSupabaseConfigured) return;
 

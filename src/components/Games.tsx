@@ -2,6 +2,7 @@ import React from 'react';
 import { Gamepad2, Users, ExternalLink, Trophy, SortAsc, Users2, Filter, ChevronLeft, ChevronRight, Archive, CheckCircle2, Search, X, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { cn } from '@/lib/utils';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type SortOption = 'az' | 'members';
 type FilterOption = 'active' | 'archived';
@@ -21,6 +22,26 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
   // Fetch events list first
   React.useEffect(() => {
+    if (isSupabaseConfigured && supabase) {
+      supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: false })
+        .then(({ data, error }) => {
+          if (!error && data && Array.isArray(data)) {
+            setEvents(data);
+            const active = data.find(e => e.is_active);
+            if (active) {
+              setSelectedEventId(active.id);
+            } else if (data.length > 0) {
+              setSelectedEventId(data[0].id);
+            }
+            return;
+          }
+        })
+        .catch(err => console.warn('Supabase fetch events failed:', err));
+    }
+
     fetch('/api/events')
       .then(res => res.json())
       .then(data => {
