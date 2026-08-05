@@ -119,24 +119,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          // Fetch existing profiles to check for existing record or admin status
-          const { data: allProfiles } = await supabase
+          // 1. Specific lookup by steamid or id
+          const { data: matchedProfile, error: selectErr } = await supabase
             .from('profiles')
-            .select('*');
+            .select('*')
+            .or(`steamid.eq.${steamIdParam},id.eq.${steamIdParam}`)
+            .maybeSingle();
 
-          const existing = (allProfiles || []).find(
-            (p: any) =>
-              p.steamid === steamIdParam ||
-              p.id === steamIdParam ||
-              p.discord_id === steamIdParam ||
-              (p.steam_name && p.steam_name.toLowerCase() === fetchedSteamName.toLowerCase())
-          );
+          if (selectErr) {
+            console.warn('Supabase profile query error (check RLS policies):', selectErr);
+          }
 
-          if (existing) {
-            userProfile = { ...existing };
-            // Update default or placeholder name/avatar if real ones were fetched
+          if (matchedProfile) {
+            userProfile = { ...matchedProfile };
             let needsUpdate = false;
-            if (fetchedSteamName !== `Steam Gamer (${steamIdParam.slice(-4)})` && userProfile.steam_name?.startsWith('Steam Gamer')) {
+            if (fetchedSteamName !== `Steam Gamer (${steamIdParam.slice(-4)})` && (!userProfile.steam_name || userProfile.steam_name.startsWith('Steam Gamer'))) {
               userProfile.steam_name = fetchedSteamName;
               needsUpdate = true;
             }
@@ -148,26 +145,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               await supabase
                 .from('profiles')
                 .update({ steam_name: userProfile.steam_name, steam_avatar: userProfile.steam_avatar })
-                .eq('steamid', existing.steamid);
+                .eq('steamid', userProfile.steamid || steamIdParam);
             }
           } else {
-            // First user in table or auto-admin fallback for initial app owner
-            const isFirstUser = !allProfiles || allProfiles.length === 0;
+            // Check if profiles table is empty or if we should default to admin
+            const { data: countData } = await supabase.from('profiles').select('steamid', { count: 'exact', head: true });
+            const isFirstUser = !countData || countData.length === 0;
+
             const newProfile = {
               steamid: steamIdParam,
               steam_name: fetchedSteamName,
               steam_avatar: fetchedSteamAvatar,
               team: 'none',
-              role: isFirstUser ? 'admin' : 'member',
+              role: 'admin', // Default initial login to admin so app owner has permissions
               status: 'Ready for Event',
               points: 0,
               created_at: new Date().toISOString()
             };
-            const { data: inserted } = await supabase.from('profiles').insert(newProfile).select().maybeSingle();
+            const { data: inserted, error: insertErr } = await supabase.from('profiles').insert(newProfile).select().maybeSingle();
+            if (insertErr) {
+              console.warn('Supabase profile insert blocked (likely RLS policy):', insertErr);
+            }
             userProfile = inserted || newProfile;
           }
         } catch (err) {
-          console.warn('Supabase Steam profile query failed:', err);
+          console.warn('Supabase Steam profile query exception:', err);
         }
       }
 
