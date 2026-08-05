@@ -535,17 +535,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (event.data?.type === 'DISCORD_AUTH_SUCCESS') {
         const discordProfile = event.data.user;
+        const needsReg = Boolean(event.data.needsRegistration);
         const discordName = discordProfile.global_name || discordProfile.username || discordProfile.displayName || 'Discord User';
-        setUser(prev => prev ? {
-          ...prev,
-          discordId: discordProfile.id,
-          discordName: discordName,
-          discordAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null
-        } : {
+        const avatarUrl = discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null;
+        
+        const formattedUser = {
           uid: `discord_${discordProfile.id}`,
           steamId: `discord_${discordProfile.id}`,
           steamName: discordName,
-          steamAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null,
+          steamAvatar: avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png',
           team: 'none',
           isAdmin: false,
           role: 'member',
@@ -553,10 +551,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           points: 0,
           discordId: discordProfile.id,
           discordName: discordName,
-          discordAvatar: discordProfile.avatar ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png` : null,
+          discordAvatar: avatarUrl,
           createdAt: new Date().toISOString(),
-          eventTeams: {}
-        } as any);
+          eventTeams: {},
+          needs_registration: needsReg
+        };
+
+        setUser(formattedUser as any);
+        localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
         fetchMe();
       }
 
@@ -614,6 +616,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const syncWithDiscord = async () => {
+    // 1. Try server Discord OAuth endpoint first if DISCORD_CLIENT_ID is set
+    try {
+      const res = await fetch('/api/auth/discord/url');
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data?.url) {
+          const popup = window.open(data.url, 'discord_login', 'width=800,height=700');
+          if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+            window.location.href = data.url;
+          }
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn('Backend Discord endpoint unavailable:', error);
+    }
+
+    // 2. Try Supabase Auth if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase.auth.signInWithOAuth({
@@ -622,31 +643,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             redirectTo: window.location.origin
           }
         });
-        if (error) {
-          console.error('Discord OAuth error:', error);
-          alert('Discord OAuth failed: ' + error.message);
-        }
-        return;
+        if (!error) return;
+        console.warn('Supabase Discord OAuth error:', error.message);
       } catch (err) {
-        console.error('Discord OAuth exception:', err);
+        console.warn('Supabase Discord OAuth exception:', err);
       }
     }
 
-    try {
-      const res = await fetch('/api/auth/discord/url');
-      const contentType = res.headers.get('content-type');
-      if (res.ok && contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data?.url) {
-          window.open(data.url, 'discord_login', 'width=800,height=700');
-          return;
-        }
-      }
-    } catch (error) {
-      console.warn('Backend Discord endpoint unavailable:', error);
-    }
-
-    // Direct fallback for Discord login in dev/preview mode
+    // 3. Fallback for Discord login when credentials are not configured in environment or Supabase
     const mockDiscordUser = {
       uid: 'discord_demo_user',
       steamId: 'discord_demo_user',
@@ -665,6 +669,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     setUser(mockDiscordUser as any);
     localStorage.setItem('gamer_auth_user', JSON.stringify(mockDiscordUser));
+    alert('Notice: Discord OAuth is not configured yet. Set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in app environment variables, or enable Discord under Supabase Authentication -> Providers. Logging in with Demo Discord Account for preview.');
   };
 
   const loginWithDiscord = async () => {

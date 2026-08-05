@@ -12,18 +12,36 @@ export default function DiscordRegistration() {
 
   if (!user) return null;
 
+  const getAuthHeaders = () => {
+    const userIdHeader = user?.steamId || user?.uid || user?.discordId || '';
+    return {
+      'Content-Type': 'application/json',
+      'x-user-id': userIdHeader,
+      'x-steam-id': user?.steamId || '',
+      'x-discord-id': user?.discordId || '',
+    };
+  };
+
   const handleNoSteam = async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/auth/complete-registration', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ hasSteam: false }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Failed to complete registration.');
+      }
+      if (user) {
+        const updatedUser = {
+          ...user,
+          needs_registration: false,
+          steamId: data.user?.steamid || data.user?.id || user.steamId
+        };
+        localStorage.setItem('gamer_auth_user', JSON.stringify(updatedUser));
       }
       fetchMe();
     } catch (err: any) {
@@ -40,12 +58,7 @@ export default function DiscordRegistration() {
 
     const cleanId = steamId.trim();
     if (!cleanId) {
-      setError('Please enter your Steam ID.');
-      return;
-    }
-
-    if (!/^\d{17}$/.test(cleanId)) {
-      setError('Your Steam ID must be exactly 17 digits.');
+      setError('Please enter your Steam ID or Steam profile URL.');
       return;
     }
 
@@ -53,12 +66,20 @@ export default function DiscordRegistration() {
     try {
       const res = await fetch('/api/auth/complete-registration', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ hasSteam: true, steamId: cleanId }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Failed to sync with Steam account.');
+      }
+      if (user) {
+        const updatedUser = {
+          ...user,
+          needs_registration: false,
+          steamId: data.user?.steamid || data.user?.id || user.steamId
+        };
+        localStorage.setItem('gamer_auth_user', JSON.stringify(updatedUser));
       }
       fetchMe();
     } catch (err: any) {
@@ -207,22 +228,21 @@ export default function DiscordRegistration() {
                 <form onSubmit={handleYesSteam} className="w-full text-left">
                   <div className="flex flex-col gap-1.5 mb-6">
                     <label htmlFor="steam-id-input" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
-                      Steam ID (17-digit number)
+                      Steam ID or Profile Link
                     </label>
                     <input
                       id="steam-id-input"
                       type="text"
-                      inputMode="numeric"
                       value={steamId}
-                      onChange={(e) => setSteamId(e.target.value.replace(/\D/g, '').slice(0, 17))}
-                      placeholder="e.g., 76561198117650232"
+                      onChange={(e) => setSteamId(e.target.value)}
+                      placeholder="e.g., 76561198117650232 or steamcommunity.com/id/name"
                       disabled={loading}
                       autoFocus
                       className="w-full bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-2xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-[#5865F2] font-mono tracking-wider transition-all"
                     />
                     <p className="text-[11px] text-slate-400 dark:text-white/40 leading-normal mt-1 bg-slate-100 dark:bg-white/5 p-3 rounded-xl border border-black/5 dark:border-white/5">
-                      <strong className="text-slate-600 dark:text-white/60 block mb-0.5">Legend:</strong>
-                      The Steam ID should be 17 numbers, such as: <span className="underline select-all">76561198117650232</span>.
+                      <strong className="text-slate-600 dark:text-white/60 block mb-0.5">Accepted Formats:</strong>
+                      17-digit Steam ID (e.g., <span className="underline select-all">76561198117650232</span>) or your Steam Profile URL.
                     </p>
                   </div>
 
