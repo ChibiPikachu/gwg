@@ -4717,47 +4717,6 @@ async function createServer() {
     }
   });
 
-  app.get('/api/steam/check-ownership/:appId', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { appId } = req.params;
-    const currentUser = (req as any).user;
-    const supabase = getSupabase();
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
-
-    const steamId = await resolveSteamId(currentUser, supabase);
-
-    if (!steamId) {
-      return res.status(400).json({ error: 'Steam ID not found. Please ensure your Steam account is linked in your profile.' });
-    }
-
-    try {
-      const games = await fetchSteamOwnedGames(steamId, supabase);
-      if (!games) {
-        return res.status(500).json({ error: 'Could not fetch Steam library. Ensure server has STEAM_API_KEY set or profile/game details on Steam are public.' });
-      }
-
-      const game = games.find((g: any) => String(g.appid) === String(appId));
-      if (game) {
-        const achievements = await fetchSteamAchievementCountForUser(steamId, appId);
-        return res.json({ 
-          owned: true, 
-          playtime_forever: game.playtime_forever,
-          playtime_2weeks: game.playtime_2weeks || 0,
-          name: game.name,
-          achievements: achievements
-        });
-      }
-
-      res.json({ owned: false });
-    } catch (err) {
-      console.error('Steam ownership check failed:', err);
-      res.status(500).json({ error: 'Internal server error while verifying Steam ownership' });
-    }
-  });
-
   app.get('/api/steam/check-ownership-by-name', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -4818,6 +4777,51 @@ async function createServer() {
       res.json({ owned: false });
     } catch (err) {
       console.error('Steam ownership check by name failed:', err);
+      res.status(500).json({ error: 'Internal server error while verifying Steam ownership' });
+    }
+  });
+
+  app.get('/api/steam/check-ownership/:appId', async (req, res) => {
+    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { appId } = req.params;
+    if (!appId || appId === 'undefined' || appId === 'null') {
+      return res.status(400).json({ error: 'Invalid or missing App ID' });
+    }
+
+    const currentUser = (req as any).user;
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    const steamId = await resolveSteamId(currentUser, supabase);
+
+    if (!steamId) {
+      return res.status(400).json({ error: 'Steam ID not found. Please ensure your Steam account is linked in your profile.' });
+    }
+
+    try {
+      const games = await fetchSteamOwnedGames(steamId, supabase);
+      if (!games) {
+        return res.status(500).json({ error: 'Could not fetch Steam library. Ensure server has STEAM_API_KEY set or profile/game details on Steam are public.' });
+      }
+
+      const game = games.find((g: any) => String(g.appid) === String(appId));
+      if (game) {
+        const achievements = await fetchSteamAchievementCountForUser(steamId, appId);
+        return res.json({ 
+          owned: true, 
+          playtime_forever: game.playtime_forever,
+          playtime_2weeks: game.playtime_2weeks || 0,
+          name: game.name,
+          achievements: achievements
+        });
+      }
+
+      res.json({ owned: false });
+    } catch (err) {
+      console.error('Steam ownership check failed:', err);
       res.status(500).json({ error: 'Internal server error while verifying Steam ownership' });
     }
   });

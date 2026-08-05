@@ -682,11 +682,17 @@ export default function MySubmissions() {
     setSteamTotalStats(null);
 
     try {
-      let appId = selectedGame.steam_appid;
-      let url = `/api/steam/check-ownership/${appId}`;
+      let appId = selectedGame.steam_appid || selectedGame.steamAppId || selectedGame.appid;
+      let url = '';
       
-      if (!appId) {
-        url = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title)}`;
+      if (appId && String(appId) !== 'undefined' && String(appId) !== 'null' && String(appId).trim() !== '' && String(appId) !== '0') {
+        url = `/api/steam/check-ownership/${encodeURIComponent(String(appId).trim())}`;
+      } else if (selectedGame.title || selectedGame.name) {
+        url = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
+      } else {
+        setSteamVerifyMsg({ type: 'error', text: 'Game name or Steam App ID missing for verification.' });
+        setVerifyingSteam(false);
+        return;
       }
 
       const res = await fetch(url);
