@@ -3,6 +3,7 @@ import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, Li
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS, CompetitionEvent } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface SidebarProps {
   userTeam: Team;
@@ -83,18 +84,39 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   };
 
   useEffect(() => {
-    const fetchActiveEvent = () => {
-      fetch('/api/events')
-        .then(res => res.json())
-        .then(data => {
+    const fetchActiveEvent = async () => {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (!error && data) {
+            setCurrentEvent(data);
+            return;
+          }
+        } catch (err) {
+          console.warn('Direct Supabase active event fetch in Sidebar failed:', err);
+        }
+      }
+
+      try {
+        const res = await fetch('/api/events');
+        const contentType = res.headers.get('content-type');
+        if (res.ok && contentType && contentType.includes('application/json')) {
+          const data = await res.json();
           if (Array.isArray(data)) {
             const active = data.find((e: any) => e.is_active);
             setCurrentEvent(active || null);
           } else {
             setCurrentEvent(null);
           }
-        })
-        .catch(err => console.error('Failed to fetch events in Sidebar:', err));
+        }
+      } catch (err) {
+        // Silently catch unhandled non-JSON responses when API route is absent
+      }
     };
 
     fetchActiveEvent();

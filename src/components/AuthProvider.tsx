@@ -67,12 +67,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Load initial user state from server session
-  const fetchMe = React.useCallback(() => {
-    const searchParams = window.location.search;
-    fetch(`/api/me${searchParams}`)
-      .then(res => res.json())
-      .then(data => {
+  // Load initial user state from server session or Supabase session
+  const fetchMe = React.useCallback(async () => {
+    // 1. Try Supabase session first if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`discord_id.eq.${session.user.id},steamid.eq.${session.user.id}`)
+            .maybeSingle();
+
+          if (profile) {
+            setUser({
+              uid: profile.steamid || profile.id || session.user.id,
+              steamId: profile.steamid || profile.id || session.user.id,
+              steamName: profile.steam_name || profile.discord_name || session.user.user_metadata?.full_name || 'Gamer',
+              steamAvatar: profile.steam_avatar || profile.discord_avatar || session.user.user_metadata?.avatar_url || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+              team: profile.team || 'none',
+              isAdmin: profile.role === 'admin' || profile.role === 'admins',
+              role: profile.role || 'member',
+              status: profile.status || 'Ready for Event',
+              points: profile.points || 0,
+              discordId: profile.discord_id,
+              discordName: profile.discord_name,
+              discordAvatar: profile.discord_avatar,
+              createdAt: profile.created_at,
+              eventTeams: profile.eventTeams || {},
+              needs_registration: profile.needs_registration || false,
+            } as any);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase auth check failed in fetchMe:', err);
+      }
+    }
+
+    // 2. Check URL query params if returning from Steam/Discord redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    const steamIdParam = urlParams.get('steamid');
+    if (steamIdParam && isSupabaseConfigured && supabase) {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('steamid', steamIdParam)
+          .maybeSingle();
+
+        if (profile) {
+          setUser({
+            uid: profile.steamid,
+            steamId: profile.steamid,
+            steamName: profile.steam_name || 'Gamer',
+            steamAvatar: profile.steam_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+            team: profile.team || 'none',
+            isAdmin: profile.role === 'admin' || profile.role === 'admins',
+            role: profile.role || 'member',
+            status: profile.status || 'Ready for Event',
+            points: profile.points || 0,
+            discordId: profile.discord_id,
+            discordName: profile.discord_name,
+            discordAvatar: profile.discord_avatar,
+            createdAt: profile.created_at,
+            eventTeams: profile.eventTeams || {},
+            needs_registration: profile.needs_registration || false,
+          } as any);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Steam param profile lookup failed:', err);
+      }
+    }
+
+    // 3. Fallback to /api/me only if backend endpoint exists and returns JSON
+    try {
+      const searchParams = window.location.search;
+      const res = await fetch(`/api/me${searchParams}`);
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
         if (data) {
           const profile = data;
           setUser({
@@ -83,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             team: profile.team || 'none',
             isAdmin: profile.isAdmin ?? (profile.role === 'admin' || profile.role === 'admins'),
             role: profile.role || 'member',
-            status: profile.status || 'Ready for Event #3',
+            status: profile.status || 'Ready for Event',
             points: profile.points || 0,
             discordId: profile.discord_id || profile.discordId,
             discordName: profile.discord_name || profile.discordName,
@@ -93,12 +171,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             needs_registration: profile.needs_registration || false,
           } as any);
         }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Auth fetch failed:', err);
-        setLoading(false);
-      });
+      }
+    } catch (err) {
+      // Graceful fallback when backend /api/me is absent or non-JSON
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
