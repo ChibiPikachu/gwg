@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, ThemeHelper, Team } from '@/types';
+import { UserProfile, ThemeHelper } from '@/types';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface AuthContextType {
