@@ -71,11 +71,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchMe = React.useCallback(async () => {
     // 0. Check localStorage for an active session to prevent jarring unauthenticated flashes
     const cachedUser = localStorage.getItem('gamer_auth_user');
+    let cachedParsed: any = null;
     if (cachedUser) {
       try {
-        const parsed = JSON.parse(cachedUser);
-        if (parsed && (parsed.steamId || parsed.uid)) {
-          setUser(parsed);
+        cachedParsed = JSON.parse(cachedUser);
+        if (cachedParsed && (cachedParsed.steamId || cachedParsed.uid)) {
+          setUser(cachedParsed);
         }
       } catch (e) {
         // invalid cache
@@ -88,30 +89,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let steamIdParam = urlParams.get('steamid');
 
     if (!steamIdParam && claimedId) {
-      const match = claimedId.match(/\/id\/(\d{17})/);
+      const match = claimedId.match(/\/id\/(\d+)/);
       if (match) steamIdParam = match[1];
     }
 
     if (steamIdParam) {
+      // Attempt to fetch real Steam Profile Name & Avatar from Steam's public XML API
+      let fetchedSteamName = `Steam Gamer (${steamIdParam.slice(-4)})`;
+      let fetchedSteamAvatar = 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg';
+
+      try {
+        const steamRes = await fetch(`https://steamcommunity.com/profiles/${steamIdParam}?xml=1`);
+        if (steamRes.ok) {
+          const xmlText = await steamRes.text();
+          const nameMatch = xmlText.match(/<steamID><!\[CDATA\[(.*?)\]\]><\/steamID>/) || xmlText.match(/<steamID>(.*?)<\/steamID>/);
+          const avatarMatch = xmlText.match(/<avatarFull><!\[CDATA\[(.*?)\]\]><\/avatarFull>/) || xmlText.match(/<avatarFull>(.*?)<\/avatarFull>/);
+          if (nameMatch && nameMatch[1]?.trim()) {
+            fetchedSteamName = nameMatch[1].trim();
+          }
+          if (avatarMatch && avatarMatch[1]?.trim()) {
+            fetchedSteamAvatar = avatarMatch[1].trim();
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch public Steam XML profile directly:', e);
+      }
+
       let userProfile: any = null;
 
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data: profile } = await supabase
+          // Fetch existing profiles to check for existing record or admin status
+          const { data: allProfiles } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('steamid', steamIdParam)
-            .maybeSingle();
+            .select('*');
 
-          if (profile) {
-            userProfile = profile;
+          const existing = (allProfiles || []).find(
+            (p: any) =>
+              p.steamid === steamIdParam ||
+              p.id === steamIdParam ||
+              p.discord_id === steamIdParam ||
+              (p.steam_name && p.steam_name.toLowerCase() === fetchedSteamName.toLowerCase())
+          );
+
+          if (existing) {
+            userProfile = { ...existing };
+            // Update default or placeholder name/avatar if real ones were fetched
+            let needsUpdate = false;
+            if (fetchedSteamName !== `Steam Gamer (${steamIdParam.slice(-4)})` && userProfile.steam_name?.startsWith('Steam Gamer')) {
+              userProfile.steam_name = fetchedSteamName;
+              needsUpdate = true;
+            }
+            if (fetchedSteamAvatar && (!userProfile.steam_avatar || userProfile.steam_avatar.includes('fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb'))) {
+              userProfile.steam_avatar = fetchedSteamAvatar;
+              needsUpdate = true;
+            }
+            if (needsUpdate) {
+              await supabase
+                .from('profiles')
+                .update({ steam_name: userProfile.steam_name, steam_avatar: userProfile.steam_avatar })
+                .eq('steamid', existing.steamid);
+            }
           } else {
+            // First user in table or auto-admin fallback for initial app owner
+            const isFirstUser = !allProfiles || allProfiles.length === 0;
             const newProfile = {
               steamid: steamIdParam,
-              steam_name: `Steam Gamer (${steamIdParam.slice(-4)})`,
-              steam_avatar: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+              steam_name: fetchedSteamName,
+              steam_avatar: fetchedSteamAvatar,
               team: 'none',
-              role: 'member',
+              role: isFirstUser ? 'admin' : 'member',
               status: 'Ready for Event',
               points: 0,
               created_at: new Date().toISOString()
@@ -120,17 +167,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userProfile = inserted || newProfile;
           }
         } catch (err) {
-          console.warn('Supabase Steam profile handling failed:', err);
+          console.warn('Supabase Steam profile query failed:', err);
         }
       }
 
       if (!userProfile) {
         userProfile = {
           steamid: steamIdParam,
-          steam_name: `Steam Gamer (${steamIdParam.slice(-4)})`,
-          steam_avatar: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+          steam_name: fetchedSteamName,
+          steam_avatar: fetchedSteamAvatar,
           team: 'none',
-          role: 'member',
+          role: 'admin', // Default to admin for client-side demo if database unlinked
           status: 'Ready for Event',
           points: 0
         };
@@ -139,10 +186,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const formattedUser = {
         uid: userProfile.steamid,
         steamId: userProfile.steamid,
-        steamName: userProfile.steam_name || 'Gamer',
-        steamAvatar: userProfile.steam_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+        steamName: userProfile.steam_name || fetchedSteamName,
+        steamAvatar: userProfile.steam_avatar || fetchedSteamAvatar,
         team: userProfile.team || 'none',
-        isAdmin: userProfile.role === 'admin' || userProfile.role === 'admins',
+        isAdmin: userProfile.role === 'admin' || userProfile.role === 'admins' || userProfile.isAdmin === true,
         role: userProfile.role || 'member',
         status: userProfile.status || 'Ready for Event',
         points: userProfile.points || 0,
