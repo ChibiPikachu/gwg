@@ -400,7 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const fetchProfileForAuthUser = async (userId: string, authUserMeta?: any) => {
       try {
-        const { data: dbProfile, error } = await supabase
+        let { data: dbProfile, error } = await supabase
           .from('profiles')
           .select('*')
           .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
@@ -408,6 +408,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           console.warn('Error fetching profile for auth user:', error);
+        }
+
+        if (!dbProfile) {
+          // Provision initial profile on first OAuth sign-in
+          const displayName = authUserMeta?.full_name || authUserMeta?.name || authUserMeta?.custom_claims?.global_name || 'Gamer';
+          const avatarUrl = authUserMeta?.avatar_url || authUserMeta?.picture || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg';
+          
+          const newProfile = {
+            id: userId,
+            steamid: userId,
+            steam_name: displayName,
+            steam_avatar: avatarUrl,
+            discord_id: userId,
+            discord_name: displayName,
+            discord_avatar: authUserMeta?.avatar_url || null,
+            team: 'none',
+            role: 'admin',
+            status: 'Ready for Event',
+            points: 0,
+            created_at: new Date().toISOString()
+          };
+
+          const { data: inserted } = await supabase.from('profiles').insert(newProfile).select().maybeSingle();
+          dbProfile = inserted || newProfile;
         }
 
         if (dbProfile) {
