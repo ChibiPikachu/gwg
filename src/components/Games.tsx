@@ -43,7 +43,12 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
     }
 
     fetch('/api/events')
-      .then(res => res.json())
+      .then(async res => {
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          return res.json();
+        }
+        return [];
+      })
       .then(data => {
         const eventList = Array.isArray(data) ? data : [];
         setEvents(eventList);
@@ -54,7 +59,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
           setSelectedEventId(eventList[0].id);
         }
       })
-      .catch(err => console.error('Failed to fetch events:', err));
+      .catch(err => console.warn('Failed to fetch events:', err));
   }, []);
 
   // Fetch games when selectedEventId changes

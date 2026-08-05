@@ -170,12 +170,13 @@ export default function EventsPanel() {
 
     try {
       const res = await fetch('/api/events');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setEvents(data);
       }
     } catch (err) {
-      console.error('Failed to fetch events:', err);
+      console.warn('Failed to fetch events:', err);
     } finally {
       setLoading(false);
     }

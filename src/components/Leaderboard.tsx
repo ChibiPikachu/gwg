@@ -68,10 +68,16 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       fetchUsers();
 
       fetch('/api/events')
-        .then(r => r.json())
+        .then(async r => {
+          if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+            return r.json();
+          }
+          return [];
+        })
         .then(evts => {
           if (Array.isArray(evts)) setEvents(evts);
-        });
+        })
+        .catch(() => {});
 
       setAdminPopupMsg({
         title: 'Scores Re-Synced Successfully',
@@ -261,7 +267,12 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       }
 
       fetch('/api/events')
-        .then(res => res.json())
+        .then(async res => {
+          if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+            return res.json();
+          }
+          return [];
+        })
         .then(data => {
           const allEvts = Array.isArray(data) ? data : [];
           setEvents(allEvts);
@@ -279,7 +290,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           setLoadingEvent(false);
         })
         .catch(err => {
-          console.error('Failed to fetch events for leaderboard:', err);
+          console.warn('Failed to fetch events:', err);
           setLoadingEvent(false);
         });
     };

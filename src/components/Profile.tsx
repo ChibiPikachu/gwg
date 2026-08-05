@@ -88,12 +88,36 @@ export default function Profile({ steamId }: { steamId?: string }) {
   }, [userGameSubmissions, selectedEventId, submissionStatusFilter, submissionSearchQuery]);
 
   React.useEffect(() => {
-    fetch('/api/events')
-      .then(res => res.json())
-      .then(data => {
-        setEvents(Array.isArray(data) ? data : []);
-      })
-      .catch(err => console.error('Failed to fetch events in profile:', err));
+    const loadEvents = async () => {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: false });
+
+          if (!error && Array.isArray(data)) {
+            setEvents(data);
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase fetch events error in profile:', e);
+        }
+      }
+
+      try {
+        const res = await fetch('/api/events');
+        const contentType = res.headers.get('content-type');
+        if (res.ok && contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          setEvents(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch events in profile:', err);
+      }
+    };
+
+    loadEvents();
   }, []);
 
   React.useEffect(() => {
@@ -102,14 +126,33 @@ export default function Profile({ steamId }: { steamId?: string }) {
       if (!idToFetch) return;
 
       setLoadingSubmissions(true);
+
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('submissions')
+            .select('*')
+            .eq('user_id', idToFetch);
+
+          if (!error && Array.isArray(data)) {
+            setSubmissions(data);
+            setLoadingSubmissions(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase fetch user submissions error in profile:', e);
+        }
+      }
+
       try {
         const res = await fetch(`/api/submissions?userId=${idToFetch}`);
-        if (res.ok) {
+        const contentType = res.headers.get('content-type');
+        if (res.ok && contentType && contentType.includes('application/json')) {
           const data = await res.json();
           setSubmissions(Array.isArray(data) ? data : []);
         }
       } catch (err) {
-        console.error('Failed to fetch submissions:', err);
+        console.warn('Failed to fetch submissions:', err);
       } finally {
         setLoadingSubmissions(false);
       }

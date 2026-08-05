@@ -136,17 +136,41 @@ export default function MySubmissions() {
   }, []);
 
   React.useEffect(() => {
-    setLoadingEvents(true);
-    fetch('/api/events')
-      .then(res => res.json())
-      .then(data => {
-        setEvents(Array.isArray(data) ? data : []);
+    const loadEvents = async () => {
+      setLoadingEvents(true);
+
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: false });
+
+          if (!error && Array.isArray(data)) {
+            setEvents(data);
+            setLoadingEvents(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase fetch events error in MySubmissions:', e);
+        }
+      }
+
+      try {
+        const res = await fetch('/api/events');
+        const contentType = res.headers.get('content-type');
+        if (res.ok && contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          setEvents(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch events in MySubmissions:', err);
+      } finally {
         setLoadingEvents(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch events:', err);
-        setLoadingEvents(false);
-      });
+      }
+    };
+
+    loadEvents();
   }, []);
 
   React.useEffect(() => {

@@ -36,7 +36,12 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
     }
 
     fetch('/api/leaderboard/users')
-      .then(res => res.json())
+      .then(async res => {
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          return res.json();
+        }
+        return [];
+      })
       .then(data => {
         const safeData = Array.isArray(data) ? data : [];
         if (user?.team && user.team !== 'none') {
@@ -47,7 +52,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
         setLoading(false);
       })
       .catch(err => {
-        console.error('Failed to fetch team members:', err);
+        console.warn('Failed to fetch team members:', err);
         setLoading(false);
       });
   }, [user?.team]);
