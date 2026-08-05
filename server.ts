@@ -4682,7 +4682,7 @@ async function createServer() {
       // Find matching audit log adjustment submissions older than cutoffDate
       const { data: oldLogs, error: findError } = await supabase
         .from('submissions')
-        .select('id, user_id, event_id, game_name, platform, points, calculated_score')
+        .select('id, user_id, game_name, platform, points, calculated_score')
         .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points,game_name.eq.Team Award,platform.eq.Screenshot Points,platform.eq.Bingo Points')
         .lt('created_at', cutoffDate);
 
@@ -4696,13 +4696,6 @@ async function createServer() {
           days,
           message: `No audit log records found older than ${days} days.`
         });
-      }
-
-      // Preserve event scores and winner info before deleting
-      const affectedEventIds = Array.from(new Set(oldLogs.map((l: any) => l.event_id).filter(Boolean)));
-      for (const eid of affectedEventIds) {
-        await ensureEventWinnerSaved(supabase, eid as string);
-        await ensureEventScoresSaved(supabase, eid as string);
       }
 
       const logIds = oldLogs.map((l: any) => l.id);
@@ -5107,7 +5100,7 @@ async function createServer() {
 let serverApp: any = null;
 const serverSetupPromise = createServer();
 
-// For non-Vercel environments (like local and container/Cloud Run environments)
+// For non-Vercel environments (like local and container or Cloud Run environments)
 if (!process.env.VERCEL) {
   serverSetupPromise.then(({ app, PORT }) => {
     serverApp = app;
