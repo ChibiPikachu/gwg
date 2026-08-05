@@ -259,6 +259,100 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
   const fetchActivityLogs = React.useCallback(async () => {
     setLoadingActivityLogs(true);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: rawSubs, error } = await supabase
+          .from('submissions')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(500);
+
+        if (!error && Array.isArray(rawSubs)) {
+          const adjustments = rawSubs.filter((s: any) => 
+            (s.user_id && String(s.user_id).startsWith('team_pts_')) ||
+            (s.game_name && (s.game_name.includes('Points') || s.game_name.includes('Award'))) ||
+            (s.platform && (s.platform.includes('Points') || s.platform.includes('Award'))) ||
+            (s.notes && s.notes.includes('adminId'))
+          );
+
+          // Get profile information for admins and users
+          const profileIds = new Set<string>();
+          adjustments.forEach((sub: any) => {
+            if (sub.verifier_id) profileIds.add(String(sub.verifier_id));
+            if (sub.user_id && !String(sub.user_id).startsWith('team_pts_')) profileIds.add(String(sub.user_id));
+            const meta = parseNotesMeta(sub.notes || '');
+            if (meta.adminId) profileIds.add(String(meta.adminId));
+          });
+
+          let profileMap: Record<string, any> = {};
+          if (profileIds.size > 0) {
+            const idList = Array.from(profileIds);
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, role, id, discord_id')
+              .or(idList.map(id => `steamid.eq.${id},id.eq.${id},discord_id.eq.${id}`).join(','));
+
+            (profiles || []).forEach((p: any) => {
+              const keys = [p.steamid, p.id, p.discord_id].filter(Boolean);
+              let avatar = p.steam_avatar || p.discord_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+              if (p.active_avatar === 'discord' && p.discord_avatar) avatar = p.discord_avatar;
+              
+              keys.forEach(k => {
+                profileMap[String(k)] = {
+                  name: p.steam_name || p.discord_name || 'User',
+                  avatar,
+                  team: p.team,
+                  role: p.role
+                };
+              });
+            });
+          }
+
+          const formatted = adjustments.map((sub: any) => {
+            const meta = parseNotesMeta(sub.notes || '');
+            let adminId = meta.adminId || sub.verifier_id || null;
+            let adminAvatar = 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+            let resolvedProfileName = (adminId && profileMap[String(adminId)]) ? profileMap[String(adminId)].name : null;
+
+            if (adminId && profileMap[String(adminId)]) {
+              adminAvatar = profileMap[String(adminId)].avatar;
+            }
+
+            let adminName = meta.adminName;
+            if (!adminName || adminName === 'Admin' || adminName === 'Administrator') {
+              adminName = resolvedProfileName || meta.adminName || 'Administrator';
+            }
+
+            const userProfile = profileMap[String(sub.user_id)];
+            return {
+              id: sub.id,
+              user_id: sub.user_id,
+              user_name: sub.user_name || (userProfile?.name) || (String(sub.user_id).startsWith('team_pts_') ? `${String(sub.user_id).replace('team_pts_', '').toUpperCase()} TEAM` : 'Team Adjustment'),
+              user_avatar: sub.user_avatar || (userProfile?.avatar) || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
+              user_team: userProfile?.team || (String(sub.user_id).startsWith('team_pts_') ? String(sub.user_id).replace('team_pts_', '') : 'none'),
+              game_name: sub.game_name,
+              platform: sub.platform,
+              points: Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0,
+              notes: meta.userNotes,
+              raw_notes: sub.notes,
+              created_at: sub.created_at,
+              event_id: sub.event_id,
+              admin_name: adminName,
+              admin_id: adminId,
+              admin_avatar: adminAvatar
+            };
+          });
+
+          setActivityLogs(formatted);
+          setLoadingActivityLogs(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase fetch activity logs warning:', e);
+      }
+    }
+
     try {
       const res = await fetch('/api/admin/activity-log');
       if (res.ok) {
@@ -273,6 +367,27 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   }, []);
 
   const fetchTeamAdjustments = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: rawSubs, error } = await supabase
+          .from('submissions')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(rawSubs)) {
+          const adjustments = rawSubs.filter((s: any) => 
+            (s.user_id && String(s.user_id).startsWith('team_pts_')) ||
+            (s.game_name && (s.game_name.includes('Points') || s.game_name.includes('Award'))) ||
+            (s.platform && (s.platform.includes('Points') || s.platform.includes('Award')))
+          );
+          setTeamAdjustments(adjustments);
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase fetch team adjustments warning:', e);
+      }
+    }
+
     try {
       const res = await fetch('/api/team-adjustments');
       if (res.ok) {

@@ -1799,7 +1799,7 @@ async function createServer() {
         }
       }
 
-      // Check for exact match in local DB 'games' first
+      // Check for exact and fuzzy matches in local DB 'games' first
       let exactLocalResults: any[] = [];
       const supabase = getSupabase();
       if (supabase) {
@@ -1807,7 +1807,8 @@ async function createServer() {
           const { data: exactMatches } = await supabase
             .from('games')
             .select('*')
-            .ilike('title', queryStr);
+            .or(`title.ilike.%${queryStr}%,id.eq.${queryStr}`)
+            .limit(20);
             
           if (exactMatches && exactMatches.length > 0) {
             exactLocalResults = exactMatches.map((g: any) => ({
@@ -1819,89 +1820,84 @@ async function createServer() {
             }));
           }
         } catch (dbErr) {
-          console.error('[Search] Failed to check exact match in local DB:', dbErr);
+          console.error('[Search] Failed to check match in local DB:', dbErr);
         }
       }
 
-      console.log(`[IGDB Search] Querying for: ${queryStr}`);
-      const token = await getIGDBToken();
+      console.log(`[Game Search] Querying for: ${queryStr}`);
+      let igdbResults: any[] = [];
       
-      // Escape for IGDB query
-      const safeQuery = queryStr.replace(/"/g, '\\"');
-      
-      const response = await fetch('https://api.igdb.com/v4/games', {
-        method: 'POST',
-        headers: {
-          'Client-ID': process.env.IGDB_CLIENT_ID!,
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'text/plain'
-        },
-        // Simplified query to ensure reliability with limit 25
-        body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 25;`
-      });
+      if (process.env.IGDB_CLIENT_ID && process.env.IGDB_CLIENT_SECRET) {
+        try {
+          const token = await getIGDBToken();
+          const safeQuery = queryStr.replace(/"/g, '\\"');
+          
+          const response = await fetch('https://api.igdb.com/v4/games', {
+            method: 'POST',
+            headers: {
+              'Client-ID': process.env.IGDB_CLIENT_ID!,
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'text/plain'
+            },
+            body: `search "${safeQuery}"; fields name, cover.url, summary, category, version_parent, external_games.category, external_games.uid, websites.url, websites.category; limit 25;`
+          });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error('[IGDB Search] API Error:', response.status, errText);
-        
-        if (response.status === 401) {
-          igdbToken = null; 
-        }
-        
-        return res.status(response.status).json({ error: 'IGDB API rejected request', details: errText });
-      }
+          if (response.ok) {
+            const data: any = await response.json();
+            if (Array.isArray(data)) {
+              const filteredData = data.filter((game: any) => {
+                if (data.length > 1 && game.category === 1) return false;
+                return true;
+              });
 
-      const data: any = await response.json();
-      console.log(`[IGDB Search] Success - results: ${Array.isArray(data) ? data.length : 'not array'}`);
-      
-      if (!Array.isArray(data)) {
-        return res.json([]);
-      }
+              igdbResults = filteredData.map((game: any) => {
+                let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
+                if (!steamId) {
+                  const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url?.includes('store.steampowered.com/app/'));
+                  if (steamWebsite) {
+                    const match = steamWebsite.url.match(/\/app\/(\d+)/);
+                    if (match) steamId = match[1];
+                  }
+                }
 
-      // Filter DLCs and other categories if version_parent is present or category is 1 (DLC)
-      const filteredData = data.filter((game: any) => {
-        if (data.length > 1 && game.category === 1) return false;
-        return true;
-      });
-
-      const results = filteredData.map((game: any) => {
-        let steamId = game.external_games?.find((eg: any) => eg.category === 1)?.uid;
-        if (!steamId) {
-          const steamWebsite = game.websites?.find((w: any) => w.category === 13 || w.url?.includes('store.steampowered.com/app/'));
-          if (steamWebsite) {
-            const match = steamWebsite.url.match(/\/app\/(\d+)/);
-            if (match) steamId = match[1];
+                return {
+                  id: String(game.id),
+                  title: game.name,
+                  image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
+                  summary: game.summary,
+                  steam_appid: steamId
+                };
+              });
+            }
+          } else {
+            console.warn('[IGDB Search] Response not OK:', response.status);
+            if (response.status === 401) igdbToken = null;
           }
+        } catch (igdbErr) {
+          console.warn('[IGDB Search] Exception caught gracefully:', igdbErr);
         }
-
-        let hltbId = game.external_games?.find((eg: any) => eg.category === 14)?.uid;
-        if (!hltbId) {
-          const hltbUrl = game.websites?.find((w: any) => w.url?.includes('howlongtobeat.com'))?.url;
-          if (hltbUrl) {
-            const match = hltbUrl.match(/(?:\/game\/|id=)(\d+)/);
-            if (match) hltbId = match[1];
-            else hltbId = hltbUrl.split('/').pop()?.split('-')[0];
-          }
-        }
-
-        return {
-          id: game.id,
-          title: game.name,
-          image: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : 'https://via.placeholder.com/264x352?text=No+Cover',
-          summary: game.summary,
-          steam_appid: steamId
-        };
-      });
+      }
 
       // Merge local exact matches and IGDB search results
       const finalResults = [...exactLocalResults];
-      for (const item of results) {
-        if (!finalResults.some(fr => String(fr.id) === String(item.id))) {
+      for (const item of igdbResults) {
+        if (!finalResults.some(fr => String(fr.id) === String(item.id) || fr.title.toLowerCase().trim() === item.title.toLowerCase().trim())) {
           finalResults.push(item);
         }
       }
 
-      // Sort so exact text matches always rise to the very top (case-insensitive)
+      // If still no results found and user entered a title, offer it as custom choice
+      if (finalResults.length === 0 && queryStr.length > 0) {
+        finalResults.push({
+          id: `custom_${Date.now()}`,
+          title: queryStr,
+          image: 'https://via.placeholder.com/264x352?text=Custom+Game',
+          summary: 'Use custom game title',
+          isCustom: true
+        });
+      }
+
+      // Sort so exact text matches rise to top
       const queryLower = queryStr.toLowerCase().trim();
       finalResults.sort((a, b) => {
         const aExact = a.title.toLowerCase().trim() === queryLower;
@@ -1913,8 +1909,14 @@ async function createServer() {
 
       res.json(finalResults);
     } catch (err) {
-      console.error('[IGDB Search] Crash:', err);
-      res.status(500).json({ error: 'Search crashed', details: String(err) });
+      console.error('[IGDB Search] Route fallback:', err);
+      const queryStr = String(req.query.query || '').trim();
+      res.json([{
+        id: `custom_${Date.now()}`,
+        title: queryStr || 'Custom Game',
+        image: 'https://via.placeholder.com/264x352?text=Custom+Game',
+        summary: 'Custom Game Title'
+      }]);
     }
   });
 
@@ -4584,13 +4586,19 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
     try {
-      const { data: allAdjustments, error } = await supabase
+      let { data: allSubmissions, error } = await supabase
         .from('submissions')
         .select('*')
-        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points,game_name.eq.Team Award,platform.eq.Screenshot Points,platform.eq.Bingo Points')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+
+      const allAdjustments = (allSubmissions || []).filter((sub: any) =>
+        (sub.user_id && String(sub.user_id).startsWith('team_pts_')) ||
+        (sub.game_name && (sub.game_name.includes('Points') || sub.game_name.includes('Award'))) ||
+        (sub.platform && (sub.platform.includes('Points') || sub.platform.includes('Award'))) ||
+        (sub.notes && sub.notes.includes('adminId'))
+      );
 
       // Collect verifier IDs and user IDs to fetch profile info
       const profileIds = new Set<string>();
@@ -4756,17 +4764,18 @@ async function createServer() {
         activeEvent = recentEvent;
       }
 
-      let query = supabase
+      const { data: rawSubs, error } = await supabase
         .from('submissions')
         .select('*')
-        .or('user_id.like.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points');
+        .order('created_at', { ascending: false });
 
-      if (activeEvent) {
-        query = query.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
+
+      const data = (rawSubs || []).filter((sub: any) =>
+        (sub.user_id && String(sub.user_id).startsWith('team_pts_')) ||
+        (sub.game_name && (sub.game_name.includes('Points') || sub.game_name.includes('Award'))) ||
+        (sub.platform && (sub.platform.includes('Points') || sub.platform.includes('Award')))
+      );
       res.json(data || []);
     } catch (err) {
       console.error('Failed to fetch team adjustments:', err);

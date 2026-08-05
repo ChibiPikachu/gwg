@@ -428,14 +428,61 @@ export default function MySubmissions() {
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
-          setSearchResults(data);
+          if (Array.isArray(data) && data.length > 0) {
+            setSearchResults(data);
+            return;
+          }
+        }
+
+        // Client-side Supabase fallback search
+        const term = gameSearch.trim();
+        if (term && isSupabaseConfigured && supabase) {
+          try {
+            const { data: dbGames } = await supabase
+              .from('games')
+              .select('*')
+              .ilike('title', `%${term}%`)
+              .limit(10);
+
+            if (dbGames && dbGames.length > 0) {
+              setSearchResults(dbGames.map((g: any) => ({
+                id: g.id,
+                title: g.title,
+                image: g.image_url || 'https://via.placeholder.com/264x352?text=No+Cover',
+                summary: g.summary || "Existing game in system.",
+                steam_appid: g.steam_appid
+              })));
+              return;
+            }
+          } catch (e) {
+            console.warn('Supabase fallback game search failed:', e);
+          }
+        }
+
+        // Custom game option fallback
+        if (term) {
+          setSearchResults([{
+            id: `custom_${Date.now()}`,
+            title: term,
+            image: 'https://via.placeholder.com/264x352?text=Custom+Game',
+            summary: 'Custom Game Entry'
+          }]);
         } else {
-          const err = await res.json().catch(() => ({ error: 'Search failed' }));
-          setSearchError(err.error || 'Server error');
+          setSearchResults([]);
         }
       } catch (err) {
         console.error('Search error:', err);
-        setSearchError('Network error');
+        const term = gameSearch.trim();
+        if (term) {
+          setSearchResults([{
+            id: `custom_${Date.now()}`,
+            title: term,
+            image: 'https://via.placeholder.com/264x352?text=Custom+Game',
+            summary: 'Custom Game Entry'
+          }]);
+        } else {
+          setSearchError('Network error');
+        }
       } finally {
         setSearching(false);
       }
