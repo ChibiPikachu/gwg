@@ -690,10 +690,18 @@ export default function MySubmissions() {
       }
 
       const res = await fetch(url);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setSteamVerifyMsg({ 
+          type: 'error', 
+          text: data.error || `Verification request failed (${res.status}).` 
+        });
+        return;
+      }
 
       if (data.owned) {
-        const totalHours = data.playtime_forever / 60;
+        const totalHours = (data.playtime_forever || 0) / 60;
         const totalAchievements = data.achievements || 0;
         
         setSteamTotalStats({
@@ -717,8 +725,8 @@ export default function MySubmissions() {
           text: 'Game not found in your Steam library. Please verify the game name or check your profile privacy.' 
         });
       }
-    } catch (err) {
-      setSteamVerifyMsg({ type: 'error', text: 'Failed to verify with Steam. API error.' });
+    } catch (err: any) {
+      setSteamVerifyMsg({ type: 'error', text: err?.message || 'Failed to verify with Steam. API error.' });
     } finally {
       setVerifyingSteam(false);
     }

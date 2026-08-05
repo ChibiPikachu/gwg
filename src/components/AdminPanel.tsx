@@ -918,11 +918,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         await fetchUsers();
         await fetchTeamAdjustments();
       } else {
-        const data = await res.json();
-        alert(`Verification failed: ${data.error}`);
+        const data = await res.json().catch(() => ({ error: 'Unknown server error' }));
+        alert(`Verification failed: ${data.error || 'Server returned an error'}`);
       }
-    } catch (err) {
-      alert('Failed to update submission');
+    } catch (err: any) {
+      console.error('Verify submission error:', err);
+      alert(`Failed to update submission: ${err?.message || 'Network error'}`);
     } finally {
       setUpdating(null);
     }

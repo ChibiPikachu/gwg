@@ -427,6 +427,56 @@ function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltbM
 }
 
 // Helper for Steam API calls with database caching
+async function resolveSteamId(currentUser: any, supabase: any): Promise<string | null> {
+  if (!currentUser) return null;
+
+  const isNumericId = (val: any) => typeof val === 'string' && /^\d{15,20}$/.test(val);
+
+  // 1. Check explicit steam properties on currentUser object
+  if (currentUser.steamid && isNumericId(String(currentUser.steamid))) return String(currentUser.steamid);
+  if (currentUser.steam_id && isNumericId(String(currentUser.steam_id))) return String(currentUser.steam_id);
+  if (currentUser.steamId && isNumericId(String(currentUser.steamId))) return String(currentUser.steamId);
+
+  // 2. If provider is steam, currentUser.id is likely steam id
+  if (currentUser.provider === 'steam' && isNumericId(String(currentUser.id))) {
+    return String(currentUser.id);
+  }
+
+  // 3. Look up profile in Supabase using currentUser's discord_id or user.id
+  if (supabase) {
+    const discordId = currentUser.discord_id || (currentUser.provider === 'discord' ? currentUser.id : null);
+    if (discordId) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('steamid')
+        .eq('discord_id', String(discordId))
+        .maybeSingle();
+      if (profile?.steamid && isNumericId(String(profile.steamid))) {
+        return String(profile.steamid);
+      }
+    }
+
+    if (currentUser.id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('steamid')
+        .eq('id', String(currentUser.id))
+        .maybeSingle();
+      if (profile?.steamid && isNumericId(String(profile.steamid))) {
+        return String(profile.steamid);
+      }
+    }
+  }
+
+  // 4. Fallback to any numeric ID if steamid property exists
+  const fallback = currentUser.steamid || currentUser.steam_id || currentUser.steamId;
+  if (fallback && String(fallback) !== 'undefined' && String(fallback) !== 'null' && isNumericId(String(fallback))) {
+    return String(fallback);
+  }
+
+  return null;
+}
+
 async function fetchSteamOwnedGames(steamId: string, supabase: any) {
   if (!supabase) return null;
   
@@ -436,9 +486,9 @@ async function fetchSteamOwnedGames(steamId: string, supabase: any) {
     .from('profiles')
     .select('owned_games, steam_updated_at')
     .eq('steamid', steamId)
-    .single();
+    .maybeSingle();
 
-  if (profile?.owned_games && profile?.steam_updated_at) {
+  if (profile?.owned_games && Array.isArray(profile.owned_games) && profile.owned_games.length > 0 && profile?.steam_updated_at) {
     const updatedAt = new Date(profile.steam_updated_at).getTime();
     if (Date.now() - updatedAt < cacheMinutes * 60 * 1000) {
       console.log(`[Steam Cache] Using DB cache for ${steamId}`);
@@ -447,16 +497,23 @@ async function fetchSteamOwnedGames(steamId: string, supabase: any) {
   }
 
   const apiKey = process.env.STEAM_API_KEY;
-  if (!apiKey) return profile?.owned_games || null;
+  if (!apiKey) {
+    console.warn('[Steam API] STEAM_API_KEY is not configured in environment.');
+    return (profile?.owned_games && Array.isArray(profile.owned_games)) ? profile.owned_games : null;
+  }
   
   try {
     console.log(`[Steam API] Fetching owned games for ${steamId}`);
     const response = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
+    if (!response.ok) {
+      console.error(`[Steam API] Error HTTP ${response.status} when fetching owned games for ${steamId}`);
+      return (profile?.owned_games && Array.isArray(profile.owned_games)) ? profile.owned_games : null;
+    }
     const data: any = await response.json();
     const games = data.response?.games || [];
     
     // Update database cache
-    if (games.length > 0) {
+    if (Array.isArray(games) && games.length > 0) {
       await supabase.from('profiles').update({
         owned_games: games,
         steam_updated_at: new Date().toISOString()
@@ -466,7 +523,7 @@ async function fetchSteamOwnedGames(steamId: string, supabase: any) {
     return games;
   } catch (err) {
     console.error('Steam Owned Games Fetch Failed:', err);
-    return profile?.owned_games || null;
+    return (profile?.owned_games && Array.isArray(profile.owned_games)) ? profile.owned_games : null;
   }
 }
 
@@ -3273,40 +3330,66 @@ async function createServer() {
   app.post('/api/admin/verify-submission', async (req, res) => {
     const { submissionId, status, points, rejectionReason } = req.body;
     const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const steamId = String(currentUser?.id || currentUser?.steamid || currentUser?.steam_id || 'admin');
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-
-      // Start a "transaction" via sequence of calls (Supabase JS doesn't have true transactions easily for this)
       // 1. Get the submission to find out who submitted it
-      const { data: sub, error: subError } = await supabase.from('submissions').select('*').eq('id', submissionId).single();
+      const { data: sub, error: subError } = await supabase.from('submissions').select('*').eq('id', submissionId).maybeSingle();
       if (subError || !sub) return res.status(404).json({ error: 'Submission not found' });
 
-      // 2. Update submission status and optionally details
-      const { error: updateSubError } = await supabase.from('submissions').update({
+      // 2. Build update object safely
+      const updateData: any = {
         status,
         points: status === 'verified' ? points : 0,
         rejection_reason: status === 'rejected' ? rejectionReason : null,
-        verifier_id: steamId,
-        // Optional modifiers
-        hours_during: req.body.hours !== undefined ? req.body.hours : sub.hours_during,
-        achievements_during: req.body.achievements !== undefined ? req.body.achievements : sub.achievements_during,
-        multiplier: req.body.multiplier !== undefined ? req.body.multiplier : sub.multiplier,
-        calculated_score: status === 'verified' ? points : 0,
-        notes: req.body.notes !== undefined ? req.body.notes : sub.notes
-      }).eq('id', submissionId);
+        calculated_score: status === 'verified' ? points : 0
+      };
 
-      if (updateSubError) throw updateSubError;
+      if (steamId) {
+        updateData.verifier_id = steamId;
+      }
 
-      // 3. Always sync user points after a verification update
-      const newTotal = await syncUserPoints(supabase, sub.user_id);
+      if (req.body.hours !== undefined && !isNaN(parseFloat(req.body.hours))) {
+        updateData.hours_during = parseFloat(req.body.hours);
+      }
+      if (req.body.achievements !== undefined && !isNaN(parseInt(req.body.achievements))) {
+        updateData.achievements_during = parseInt(req.body.achievements);
+      }
+      if (req.body.multiplier !== undefined && !isNaN(parseFloat(req.body.multiplier))) {
+        updateData.multiplier = parseFloat(req.body.multiplier);
+      }
+      if (req.body.notes !== undefined) {
+        updateData.notes = req.body.notes;
+      }
+
+      let { error: updateSubError } = await supabase.from('submissions').update(updateData).eq('id', submissionId);
+
+      // If verifier_id column does not exist or fails DB schema check, retry without verifier_id
+      if (updateSubError && (updateSubError.message?.includes('verifier_id') || updateSubError.code === 'PGRST204')) {
+        delete updateData.verifier_id;
+        const retry = await supabase.from('submissions').update(updateData).eq('id', submissionId);
+        updateSubError = retry.error;
+      }
+
+      if (updateSubError) {
+        console.error('[Verify Submission DB Error]:', updateSubError);
+        return res.status(500).json({ error: updateSubError.message || 'Failed to update submission' });
+      }
+
+      // 3. Sync user points after verification update (safely caught)
+      let newTotal = 0;
+      try {
+        newTotal = await syncUserPoints(supabase, sub.user_id);
+      } catch (syncErr) {
+        console.warn('[Sync User Points Warning]:', syncErr);
+      }
 
       res.json({ success: true, pointsAwarded: points, newTotal });
-    } catch (err) {
-      console.error('Refine failed:', err);
-      res.status(500).json({ error: 'Failed to update submission' });
+    } catch (err: any) {
+      console.error('Verify submission failed:', err);
+      res.status(500).json({ error: err?.message || 'Failed to update submission' });
     }
   });
 
@@ -4644,26 +4727,17 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    let steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+    const steamId = await resolveSteamId(currentUser, supabase);
 
-    // Resilient steamId lookup if not in session
-    if (!steamId || steamId.length < 5 || steamId === 'undefined' || steamId === 'null') {
-       const discId = currentUser.discord_id || currentUser.id;
-       if (discId) {
-          const { data: profile } = await supabase.from('profiles').select('steamid').eq('discord_id', discId).maybeSingle();
-          if (profile?.steamid) {
-            steamId = profile.steamid;
-          }
-       }
-    }
-
-    if (!steamId || steamId.length < 5 || steamId === 'undefined') {
-      return res.status(400).json({ error: 'Steam ID not found. Please ensure you have linked your Steam account.' });
+    if (!steamId) {
+      return res.status(400).json({ error: 'Steam ID not found. Please ensure your Steam account is linked in your profile.' });
     }
 
     try {
       const games = await fetchSteamOwnedGames(steamId, supabase);
-      if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
+      if (!games) {
+        return res.status(500).json({ error: 'Could not fetch Steam library. Ensure server has STEAM_API_KEY set or profile/game details on Steam are public.' });
+      }
 
       const game = games.find((g: any) => String(g.appid) === String(appId));
       if (game) {
@@ -4680,7 +4754,7 @@ async function createServer() {
       res.json({ owned: false });
     } catch (err) {
       console.error('Steam ownership check failed:', err);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Internal server error while verifying Steam ownership' });
     }
   });
 
@@ -4696,26 +4770,17 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
-    let steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id || currentUser.steamId);
+    const steamId = await resolveSteamId(currentUser, supabase);
 
-    // Resilient steamId lookup if not in session
-    if (!steamId || steamId.length < 5 || steamId === 'undefined' || steamId === 'null') {
-       const discId = currentUser.discord_id || currentUser.id;
-       if (discId) {
-          const { data: profile } = await supabase.from('profiles').select('steamid').eq('discord_id', discId).maybeSingle();
-          if (profile?.steamid) {
-            steamId = profile.steamid;
-          }
-       }
-    }
-
-    if (!steamId || steamId.length < 5 || steamId === 'undefined') {
-      return res.status(400).json({ error: 'Steam ID not found. Please ensure you have linked your Steam account.' });
+    if (!steamId) {
+      return res.status(400).json({ error: 'Steam ID not found. Please ensure your Steam account is linked in your profile.' });
     }
 
     try {
       const games = await fetchSteamOwnedGames(steamId, supabase);
-      if (!games) return res.status(500).json({ error: 'Could not fetch Steam library' });
+      if (!games) {
+        return res.status(500).json({ error: 'Could not fetch Steam library. Ensure server has STEAM_API_KEY set or profile/game details on Steam are public.' });
+      }
 
       const normalize = (str: string) => str.toLowerCase().replace(/[®™©]/g, '').replace(/[^a-z0-9]/g, '');
       const searchName = normalize(name as string);
@@ -4752,7 +4817,8 @@ async function createServer() {
 
       res.json({ owned: false });
     } catch (err) {
-      res.status(500).json({ error: 'Internal server error' });
+      console.error('Steam ownership check by name failed:', err);
+      res.status(500).json({ error: 'Internal server error while verifying Steam ownership' });
     }
   });
 
