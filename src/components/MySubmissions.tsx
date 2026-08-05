@@ -290,11 +290,18 @@ export default function MySubmissions() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ titles: uniqueTitles })
             })
-            .then(r => r.json())
-            .then(hltb => {
-              setHltbData(prev => ({ ...prev, ...hltb }));
+            .then(async r => {
+              if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+                return r.json();
+              }
+              return {};
             })
-            .catch(err => console.error('HLTB batch fetch failed:', err));
+            .then(hltb => {
+              if (hltb && typeof hltb === 'object') {
+                setHltbData(prev => ({ ...prev, ...hltb }));
+              }
+            })
+            .catch(err => console.warn('HLTB batch fetch failed:', err));
           }
           return;
         }
@@ -305,7 +312,8 @@ export default function MySubmissions() {
 
     try {
       const res = await fetch('/api/submissions');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         const subArray = Array.isArray(data) ? data : [];
         setSubmissions(subArray);
@@ -318,15 +326,22 @@ export default function MySubmissions() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ titles: uniqueTitles })
           })
-          .then(r => r.json())
-          .then(hltb => {
-             setHltbData(prev => ({ ...prev, ...hltb }));
+          .then(async r => {
+            if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+              return r.json();
+            }
+            return {};
           })
-          .catch(err => console.error('HLTB batch fetch failed:', err));
+          .then(hltb => {
+            if (hltb && typeof hltb === 'object') {
+              setHltbData(prev => ({ ...prev, ...hltb }));
+            }
+          })
+          .catch(err => console.warn('HLTB batch fetch failed:', err));
         }
       }
     } catch (err) {
-      console.error('Failed to fetch submissions:', err);
+      console.warn('Failed to fetch submissions:', err);
     } finally {
       setLoading(false);
     }
@@ -432,8 +447,15 @@ export default function MySubmissions() {
     if (selectedGame) {
       setHltbInfo(null);
       fetch(`/api/hltb/${encodeURIComponent(selectedGame.title)}`)
-        .then(r => r.json())
-        .then(data => setHltbInfo(data))
+        .then(async r => {
+          if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+            return r.json();
+          }
+          return null;
+        })
+        .then(data => {
+          if (data) setHltbInfo(data);
+        })
         .catch(() => {});
     }
   }, [selectedGame]);

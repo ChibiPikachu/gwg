@@ -58,18 +58,39 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
   };
 
   React.useEffect(() => {
-    const fetchActiveEvent = () => {
-      fetch('/api/events')
-        .then(res => res.json())
-        .then(data => {
+    const fetchActiveEvent = async () => {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: false });
+
+          if (!error && Array.isArray(data)) {
+            const active = data.find((e: any) => e.is_active || e.isActive);
+            setCurrentEvent(active || null);
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase fetch active event error in TopBar:', e);
+        }
+      }
+
+      try {
+        const res = await fetch('/api/events');
+        const contentType = res.headers.get('content-type');
+        if (res.ok && contentType && contentType.includes('application/json')) {
+          const data = await res.json();
           if (Array.isArray(data)) {
             const active = data.find((e: any) => e.is_active || e.isActive);
             setCurrentEvent(active || null);
           } else {
             setCurrentEvent(null);
           }
-        })
-        .catch(err => console.error('Failed to fetch events in TopBar:', err));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch events in TopBar:', err);
+      }
     };
 
     fetchActiveEvent();
@@ -164,18 +185,46 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
   );
 
   React.useEffect(() => {
-    if (!user?.steamId || !isSupabaseConfigured) return;
+    if (!user?.steamId) return;
     
-    // Initial fetch
-    fetch('/api/submissions')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          const filtered = data.filter(s => s.status !== 'pending').slice(0, 5);
-          setNotifications(filtered);
+    const fetchNotifications = async () => {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('submissions')
+            .select('*')
+            .eq('user_id', user.steamId)
+            .neq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+          if (!error && Array.isArray(data)) {
+            setNotifications(data);
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase notifications query error in TopBar:', e);
         }
-      })
-      .catch(err => console.error('Failed to fetch notifications:', err));
+      }
+
+      try {
+        const res = await fetch('/api/submissions');
+        const contentType = res.headers.get('content-type');
+        if (res.ok && contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const filtered = data.filter(s => s.status !== 'pending').slice(0, 5);
+            setNotifications(filtered);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch notifications in TopBar:', err);
+      }
+    };
+
+    fetchNotifications();
+
+    if (!isSupabaseConfigured || !supabase) return;
 
     // Live subscription for notifications
     const channel = supabase
@@ -250,7 +299,8 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
           </button>
         )}
         <div className="flex-1 flex items-center gap-2">
-            {activeEventToUse && (
+          <Logo />
+          {activeEventToUse && (
             <div className="lg:hidden flex items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
               <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
               <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
