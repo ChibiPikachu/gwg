@@ -394,6 +394,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchMe();
   }, [fetchMe]);
 
+  // Listen for Supabase auth session changes immediately and update profile data
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const fetchProfileForAuthUser = async (userId: string, authUserMeta?: any) => {
+      try {
+        const { data: dbProfile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Error fetching profile for auth user:', error);
+        }
+
+        if (dbProfile) {
+          const isAdmin = dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || dbProfile.is_admin === true || dbProfile.isAdmin === true;
+          const formattedUser = {
+            uid: String(dbProfile.steamid || dbProfile.id || userId),
+            steamId: String(dbProfile.steamid || dbProfile.id || userId),
+            steamName: dbProfile.steam_name || dbProfile.display_name || dbProfile.discord_name || authUserMeta?.full_name || 'Gamer',
+            steamAvatar: (dbProfile.active_avatar === 'discord' && dbProfile.discord_avatar)
+              ? dbProfile.discord_avatar
+              : (dbProfile.steam_avatar || dbProfile.discord_avatar || authUserMeta?.avatar_url || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg'),
+            team: dbProfile.team || 'none',
+            isAdmin: Boolean(isAdmin),
+            role: dbProfile.role || (isAdmin ? 'admin' : 'member'),
+            status: dbProfile.status || 'Ready for Event',
+            points: typeof dbProfile.points === 'number' ? dbProfile.points : 0,
+            discordId: dbProfile.discord_id || userId,
+            discordName: dbProfile.discord_name || authUserMeta?.full_name,
+            discordAvatar: dbProfile.discord_avatar || authUserMeta?.avatar_url,
+            createdAt: dbProfile.created_at,
+            eventTeams: dbProfile.eventTeams || {},
+            needs_registration: dbProfile.needs_registration || false
+          };
+          setUser(formattedUser as any);
+          localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
+        }
+      } catch (e) {
+        console.warn('Failed to load profile on auth session change:', e);
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const userId = session.user.id;
+        await fetchProfileForAuthUser(userId, session.user.user_metadata);
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
   // Real-time listener for current user's profile
   useEffect(() => {
     if (!user?.steamId || !isSupabaseConfigured) return;
