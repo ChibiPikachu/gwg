@@ -3,7 +3,7 @@ import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Settings, Shield, Clock, CheckCircle, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare, Calendar, Filter, RotateCcw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured, buildProfileOrFilter } from '@/lib/supabase';
 
 export interface SubmissionNotesMeta {
   hasNoAchievements: boolean;
@@ -285,17 +285,36 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   }, []);
 
   const fetchEvents = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .order('start_date', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          setEvents(data);
+          const active = data.find((e: any) => e.is_active || e.isActive);
+          setActiveEvent(active || data[0] || null);
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase fetch events error in AdminPanel:', e);
+      }
+    }
+
     try {
       const res = await fetch('/api/events');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : [];
         setEvents(list);
-        const active = list.find((e: any) => e.is_active);
-        setActiveEvent(active || null);
+        const active = list.find((e: any) => e.is_active || e.isActive);
+        setActiveEvent(active || list[0] || null);
       }
     } catch (err) {
-      console.error('Failed to fetch events inside AdminPanel:', err);
+      console.warn('Failed to fetch events inside AdminPanel:', err);
     }
   }, []);
 
@@ -416,42 +435,117 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [editMultiplier, setEditMultiplier] = React.useState(1);
 
   const fetchUsers = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          const formatted = data.map((dbProfile: any) => {
+            const isAdmin = dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || dbProfile.is_admin === true || dbProfile.isAdmin === true;
+            return {
+              ...dbProfile,
+              uid: String(dbProfile.steamid || dbProfile.id),
+              steamId: String(dbProfile.steamid || dbProfile.id),
+              steamName: dbProfile.steam_name || dbProfile.display_name || dbProfile.discord_name || 'Gamer',
+              steamAvatar: dbProfile.steam_avatar || dbProfile.discord_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+              team: dbProfile.team || 'none',
+              isAdmin: Boolean(isAdmin),
+              role: dbProfile.role || (isAdmin ? 'admin' : 'member'),
+              status: dbProfile.status || 'Ready for Event',
+              points: typeof dbProfile.points === 'number' ? dbProfile.points : 0,
+              discordId: dbProfile.discord_id || dbProfile.id,
+              discordName: dbProfile.discord_name,
+              discordAvatar: dbProfile.discord_avatar,
+              createdAt: dbProfile.created_at
+            };
+          });
+          setUsers(formatted);
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase fetch users error in AdminPanel:', e);
+      }
+    }
+
     try {
       const res = await fetch('/api/admin/users');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setUsers(Array.isArray(data) ? data : []);
       }
     } catch (err) {
-      console.error('Failed to fetch users:', err);
+      console.warn('Failed to fetch users:', err);
     } 
   }, []);
 
   const fetchSubmissions = React.useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('submissions')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          setSubmissions(data);
+
+          const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name || s.gameName).filter(Boolean)));
+          if (uniqueTitles.length > 0) {
+            try {
+              const r = await fetch('/api/hltb-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ titles: uniqueTitles })
+              });
+              if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+                const hltb = await r.json();
+                if (hltb && typeof hltb === 'object') {
+                  setHltbData(prev => ({ ...prev, ...hltb }));
+                }
+              }
+            } catch (err) {
+              console.warn('HLTB batch fetch failed:', err);
+            }
+          }
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase fetch submissions error in AdminPanel:', e);
+      }
+    }
+
     try {
       const res = await fetch('/api/admin/submissions');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setSubmissions(Array.isArray(data) ? data : []);
         
-        // Batch fetch HLTB data for these submissions
-        const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name)));
+        const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name || s.gameName).filter(Boolean)));
         if (uniqueTitles.length > 0) {
-          fetch('/api/hltb-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ titles: uniqueTitles })
-          })
-          .then(r => r.json())
-          .then(hltb => {
-             console.log('[Admin] HLTB Data received:', hltb);
-             setHltbData(prev => ({ ...prev, ...hltb }));
-          })
-          .catch(err => console.error('HLTB batch fetch failed:', err));
+          try {
+            const r = await fetch('/api/hltb-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ titles: uniqueTitles })
+            });
+            if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+              const hltb = await r.json();
+              if (hltb && typeof hltb === 'object') {
+                setHltbData(prev => ({ ...prev, ...hltb }));
+              }
+            }
+          } catch (err) {
+            console.warn('HLTB batch fetch failed:', err);
+          }
         }
       }
     } catch (err) {
-      console.error('Failed to fetch submissions:', err);
+      console.warn('Failed to fetch submissions:', err);
     }
   }, []);
 
@@ -868,11 +962,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   };
 
   const checkIsCurrentSub = React.useCallback((s: any) => {
-    if (!activeEvent) return false;
-    if (s.event_id === activeEvent.id) return true;
-    const subTime = new Date(s.created_at || 0).getTime();
-    const eventStartTime = new Date(activeEvent.start_date || activeEvent.startDate).getTime();
-    return subTime >= eventStartTime;
+    if (!activeEvent) return true;
+    if (s.event_id === activeEvent.id || s.eventId === activeEvent.id) return true;
+    const subTime = new Date(s.created_at || s.createdAt || 0).getTime();
+    const eventStartTime = new Date(activeEvent.start_date || activeEvent.startDate || 0).getTime();
+    return eventStartTime > 0 ? subTime >= eventStartTime : true;
   }, [activeEvent]);
 
   const safeUsers = Array.isArray(users) ? users : [];
