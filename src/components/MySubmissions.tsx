@@ -428,7 +428,7 @@ export default function MySubmissions() {
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
+          if (Array.isArray(data)) {
             setSearchResults(data);
             return;
           }
@@ -459,30 +459,10 @@ export default function MySubmissions() {
           }
         }
 
-        // Custom game option fallback
-        if (term) {
-          setSearchResults([{
-            id: `custom_${Date.now()}`,
-            title: term,
-            image: 'https://via.placeholder.com/264x352?text=Custom+Game',
-            summary: 'Custom Game Entry'
-          }]);
-        } else {
-          setSearchResults([]);
-        }
+        setSearchResults([]);
       } catch (err) {
         console.error('Search error:', err);
-        const term = gameSearch.trim();
-        if (term) {
-          setSearchResults([{
-            id: `custom_${Date.now()}`,
-            title: term,
-            image: 'https://via.placeholder.com/264x352?text=Custom+Game',
-            summary: 'Custom Game Entry'
-          }]);
-        } else {
-          setSearchError('Network error');
-        }
+        setSearchResults([]);
       } finally {
         setSearching(false);
       }
