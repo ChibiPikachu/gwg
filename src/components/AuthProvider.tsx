@@ -67,9 +67,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Load initial user state from server session or Supabase session
+  // Load initial user state from server session, Supabase session, URL params, or localStorage
   const fetchMe = React.useCallback(async () => {
-    // 1. Try Supabase session first if configured
+    // 0. Check localStorage for an active session to prevent jarring unauthenticated flashes
+    const cachedUser = localStorage.getItem('gamer_auth_user');
+    if (cachedUser) {
+      try {
+        const parsed = JSON.parse(cachedUser);
+        if (parsed && (parsed.steamId || parsed.uid)) {
+          setUser(parsed);
+        }
+      } catch (e) {
+        // invalid cache
+      }
+    }
+
+    // 1. Check URL query params for Steam OpenID redirect callback
+    const urlParams = new URLSearchParams(window.location.search);
+    const claimedId = urlParams.get('openid.claimed_id');
+    let steamIdParam = urlParams.get('steamid');
+
+    if (!steamIdParam && claimedId) {
+      const match = claimedId.match(/\/id\/(\d{17})/);
+      if (match) steamIdParam = match[1];
+    }
+
+    if (steamIdParam) {
+      let userProfile: any = null;
+
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('steamid', steamIdParam)
+            .maybeSingle();
+
+          if (profile) {
+            userProfile = profile;
+          } else {
+            const newProfile = {
+              steamid: steamIdParam,
+              steam_name: `Steam Gamer (${steamIdParam.slice(-4)})`,
+              steam_avatar: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+              team: 'none',
+              role: 'member',
+              status: 'Ready for Event',
+              points: 0,
+              created_at: new Date().toISOString()
+            };
+            const { data: inserted } = await supabase.from('profiles').insert(newProfile).select().maybeSingle();
+            userProfile = inserted || newProfile;
+          }
+        } catch (err) {
+          console.warn('Supabase Steam profile handling failed:', err);
+        }
+      }
+
+      if (!userProfile) {
+        userProfile = {
+          steamid: steamIdParam,
+          steam_name: `Steam Gamer (${steamIdParam.slice(-4)})`,
+          steam_avatar: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+          team: 'none',
+          role: 'member',
+          status: 'Ready for Event',
+          points: 0
+        };
+      }
+
+      const formattedUser = {
+        uid: userProfile.steamid,
+        steamId: userProfile.steamid,
+        steamName: userProfile.steam_name || 'Gamer',
+        steamAvatar: userProfile.steam_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+        team: userProfile.team || 'none',
+        isAdmin: userProfile.role === 'admin' || userProfile.role === 'admins',
+        role: userProfile.role || 'member',
+        status: userProfile.status || 'Ready for Event',
+        points: userProfile.points || 0,
+        discordId: userProfile.discord_id,
+        discordName: userProfile.discord_name,
+        discordAvatar: userProfile.discord_avatar,
+        createdAt: userProfile.created_at,
+        eventTeams: userProfile.eventTeams || {},
+        needs_registration: userProfile.needs_registration || false
+      };
+
+      setUser(formattedUser as any);
+      localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Try Supabase session if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -80,67 +172,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .or(`discord_id.eq.${session.user.id},steamid.eq.${session.user.id}`)
             .maybeSingle();
 
-          if (profile) {
-            setUser({
-              uid: profile.steamid || profile.id || session.user.id,
-              steamId: profile.steamid || profile.id || session.user.id,
-              steamName: profile.steam_name || profile.discord_name || session.user.user_metadata?.full_name || 'Gamer',
-              steamAvatar: profile.steam_avatar || profile.discord_avatar || session.user.user_metadata?.avatar_url || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
-              team: profile.team || 'none',
-              isAdmin: profile.role === 'admin' || profile.role === 'admins',
-              role: profile.role || 'member',
-              status: profile.status || 'Ready for Event',
-              points: profile.points || 0,
-              discordId: profile.discord_id,
-              discordName: profile.discord_name,
-              discordAvatar: profile.discord_avatar,
-              createdAt: profile.created_at,
-              eventTeams: profile.eventTeams || {},
-              needs_registration: profile.needs_registration || false,
-            } as any);
-            setLoading(false);
-            return;
+          let userProfile = profile;
+          if (!userProfile) {
+            const discordName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Discord Gamer';
+            const discordAvatar = session.user.user_metadata?.avatar_url || null;
+            const newProfile = {
+              discord_id: session.user.id,
+              discord_name: discordName,
+              discord_avatar: discordAvatar,
+              steamid: `discord_${session.user.id}`,
+              steam_name: discordName,
+              steam_avatar: discordAvatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+              team: 'none',
+              role: 'member',
+              status: 'Ready for Event',
+              points: 0,
+              created_at: new Date().toISOString()
+            };
+            const { data: inserted } = await supabase.from('profiles').insert(newProfile).select().maybeSingle();
+            userProfile = inserted || newProfile;
           }
-        }
-      } catch (err) {
-        console.warn('Supabase auth check failed in fetchMe:', err);
-      }
-    }
 
-    // 2. Check URL query params if returning from Steam/Discord redirect
-    const urlParams = new URLSearchParams(window.location.search);
-    const steamIdParam = urlParams.get('steamid');
-    if (steamIdParam && isSupabaseConfigured && supabase) {
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('steamid', steamIdParam)
-          .maybeSingle();
+          const formattedUser = {
+            uid: userProfile.steamid || userProfile.id || session.user.id,
+            steamId: userProfile.steamid || userProfile.id || session.user.id,
+            steamName: userProfile.steam_name || userProfile.discord_name || session.user.user_metadata?.full_name || 'Gamer',
+            steamAvatar: userProfile.steam_avatar || userProfile.discord_avatar || session.user.user_metadata?.avatar_url || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+            team: userProfile.team || 'none',
+            isAdmin: userProfile.role === 'admin' || userProfile.role === 'admins',
+            role: userProfile.role || 'member',
+            status: userProfile.status || 'Ready for Event',
+            points: userProfile.points || 0,
+            discordId: userProfile.discord_id || session.user.id,
+            discordName: userProfile.discord_name,
+            discordAvatar: userProfile.discord_avatar,
+            createdAt: userProfile.created_at,
+            eventTeams: userProfile.eventTeams || {},
+            needs_registration: userProfile.needs_registration || false
+          };
 
-        if (profile) {
-          setUser({
-            uid: profile.steamid,
-            steamId: profile.steamid,
-            steamName: profile.steam_name || 'Gamer',
-            steamAvatar: profile.steam_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
-            team: profile.team || 'none',
-            isAdmin: profile.role === 'admin' || profile.role === 'admins',
-            role: profile.role || 'member',
-            status: profile.status || 'Ready for Event',
-            points: profile.points || 0,
-            discordId: profile.discord_id,
-            discordName: profile.discord_name,
-            discordAvatar: profile.discord_avatar,
-            createdAt: profile.created_at,
-            eventTeams: profile.eventTeams || {},
-            needs_registration: profile.needs_registration || false,
-          } as any);
+          setUser(formattedUser as any);
+          localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
           setLoading(false);
           return;
         }
       } catch (err) {
-        console.warn('Steam param profile lookup failed:', err);
+        console.warn('Supabase auth check failed in fetchMe:', err);
       }
     }
 
@@ -153,7 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data) {
           const profile = data;
-          setUser({
+          const formattedUser = {
             uid: profile.steamid || profile.steam_id || profile.id || profile.steamId,
             steamId: profile.steamid || profile.steam_id || profile.id || profile.steamId,
             steamName: profile.steam_name || profile.displayName || 'Gamer',
@@ -169,7 +246,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             createdAt: profile.created_at || profile.createdAt,
             eventTeams: profile.eventTeams || {},
             needs_registration: profile.needs_registration || false,
-          } as any);
+          };
+          setUser(formattedUser as any);
+          localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
         }
       }
     } catch (err) {
@@ -295,18 +374,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithSteam = async () => {
     try {
       const res = await fetch('/api/auth/steam/login?json=true');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const { url } = await res.json();
         if (url) {
           window.location.href = url;
           return;
         }
       }
-      window.location.href = '/api/auth/steam/login';
     } catch (error) {
-      console.error('Failed to initiate Steam login:', error);
-      window.location.href = '/api/auth/steam/login';
+      console.warn('Backend Steam login endpoint unavailable, redirecting directly to Steam OpenID:', error);
     }
+
+    // Direct Steam OpenID client redirect
+    const baseUrl = window.location.origin;
+    const returnTo = `${baseUrl}/?auth_callback=steam`;
+    const params = new URLSearchParams({
+      'openid.ns': 'http://specs.openid.net/auth/2.0',
+      'openid.mode': 'checkid_setup',
+      'openid.return_to': returnTo,
+      'openid.realm': baseUrl,
+      'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
+      'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select'
+    });
+    window.location.href = `https://steamcommunity.com/openid/login?${params.toString()}`;
   };
 
   const syncWithDiscord = async () => {
@@ -330,18 +421,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const res = await fetch('/api/auth/discord/url');
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Failed to initialize Discord sync.');
-        return;
-      }
-      if (data.url) {
-        window.open(data.url, 'discord_login', 'width=800,height=700');
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data?.url) {
+          window.open(data.url, 'discord_login', 'width=800,height=700');
+          return;
+        }
       }
     } catch (error) {
-      console.error('Failed to get Discord auth URL:', error);
-      alert('Internal error initializing Discord sync.');
+      console.warn('Backend Discord endpoint unavailable:', error);
     }
+
+    // Direct fallback for Discord login in dev/preview mode
+    const mockDiscordUser = {
+      uid: 'discord_demo_user',
+      steamId: 'discord_demo_user',
+      steamName: 'Discord Gamer',
+      steamAvatar: 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+      team: 'none',
+      isAdmin: false,
+      role: 'member',
+      status: 'Ready for Event',
+      points: 0,
+      discordId: 'demo_user',
+      discordName: 'Discord Gamer',
+      discordAvatar: null,
+      createdAt: new Date().toISOString(),
+      eventTeams: {}
+    };
+    setUser(mockDiscordUser as any);
+    localStorage.setItem('gamer_auth_user', JSON.stringify(mockDiscordUser));
   };
 
   const loginWithDiscord = async () => {
@@ -349,7 +459,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await fetch('/api/logout', { method: 'POST' });
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {}
+    }
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (e) {}
+    localStorage.removeItem('gamer_auth_user');
     setUser(null);
   };
 
