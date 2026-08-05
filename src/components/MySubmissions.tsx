@@ -681,27 +681,49 @@ export default function MySubmissions() {
     setSteamVerifyMsg({ type: 'info', text: 'Verifying ownership...' });
     setSteamTotalStats(null);
 
+    const userIdHeader = user?.steamId || user?.uid || user?.discordId || '';
+    const reqHeaders = {
+      'x-user-id': userIdHeader,
+      'x-steam-id': user?.steamId || '',
+      'x-discord-id': user?.discordId || '',
+    };
+
     try {
       let appId = selectedGame.steam_appid || selectedGame.steamAppId || selectedGame.appid;
-      let url = '';
+      let primaryUrl = '';
+      let secondaryUrl = '';
       
       if (appId && String(appId) !== 'undefined' && String(appId) !== 'null' && String(appId).trim() !== '' && String(appId) !== '0') {
-        url = `/api/steam/check-ownership/${encodeURIComponent(String(appId).trim())}`;
+        primaryUrl = `/api/steam/check-ownership/${encodeURIComponent(String(appId).trim())}`;
+        if (selectedGame.title || selectedGame.name) {
+          secondaryUrl = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
+        }
       } else if (selectedGame.title || selectedGame.name) {
-        url = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
+        primaryUrl = `/api/steam/check-ownership-by-name?name=${encodeURIComponent(selectedGame.title || selectedGame.name)}`;
       } else {
         setSteamVerifyMsg({ type: 'error', text: 'Game name or Steam App ID missing for verification.' });
         setVerifyingSteam(false);
         return;
       }
 
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({}));
+      let res = await fetch(primaryUrl, { headers: reqHeaders });
+      let data = await res.json().catch(() => ({}));
+
+      // If primary check failed with 404 or not owned, try secondary URL (by name) if available
+      if ((!res.ok || (data && !data.owned)) && secondaryUrl) {
+        console.log('[Ownership Verification] Primary check unsuccessful, trying secondary by name:', secondaryUrl);
+        const secondRes = await fetch(secondaryUrl, { headers: reqHeaders });
+        const secondData = await secondRes.json().catch(() => ({}));
+        if (secondRes.ok) {
+          res = secondRes;
+          data = secondData;
+        }
+      }
 
       if (!res.ok) {
         setSteamVerifyMsg({ 
           type: 'error', 
-          text: data.error || `Verification request failed (${res.status}).` 
+          text: data.error || `Verification request failed (${res.status}). Please ensure Steam ID is linked in settings.` 
         });
         return;
       }

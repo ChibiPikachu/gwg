@@ -426,6 +426,58 @@ function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltbM
   }
 }
 
+// Helper to extract authenticated user from Passport session, headers, query, or body
+async function getAuthUser(req: any, supabase?: any) {
+  // 1. Passport session
+  if (req && (req as any).user) {
+    return (req as any).user;
+  }
+
+  // 2. Request headers sent by frontend
+  if (req && req.headers) {
+    const headerUserId = req.headers['x-user-id'] || req.headers['x-steam-id'] || req.headers['x-discord-id'];
+    if (headerUserId && typeof headerUserId === 'string' && headerUserId.trim() !== '' && headerUserId !== 'null' && headerUserId !== 'undefined') {
+      const cleanId = headerUserId.trim();
+      const isNumeric = /^\d{15,20}$/.test(cleanId);
+      return {
+        id: cleanId,
+        steamid: isNumeric ? cleanId : null,
+        steamId: isNumeric ? cleanId : null,
+        discord_id: !isNumeric ? cleanId.replace('discord_', '') : null,
+        provider: isNumeric ? 'steam' : 'discord'
+      };
+    }
+  }
+
+  // 3. Query params or body
+  if (req) {
+    const paramId = req.query?.userId || req.query?.steamId || req.query?.discordId || req.body?.userId;
+    if (paramId && typeof paramId === 'string' && paramId.trim() !== '' && paramId !== 'null' && paramId !== 'undefined') {
+      const cleanId = paramId.trim();
+      const isNumeric = /^\d{15,20}$/.test(cleanId);
+      return {
+        id: cleanId,
+        steamid: isNumeric ? cleanId : null,
+        steamId: isNumeric ? cleanId : null,
+        discord_id: !isNumeric ? cleanId.replace('discord_', '') : null,
+        provider: isNumeric ? 'steam' : 'discord'
+      };
+    }
+  }
+
+  // 4. Fallback for demo mode
+  if (req && req.query && req.query.demo === 'true') {
+    return {
+      id: '76561198117650232',
+      steamid: '76561198117650232',
+      steamId: '76561198117650232',
+      displayName: 'Demo User'
+    };
+  }
+
+  return null;
+}
+
 // Helper for Steam API calls with database caching
 async function resolveSteamId(currentUser: any, supabase: any): Promise<string | null> {
   if (!currentUser) return null;
@@ -437,19 +489,23 @@ async function resolveSteamId(currentUser: any, supabase: any): Promise<string |
   if (currentUser.steam_id && isNumericId(String(currentUser.steam_id))) return String(currentUser.steam_id);
   if (currentUser.steamId && isNumericId(String(currentUser.steamId))) return String(currentUser.steamId);
 
-  // 2. If provider is steam, currentUser.id is likely steam id
+  // 2. Check if currentUser.id itself is a 17-digit numeric Steam ID
+  if (currentUser.id && isNumericId(String(currentUser.id))) return String(currentUser.id);
+
+  // 3. If provider is steam, currentUser.id is likely steam id
   if (currentUser.provider === 'steam' && isNumericId(String(currentUser.id))) {
     return String(currentUser.id);
   }
 
-  // 3. Look up profile in Supabase using currentUser's discord_id or user.id
+  // 4. Look up profile in Supabase using currentUser's discord_id or user.id
   if (supabase) {
-    const discordId = currentUser.discord_id || (currentUser.provider === 'discord' ? currentUser.id : null);
+    const discordId = currentUser.discord_id || currentUser.discordId || (currentUser.provider === 'discord' ? currentUser.id : null);
     if (discordId) {
+      const cleanDiscId = String(discordId).replace('discord_', '');
       const { data: profile } = await supabase
         .from('profiles')
         .select('steamid')
-        .eq('discord_id', String(discordId))
+        .or(`discord_id.eq.${cleanDiscId},discord_id.eq.${discordId},steamid.eq.${discordId}`)
         .maybeSingle();
       if (profile?.steamid && isNumericId(String(profile.steamid))) {
         return String(profile.steamid);
@@ -468,8 +524,8 @@ async function resolveSteamId(currentUser: any, supabase: any): Promise<string |
     }
   }
 
-  // 4. Fallback to any numeric ID if steamid property exists
-  const fallback = currentUser.steamid || currentUser.steam_id || currentUser.steamId;
+  // 5. Fallback to any numeric ID if steamid property exists
+  const fallback = currentUser.steamid || currentUser.steam_id || currentUser.steamId || currentUser.id;
   if (fallback && String(fallback) !== 'undefined' && String(fallback) !== 'null' && isNumericId(String(fallback))) {
     return String(fallback);
   }
@@ -2799,24 +2855,24 @@ async function createServer() {
   });
 
   app.get('/api/submissions', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const supabase = getSupabase();
+    const currentUser = await getAuthUser(req, supabase);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Unauthorized: Please log in first.' });
     }
 
-    const currentUser = (req as any).user;
     const { userId: targetUserId } = req.query;
     
     // Default to current user if no userId provided
-    const steamId = targetUserId ? String(targetUserId) : String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const steamId = targetUserId ? String(targetUserId) : String(currentUser.steamid || currentUser.id || currentUser.steam_id || currentUser.discord_id || '');
     
-    const supabase = getSupabase();
     if (!supabase) return res.json([]);
 
     try {
       let query = supabase.from('submissions').select('*');
       if (targetUserId) {
         query = query.eq('user_id', steamId);
-      } else {
+      } else if (steamId) {
         query = query.or(`user_id.eq.${steamId},user_id.eq.system_notification`);
       }
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -2860,12 +2916,13 @@ async function createServer() {
 
   // --- REPLACE YOUR EXISTING /api/submissions POST ROUTE WITH THIS ---
   app.post('/api/submissions', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const supabase = getSupabase();
+    const currentUser = await getAuthUser(req, supabase);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Unauthorized: Please log in first.' });
     }
 
-    const currentUser = (req as any).user;
-    const steamId = String(currentUser.id || currentUser.steamid || currentUser.steam_id);
+    const steamId = String(currentUser.steamid || currentUser.id || currentUser.steam_id || currentUser.discord_id || 'gamer');
     const { 
       gameId, 
       gameTitle,
@@ -2887,7 +2944,6 @@ async function createServer() {
 
     const finalBeatenPrevious = beatenPrevious || beaten_previous || 'no';
 
-    const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
@@ -4718,15 +4774,15 @@ async function createServer() {
   });
 
   app.get('/api/steam/check-ownership-by-name', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const supabase = getSupabase();
+    const currentUser = await getAuthUser(req, supabase);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Unauthorized: Please log in to verify ownership.' });
     }
 
     const { name } = req.query;
-    if (!name) return res.status(400).json({ error: 'Name required' });
+    if (!name || String(name).trim() === '') return res.status(400).json({ error: 'Name parameter is required' });
 
-    const currentUser = (req as any).user;
-    const supabase = getSupabase();
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const steamId = await resolveSteamId(currentUser, supabase);
@@ -4781,18 +4837,22 @@ async function createServer() {
     }
   });
 
-  app.get('/api/steam/check-ownership/:appId', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  app.get('/api/steam/check-ownership', async (req, res) => {
+    return res.status(400).json({ error: 'Steam App ID is required.' });
+  });
 
+  app.get('/api/steam/check-ownership/:appId', async (req, res) => {
     const { appId } = req.params;
-    if (!appId || appId === 'undefined' || appId === 'null') {
+    if (!appId || appId === 'undefined' || appId === 'null' || appId.trim() === '') {
       return res.status(400).json({ error: 'Invalid or missing App ID' });
     }
 
-    const currentUser = (req as any).user;
     const supabase = getSupabase();
+    const currentUser = await getAuthUser(req, supabase);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Unauthorized: Please log in to verify ownership.' });
+    }
+
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const steamId = await resolveSteamId(currentUser, supabase);

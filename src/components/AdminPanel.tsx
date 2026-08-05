@@ -873,9 +873,15 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         updatedNotes = serializeNotesMeta(true, selectedLevel, meta.userNotes);
       }
 
+      const userIdHeader = currentUser?.steamId || currentUser?.uid || currentUser?.discordId || '';
       const res = await fetch('/api/admin/verify-submission', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-id': userIdHeader,
+          'x-steam-id': currentUser?.steamId || '',
+          'x-discord-id': currentUser?.discordId || ''
+        },
         body: JSON.stringify({
           submissionId: reviewingId,
           status,
@@ -918,8 +924,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         await fetchUsers();
         await fetchTeamAdjustments();
       } else {
-        const data = await res.json().catch(() => ({ error: 'Unknown server error' }));
-        alert(`Verification failed: ${data.error || 'Server returned an error'}`);
+        let errorMsg = `Server returned error (${res.status})`;
+        try {
+          const rawText = await res.text();
+          try {
+            const parsedData = JSON.parse(rawText);
+            errorMsg = parsedData.error || errorMsg;
+          } catch {
+            if (rawText && rawText.length > 0) errorMsg = rawText.slice(0, 150);
+          }
+        } catch {}
+        alert(`Verification failed: ${errorMsg}`);
       }
     } catch (err: any) {
       console.error('Verify submission error:', err);
