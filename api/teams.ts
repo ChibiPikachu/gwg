@@ -1,17 +1,29 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
+
+// Helper type extensions for Vercel query/json methods
+interface Request extends IncomingMessage {
+  query: Record<string, string | string[]>;
+  method?: string;
+}
+
+interface Response extends ServerResponse {
+  status: (statusCode: number) => Response;
+  json: (data: any) => void;
+  setHeader: (name: string, value: string | string[]) => Response;
+}
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl!, supabaseKey!);
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request, res: Response) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
-  const { name } = req.query; // Optional filter by specific team name (e.g. /api/teams?name=purple)
+  const { name } = req.query;
 
   try {
     let query = supabase.from('profiles').select('*');
@@ -22,7 +34,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: profiles, error: profileError } = await query;
     if (profileError) throw profileError;
 
-    // Fetch submissions to calculate points per member
     const { data: submissions } = await supabase.from('submissions').select('*').eq('status', 'approved');
 
     const memberPoints: Record<string, number> = {};
