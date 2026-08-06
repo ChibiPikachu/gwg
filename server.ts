@@ -1030,19 +1030,12 @@ async function createServer() {
 
   app.get('/api/auth/discord/url', (req, res) => {
     const clientId = process.env.DISCORD_CLIENT_ID;
-    if (!clientId) {
-      console.error('[Auth] Discord Sync Error: DISCORD_CLIENT_ID is missing from environment variables.');
-      return res.status(500).json({ error: 'Discord Client ID not configured. Please set DISCORD_CLIENT_ID in the app settings.' });
-    }
-    
     const appUrl = getAppBaseUrl(req);
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: `${appUrl}/auth/discord/callback`,
-      response_type: 'code',
-      scope: 'identify guilds'
-    });
-    res.json({ url: `https://discord.com/api/oauth2/authorize?${params.toString()}` });
+    if (!clientId) {
+      console.warn('[Auth] DISCORD_CLIENT_ID not explicitly configured in env, falling back to app /auth/discord route');
+    }
+    // Direct through /auth/discord so Passport handles OAuth state & session initialization cleanly
+    res.json({ url: `${appUrl}/auth/discord` });
   });
 
   app.get('/auth/discord', (req, res, next) => {
@@ -1065,8 +1058,16 @@ async function createServer() {
         const errorMsg = err?.message || 'Discord authentication failed.';
         return res.send(`
           <html><body><script>
-            window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: ${JSON.stringify(errorMsg)} }, '*');
-            window.close();
+            if (window.opener && !window.opener.closed) {
+              try {
+                window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: ${JSON.stringify(errorMsg)} }, '*');
+                window.close();
+              } catch(e) {
+                window.location.href = '/?error=' + encodeURIComponent(${JSON.stringify(errorMsg)});
+              }
+            } else {
+              window.location.href = '/?error=' + encodeURIComponent(${JSON.stringify(errorMsg)});
+            }
           </script></body></html>
         `);
       }
@@ -1077,10 +1078,19 @@ async function createServer() {
         const guilds = user.guilds || [];
         const isMember = guilds.some((g: any) => String(g.id) === String(requiredGuildId));
         if (!isMember) {
+          const guildErrMsg = 'You must be a member of our Discord server to log in.';
           return res.send(`
             <html><body><script>
-              window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: 'You must be a member of our Discord server to log in.' }, '*');
-              window.close();
+              if (window.opener && !window.opener.closed) {
+                try {
+                  window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: ${JSON.stringify(guildErrMsg)} }, '*');
+                  window.close();
+                } catch(e) {
+                  window.location.href = '/?error=' + encodeURIComponent(${JSON.stringify(guildErrMsg)});
+                }
+              } else {
+                window.location.href = '/?error=' + encodeURIComponent(${JSON.stringify(guildErrMsg)});
+              }
             </script></body></html>
           `);
         }
@@ -1159,8 +1169,16 @@ async function createServer() {
           console.error('Failed to log in Discord-only user:', dbErr);
           return res.send(`
             <html><body><script>
-              window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: 'Failed to establish local session.' }, '*');
-              window.close();
+              if (window.opener && !window.opener.closed) {
+                try {
+                  window.opener.postMessage({ type: 'DISCORD_AUTH_FAILURE', error: 'Failed to establish local session.' }, '*');
+                  window.close();
+                } catch(e) {
+                  window.location.href = '/?error=SessionFailed';
+                }
+              } else {
+                window.location.href = '/?error=SessionFailed';
+              }
             </script></body></html>
           `);
         }
@@ -1168,8 +1186,16 @@ async function createServer() {
 
       res.send(`
         <html><body><script>
-          window.opener.postMessage({ type: 'DISCORD_AUTH_SUCCESS', user: ${JSON.stringify(user)}, needsRegistration: ${!Boolean((req as any).user?.steamid && !(req as any).user?.needs_registration)} }, '*');
-          window.close();
+          if (window.opener && !window.opener.closed) {
+            try {
+              window.opener.postMessage({ type: 'DISCORD_AUTH_SUCCESS', user: ${JSON.stringify(user)}, needsRegistration: ${!Boolean((req as any).user?.steamid && !(req as any).user?.needs_registration)} }, '*');
+              window.close();
+            } catch(e) {
+              window.location.href = '/';
+            }
+          } else {
+            window.location.href = '/';
+          }
         </script></body></html>
       `);
     })(req, res, next);

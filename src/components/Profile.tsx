@@ -122,8 +122,19 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   React.useEffect(() => {
     const fetchSubmissions = async () => {
-      const idToFetch = steamId || currentUser?.uid;
-      if (!idToFetch) return;
+      const primaryId = steamId || currentUser?.uid;
+      if (!primaryId) return;
+
+      const candidateIds = Array.from(new Set([
+        primaryId,
+        currentUser?.steamId,
+        currentUser?.uid,
+        currentUser?.discordId,
+        currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
+        targetUser?.steamId,
+        targetUser?.discordId,
+        targetUser?.discordId ? `discord_${targetUser.discordId}` : null
+      ].filter(Boolean))) as string[];
 
       setLoadingSubmissions(true);
 
@@ -132,7 +143,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
           const { data, error } = await supabase
             .from('submissions')
             .select('*')
-            .eq('user_id', idToFetch);
+            .in('user_id', candidateIds);
 
           if (!error && Array.isArray(data)) {
             setSubmissions(data);
@@ -145,7 +156,12 @@ export default function Profile({ steamId }: { steamId?: string }) {
       }
 
       try {
-        const res = await fetch(`/api/submissions?userId=${idToFetch}`);
+        const headers: Record<string, string> = {};
+        if (currentUser?.steamId) headers['x-steam-id'] = currentUser.steamId;
+        if (currentUser?.discordId) headers['x-discord-id'] = currentUser.discordId;
+        if (currentUser?.uid) headers['x-user-id'] = currentUser.uid;
+
+        const res = await fetch(`/api/submissions?userId=${primaryId}`, { headers });
         const contentType = res.headers.get('content-type');
         if (res.ok && contentType && contentType.includes('application/json')) {
           const data = await res.json();
@@ -159,7 +175,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
     };
 
     fetchSubmissions();
-  }, [steamId, currentUser?.uid]);
+  }, [steamId, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId]);
 
   React.useEffect(() => {
     if (isOwnProfile) {

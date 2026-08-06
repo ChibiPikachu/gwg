@@ -150,12 +150,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          // Specific lookup by steamid or id
-          const { data: matchedProfile, error: selectErr } = await supabase
+          // 1. First search by steamid or steamIdParam
+          let { data: matchedProfile, error: selectErr } = await supabase
             .from('profiles')
             .select('*')
             .or(buildProfileOrFilter(steamIdParam))
             .maybeSingle();
+
+          // 2. If no direct match by steamid, check if we have a cached user session with a discordId to link to!
+          const cachedDiscordId = cachedParsed?.discordId || (cachedParsed?.uid && String(cachedParsed.uid).startsWith('discord_') ? cachedParsed.uid.replace('discord_', '') : null);
+          if (!matchedProfile && cachedDiscordId) {
+            const { data: discordProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .or(`discord_id.eq.${cachedDiscordId},steamid.eq.discord_${cachedDiscordId}`)
+              .maybeSingle();
+
+            if (discordProfile) {
+              matchedProfile = discordProfile;
+              // Link this steamid to the existing Discord profile
+              const newSteamName = fetchedSteamName || discordProfile.steam_name || discordProfile.discord_name || `Steam Gamer (${steamIdParam.slice(-4)})`;
+              const newSteamAvatar = fetchedSteamAvatar || discordProfile.steam_avatar || discordProfile.discord_avatar || null;
+
+              await supabase
+                .from('profiles')
+                .update({
+                  steamid: steamIdParam,
+                  steam_name: newSteamName,
+                  steam_avatar: newSteamAvatar,
+                  last_login: new Date().toISOString()
+                })
+                .eq('id', discordProfile.id || discordProfile.steamid);
+
+              // Update any previous submissions or teams created under discord_ ID
+              const oldId = `discord_${cachedDiscordId}`;
+              await supabase.from('submissions').update({ user_id: steamIdParam }).eq('user_id', oldId);
+              await supabase.from('user_event_teams').update({ steamid: steamIdParam }).eq('steamid', oldId);
+
+              matchedProfile.steamid = steamIdParam;
+              matchedProfile.steam_name = newSteamName;
+              matchedProfile.steam_avatar = newSteamAvatar;
+            }
+          }
 
           if (selectErr) {
             console.warn('Supabase profile query error (check RLS policies):', selectErr);
@@ -188,7 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               steam_name: fetchedSteamName || `Steam Gamer (${steamIdParam.slice(-4)})`,
               steam_avatar: fetchedSteamAvatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
               team: 'none',
-              role: isFirstUser ? 'admin' : 'admin', // Default initial login to admin so app owner has permissions
+              role: isFirstUser ? 'admin' : 'member',
               status: 'Ready for Event',
               points: 0,
               created_at: new Date().toISOString()
@@ -217,11 +253,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const isAdmin = userProfile.role === 'admin' || userProfile.role === 'admins' || userProfile.role === 'owner' || userProfile.is_admin === true || userProfile.isAdmin === true;
+      const rawSteamName = userProfile.steam_name;
+      const isPlaceholderSteamName = !rawSteamName || rawSteamName === 'Steam User' || rawSteamName.startsWith('Steam Gamer');
+      const resolvedDisplayName = !isPlaceholderSteamName 
+        ? rawSteamName 
+        : (userProfile.discord_name || userProfile.display_name || fetchedSteamName || `Steam Gamer (${steamIdParam.slice(-4)})`);
 
       const formattedUser = {
         uid: String(userProfile.steamid || steamIdParam),
         steamId: String(userProfile.steamid || steamIdParam),
-        steamName: userProfile.steam_name || userProfile.display_name || userProfile.discord_name || fetchedSteamName || `Steam Gamer (${steamIdParam.slice(-4)})`,
+        steamName: resolvedDisplayName,
         steamAvatar: userProfile.steam_avatar || userProfile.discord_avatar || fetchedSteamAvatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
         team: userProfile.team || 'none',
         isAdmin: Boolean(isAdmin),

@@ -185,15 +185,22 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
   );
 
   React.useEffect(() => {
-    if (!user?.steamId) return;
+    if (!user?.steamId && !user?.uid) return;
     
+    const candidateIds = Array.from(new Set([
+      user.steamId,
+      user.uid,
+      user.discordId,
+      user.discordId ? `discord_${user.discordId}` : null
+    ].filter(Boolean))) as string[];
+
     const fetchNotifications = async () => {
       if (isSupabaseConfigured && supabase) {
         try {
           const { data, error } = await supabase
             .from('submissions')
             .select('*')
-            .eq('user_id', user.steamId)
+            .in('user_id', candidateIds)
             .neq('status', 'pending')
             .order('created_at', { ascending: false })
             .limit(5);
@@ -208,12 +215,17 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
       }
 
       try {
-        const res = await fetch('/api/submissions');
+        const headers: Record<string, string> = {};
+        if (user.steamId) headers['x-steam-id'] = user.steamId;
+        if (user.discordId) headers['x-discord-id'] = user.discordId;
+        if (user.uid) headers['x-user-id'] = user.uid;
+
+        const res = await fetch('/api/submissions', { headers });
         const contentType = res.headers.get('content-type');
         if (res.ok && contentType && contentType.includes('application/json')) {
           const data = await res.json();
           if (Array.isArray(data)) {
-            const filtered = data.filter(s => s.status !== 'pending').slice(0, 5);
+            const filtered = data.filter(s => candidateIds.includes(String(s.user_id)) && s.status !== 'pending').slice(0, 5);
             setNotifications(filtered);
           }
         }
@@ -232,11 +244,10 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
-        table: 'submissions',
-        filter: `user_id=eq.${user.steamId}`
+        table: 'submissions'
       }, (payload) => {
         const updatedSub = payload.new as any;
-        if (updatedSub.status !== 'pending') {
+        if (updatedSub && candidateIds.includes(String(updatedSub.user_id)) && updatedSub.status !== 'pending') {
           // Add to start of notification list
           setNotifications(prev => {
             const exists = prev.find(n => n.id === updatedSub.id);
