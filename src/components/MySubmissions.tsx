@@ -109,6 +109,8 @@ export default function MySubmissions() {
     level: 2
   });
   const [submitting, setSubmitting] = React.useState(false);
+  const [syncingSteam, setSyncingSteam] = React.useState(false);
+  const [syncResult, setSyncResult] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned' | 'pending'>('all');
   const [submissionsSearchQuery, setSubmissionsSearchQuery] = React.useState('');
   const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
@@ -493,8 +495,9 @@ export default function MySubmissions() {
 
   // Fetch HLTB when game is selected
   React.useEffect(() => {
+    setHltbInfo(null);
+    setSyncResult(null);
     if (selectedGame) {
-      setHltbInfo(null);
       fetch(`/api/hltb/${encodeURIComponent(selectedGame.title)}`)
         .then(async r => {
           if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
@@ -508,6 +511,54 @@ export default function MySubmissions() {
         .catch(() => {});
     }
   }, [selectedGame]);
+
+  const handleSyncSteamStats = async () => {
+    if (!selectedGame) return;
+    setSyncingSteam(true);
+    setSyncResult(null);
+
+    try {
+      const appId = selectedGame.steam_appid || selectedGame.steamAppId || (String(selectedGame.id || '').startsWith('steam_') ? String(selectedGame.id).replace('steam_', '') : '');
+      const gameTitle = selectedGame.title || '';
+
+      const queryParams = new URLSearchParams();
+      if (appId) queryParams.set('appId', String(appId));
+      if (gameTitle) queryParams.set('gameTitle', gameTitle);
+
+      const res = await fetch(`/api/steam/user-game-stats?${queryParams.toString()}`, {
+        headers: getAuthHeaders()
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setSyncResult({
+          type: 'error',
+          message: data.error || 'Failed to sync Steam stats.'
+        });
+        return;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        hoursPlayed: String(data.hoursPlayed),
+        achievementsEarned: String(data.achievementsEarned),
+        hasNoAchievements: data.hasNoAchievements ? true : prev.hasNoAchievements
+      }));
+
+      setSyncResult({
+        type: 'success',
+        message: data.message || `Synced ${data.hoursPlayed} hrs and ${data.achievementsEarned} achievements from Steam!`
+      });
+    } catch (err: any) {
+      setSyncResult({
+        type: 'error',
+        message: err.message || 'Error connecting to server.'
+      });
+    } finally {
+      setSyncingSteam(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -885,6 +936,40 @@ export default function MySubmissions() {
                            <option key={p} value={p}>{p}</option>
                          ))}
                        </select>
+
+                       {formData.platform === 'Steam' && (
+                         <div className="pt-1 space-y-2">
+                           <button
+                             type="button"
+                             onClick={handleSyncSteamStats}
+                             disabled={syncingSteam}
+                             className={cn(
+                               "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-sm",
+                               "dark:bg-sky-500/10 bg-sky-50 text-sky-600 dark:text-sky-400 border-sky-500/20 hover:bg-sky-500/20 dark:hover:bg-sky-500/20",
+                               syncingSteam && "opacity-60 cursor-not-allowed"
+                             )}
+                           >
+                             {syncingSteam ? (
+                               <Loader2 className="w-4 h-4 animate-spin" />
+                             ) : (
+                               <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-3.5 h-3.5 filter invert opacity-80" alt="" />
+                             )}
+                             <span>{syncingSteam ? "Checking Steam Stats..." : "Sync time and achievements"}</span>
+                           </button>
+
+                           {syncResult && (
+                             <div className={cn(
+                               "text-xs font-bold p-3 rounded-xl border flex items-center gap-2 animate-in fade-in duration-200",
+                               syncResult.type === 'success'
+                                 ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                 : "bg-red-500/10 text-red-400 border-red-500/20"
+                             )}>
+                               {syncResult.type === 'success' ? <CheckCircle2 size={16} className="shrink-0" /> : <XCircle size={16} className="shrink-0" />}
+                               <span>{syncResult.message}</span>
+                             </div>
+                           )}
+                         </div>
+                       )}
                     </div>
 
                     <div className="space-y-2 col-span-2">

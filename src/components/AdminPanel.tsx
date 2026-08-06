@@ -4068,7 +4068,7 @@ function TeamPointContributionChart({
       red: 0,
       none: 200
     };
-    const baseHue = hues[selectedChartTeam] || 217;
+    const baseHue = hues[selectedChartTeam] ?? 217;
     const step = total > 1 ? index / (total - 1) : 0.5;
     const lightness = 42 + step * 32; 
     const saturation = 75 + (index % 3) * 5; 
