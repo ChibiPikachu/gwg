@@ -555,6 +555,12 @@ export default function MySubmissions() {
       const url = validEditId ? `/api/submissions/${validEditId}` : '/api/submissions';
       const method = validEditId ? 'PUT' : 'POST';
 
+const validEditId = editingId && editingId !== 'null' && editingId !== 'undefined' ? editingId : null;
+const url = validEditId ? `/api/submissions/${validEditId}` : '/api/submissions';
+const method = validEditId ? 'PUT' : 'POST';
+
+console.log("Submitting to URL:", url, "Method:", method, "EditingID:", editingId);
+
       const res = await fetch(url, {
         method,
         headers: getAuthHeaders(),
