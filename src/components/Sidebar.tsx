@@ -448,11 +448,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                         <item.icon size={18} className="shrink-0" />
                         <span className={cn("whitespace-nowrap truncate transition-all", isCollapsed ? "lg:hidden" : "")}>{item.label}</span>
                       </div>
-                      {isActive && !isCollapsed && (
-                        <span className={cn("text-[9px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-full bg-white/10 text-white shrink-0 ml-1")}>
-                          ACTIVE
-                        </span>
-                      )}
+                      
                     </button>
                   );
                 })}
@@ -488,11 +484,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                           <item.icon size={18} className="shrink-0" />
                           <span className={cn("whitespace-nowrap truncate transition-all", isCollapsed ? "lg:hidden" : "")}>{item.label}</span>
                         </div>
-                        {isActive && !isCollapsed && (
-                          <span className={cn("text-[9px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-full bg-white/10 text-white shrink-0 ml-1")}>
-                            
-                          </span>
-                        )}
+                        
                       </button>
                     );
                   })}
