@@ -522,10 +522,11 @@ export default function MySubmissions() {
       const gameTitle = selectedGame.title || '';
 
       const queryParams = new URLSearchParams();
+      queryParams.set('action', 'steam-stats');
       if (appId) queryParams.set('appId', String(appId));
       if (gameTitle) queryParams.set('gameTitle', gameTitle);
 
-      const res = await fetch(`/api/steam/user-game-stats?${queryParams.toString()}`, {
+      const res = await fetch(`/api/submissions?${queryParams.toString()}`, {
         headers: getAuthHeaders()
       });
 

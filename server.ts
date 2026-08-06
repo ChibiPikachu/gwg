@@ -2952,7 +2952,150 @@ async function createServer() {
     (req as any).logout(() => res.json({ success: true }));
   });
 
+  async function handleSteamUserStats(req: express.Request, res: express.Response) {
+    try {
+      const rawUserId = req.headers['x-user-id'];
+      const rawSteamId = req.headers['x-steam-id'];
+      const appIdQuery = req.query.appId || req.query.steamAppId;
+      const gameTitleQuery = req.query.gameTitle || req.query.title;
+
+      let steamId = typeof rawSteamId === 'string' && /^\d{15,20}$/.test(rawSteamId.trim()) ? rawSteamId.trim() : null;
+      let userId = typeof rawUserId === 'string' && rawUserId.trim() ? rawUserId.trim() : null;
+
+      const supabase = getSupabase();
+
+      if (!steamId && userId && supabase) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('steamid, owned_games')
+          .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
+          .maybeSingle();
+        if (profile?.steamid) {
+          steamId = profile.steamid;
+        }
+      }
+
+      if (!steamId && (req as any).user) {
+        const u = (req as any).user;
+        steamId = u.steamid || u.steamId || u.steam_id || null;
+      }
+
+      if (!steamId) {
+        return res.status(400).json({
+          success: false,
+          error: 'No Steam ID found for your account. Please log in with Steam or connect your Steam ID in profile settings.'
+        });
+      }
+
+      let appId: number | null = appIdQuery && !isNaN(Number(appIdQuery)) ? Number(appIdQuery) : null;
+
+      if (!appId && gameTitleQuery && supabase) {
+        const { data: gameData } = await supabase
+          .from('games')
+          .select('steam_appid')
+          .ilike('title', `%${String(gameTitleQuery).trim()}%`)
+          .maybeSingle();
+
+        if (gameData?.steam_appid) {
+          appId = Number(gameData.steam_appid);
+        }
+      }
+
+      if (!appId && gameTitleQuery) {
+        try {
+          const searchRes = await fetch(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(String(gameTitleQuery))}&l=english&cc=US`);
+          const searchData: any = await searchRes.json();
+          if (searchData?.items?.length > 0) {
+            appId = Number(searchData.items[0].id);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      const apiKey = process.env.STEAM_API_KEY;
+
+      let hoursPlayed = 0;
+      let achievementsEarned = 0;
+      let totalAchievements = 0;
+      let gameFoundInLibrary = false;
+      let hasNoAchievements = false;
+
+      let ownedGames: any[] = [];
+      if (apiKey) {
+        try {
+          const ownedRes = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
+          if (ownedRes.ok) {
+            const ownedData: any = await ownedRes.json();
+            ownedGames = ownedData.response?.games || [];
+          }
+        } catch (err) {
+          console.error('[Steam Stats API] Owned games fetch error:', err);
+        }
+      }
+
+      let matchedGame = appId ? ownedGames.find(g => Number(g.appid) === Number(appId)) : null;
+      if (!matchedGame && gameTitleQuery && ownedGames.length > 0) {
+        const targetTitle = String(gameTitleQuery).toLowerCase().trim();
+        matchedGame = ownedGames.find(g => g.name && g.name.toLowerCase().trim() === targetTitle) ||
+                      ownedGames.find(g => g.name && g.name.toLowerCase().includes(targetTitle));
+        if (matchedGame && !appId) {
+          appId = Number(matchedGame.appid);
+        }
+      }
+
+      if (matchedGame) {
+        gameFoundInLibrary = true;
+        const playtimeMinutes = matchedGame.playtime_forever || 0;
+        hoursPlayed = Math.round((playtimeMinutes / 60) * 10) / 10;
+      }
+
+      if (appId && apiKey) {
+        try {
+          const achRes = await fetch(`https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid=${appId}&key=${apiKey}&steamid=${steamId}`);
+          if (achRes.ok) {
+            const achData: any = await achRes.json();
+            if (achData.playerstats?.success) {
+              const achList = achData.playerstats.achievements || [];
+              totalAchievements = achList.length;
+              achievementsEarned = achList.filter((a: any) => a.achieved === 1).length;
+              if (totalAchievements === 0) {
+                hasNoAchievements = true;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[Steam Stats API] Achievements fetch error:', err);
+        }
+      }
+
+      return res.json({
+        success: true,
+        steamId,
+        appId,
+        hoursPlayed,
+        achievementsEarned,
+        totalAchievements,
+        hasNoAchievements,
+        gameFoundInLibrary,
+        message: gameFoundInLibrary 
+          ? `Synced ${hoursPlayed} hrs and ${achievementsEarned}${totalAchievements > 0 ? '/' + totalAchievements : ''} achievements from Steam.`
+          : `Game not found in user's Steam library (or profile is set to private). Defaulting to 0.`
+      });
+
+    } catch (err: any) {
+      console.error('[Steam Stats API] Error:', err);
+      return res.status(500).json({ success: false, error: err.message || 'Failed to sync Steam stats' });
+    }
+  }
+
   app.get('/api/submissions', async (req, res) => {
+    const action = req.query.action;
+    const isSteamStatsRequest = action === 'steam-stats' || action === 'user-game-stats' || !!req.query.appId || !!req.query.steamAppId;
+    if (isSteamStatsRequest) {
+      return handleSteamUserStats(req, res);
+    }
+
     const supabase = getSupabase();
     const currentUser = await getAuthUser(req, supabase);
     if (!currentUser) {
