@@ -749,11 +749,27 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                 {adjustments.map((adj) => {
                   const meta = parseNotesMeta(adj.notes || '');
                   const isUserAdj = !adj.user_id.startsWith('team_pts_');
-                  const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
+                  const targetUser = isUserAdj ? users.find(u => {
+                    const uSteamId = String(u.steamid || u.steamId || '');
+                    const uDiscordId = String(u.discord_id || u.discordId || '');
+                    const uUid = String(u.uid || u.id || '');
+                    const adjUserId = String(adj.user_id || adj.userId || '');
+                    return Boolean(
+                      (uSteamId && adjUserId === uSteamId) ||
+                      (uDiscordId && (adjUserId === uDiscordId || adjUserId === `discord_${uDiscordId}`)) ||
+                      (uUid && adjUserId === uUid)
+                    );
+                  }) : null;
+                  const userName = isUserAdj
+                    ? (targetUser?.steam_name || targetUser?.discord_name || adj.user_name || 'Member')
+                    : `Team ${adj.user_id.replace('team_pts_', '').toUpperCase()}`;
                   const teamName = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
                   const cleanReason = meta.userNotes || (isUserAdj ? 'No description provided.' : (adj.notes && !adj.notes.startsWith('__META_START__') ? adj.notes : 'Bonus points awarded by Admin'));
-                  const isScreenshot = adj.game_name === 'Screenshot Points' || adj.platform === 'Screenshot Points';
-                  const isBingo = adj.game_name === 'Bingo Points' || adj.platform === 'Bingo Points';
+                  const gName = (adj.game_name || '').toLowerCase();
+                  const pName = (adj.platform || '').toLowerCase();
+                  const nNotes = (adj.notes || '').toLowerCase();
+                  const isScreenshot = gName.includes('screenshot') || pName.includes('screenshot') || nNotes.includes('screenshot');
+                  const isBingo = gName.includes('bingo') || pName.includes('bingo') || nNotes.includes('bingo');
 
                   return (
                     <div key={adj.id} className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 shadow-sm">
@@ -767,10 +783,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                           Team {teamName}
                         </span>
                         <div>
-                          <p className="text-sm dark:text-white/80 text-slate-705">
+                          <p className="text-sm dark:text-white/80 text-slate-700">
                             {isUserAdj ? (
                               <>
-                                Awarded to <span className="font-bold underline underline-offset-2">{adj.user_name}</span>: {cleanReason}
+                                Awarded to <span className="font-bold underline underline-offset-2">{userName}</span>: {cleanReason}
                               </>
                             ) : (
                               cleanReason
