@@ -1131,7 +1131,52 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     return true;
   }, []);
 
-  const filteredUsers = safeUsers.filter(u => {
+  const enrichedUsers = React.useMemo(() => {
+    return safeUsers.map(u => {
+      const uSteamId = String(u.steamid || u.steamId || '');
+      const uDiscordId = String(u.discord_id || u.discordId || '');
+      const uId = String(u.id || u.uid || '');
+
+      const userSubs = (submissions || []).filter(s => {
+        if (s.status !== 'verified') return false;
+        const subUserId = String(s.user_id || s.userId || s.steamid || s.steamId || '');
+        return Boolean(
+          (uSteamId && subUserId === uSteamId) ||
+          (uDiscordId && subUserId === uDiscordId) ||
+          (uId && subUserId === uId)
+        );
+      });
+
+      const subPtsSum = userSubs.reduce((sum, s) => {
+        const pts = s.points !== undefined && s.points !== null ? Number(s.points) : Number(s.calculated_score || 0);
+        return sum + (isNaN(pts) ? 0 : pts);
+      }, 0);
+
+      const userAdjs = (teamAdjustments || []).filter(a => {
+        const adjUserId = String(a.user_id || a.userId || '');
+        if (adjUserId.startsWith('team_pts_')) return false;
+        return Boolean(
+          (uSteamId && adjUserId === uSteamId) ||
+          (uDiscordId && adjUserId === uDiscordId) ||
+          (uId && adjUserId === uId)
+        );
+      });
+
+      const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || 0), 0);
+      const calculatedPoints = subPtsSum + adjPtsSum;
+      const finalPoints = (userSubs.length > 0 || userAdjs.length > 0)
+        ? Math.max(calculatedPoints, Number(u.points || 0))
+        : Number(u.points || 0);
+
+      return {
+        ...u,
+        points: finalPoints,
+        verifiedSubmissionsCount: userSubs.length
+      };
+    });
+  }, [safeUsers, submissions, teamAdjustments]);
+
+  const filteredUsers = enrichedUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
     const nameStr = (u.steam_name || u.steamName || u.discord_name || u.discordName || u.displayName || '').toLowerCase();
     const idStr = String(u.steamid || u.steamId || u.discord_id || u.id || '').toLowerCase();
@@ -1459,7 +1504,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         activeTab === 'users' ? (
         <>
           <TeamPointContributionChart 
-            users={users} 
+            users={enrichedUsers} 
+            submissions={submissions}
+            teamAdjustments={teamAdjustments}
             theme={theme} 
             onViewProfile={onViewProfile}
             filterTeam={filterTeam}
@@ -3931,11 +3978,15 @@ CREATE POLICY "Allow public read access" ON public.user_event_teams
 // Visual contribution pie chart of each member to their team's points
 function TeamPointContributionChart({ 
   users, 
+  submissions = [],
+  teamAdjustments = [],
   theme, 
   onViewProfile,
   filterTeam 
 }: { 
   users: any[]; 
+  submissions?: any[];
+  teamAdjustments?: any[];
   theme: any; 
   onViewProfile?: (id: string) => void;
   filterTeam: Team | 'all';
@@ -3953,8 +4004,50 @@ function TeamPointContributionChart({
   const teamMembers = React.useMemo(() => {
     return users
       .filter(u => u.team === selectedChartTeam)
+      .map(u => {
+        const uSteamId = String(u.steamid || u.steamId || '');
+        const uDiscordId = String(u.discord_id || u.discordId || '');
+        const uId = String(u.id || u.uid || '');
+
+        const userSubs = (submissions || []).filter(s => {
+          if (s.status !== 'verified') return false;
+          const subUserId = String(s.user_id || s.userId || s.steamid || s.steamId || '');
+          return Boolean(
+            (uSteamId && subUserId === uSteamId) ||
+            (uDiscordId && subUserId === uDiscordId) ||
+            (uId && subUserId === uId)
+          );
+        });
+
+        const subPtsSum = userSubs.reduce((sum, s) => {
+          const pts = s.points !== undefined && s.points !== null ? Number(s.points) : Number(s.calculated_score || 0);
+          return sum + (isNaN(pts) ? 0 : pts);
+        }, 0);
+
+        const userAdjs = (teamAdjustments || []).filter(a => {
+          const adjUserId = String(a.user_id || a.userId || '');
+          if (adjUserId.startsWith('team_pts_')) return false;
+          return Boolean(
+            (uSteamId && adjUserId === uSteamId) ||
+            (uDiscordId && adjUserId === uDiscordId) ||
+            (uId && adjUserId === uId)
+          );
+        });
+
+        const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || 0), 0);
+        const calculatedPoints = subPtsSum + adjPtsSum;
+        const finalPoints = (userSubs.length > 0 || userAdjs.length > 0)
+          ? Math.max(calculatedPoints, Number(u.points || 0))
+          : Number(u.points || 0);
+
+        return {
+          ...u,
+          points: finalPoints,
+          verifiedSubCount: userSubs.length
+        };
+      })
       .sort((a, b) => Number(b.points || 0) - Number(a.points || 0));
-  }, [users, selectedChartTeam]);
+  }, [users, submissions, teamAdjustments, selectedChartTeam]);
 
   const totalPoints = React.useMemo(() => {
     return teamMembers.reduce((sum, m) => sum + Number(m.points || 0), 0);
@@ -3975,8 +4068,7 @@ function TeamPointContributionChart({
       red: 0,
       none: 200
     };
-    const baseHue = hues[selectedChartTeam] || 0;
-    // Sequential lightness from 42% to 74%
+    const baseHue = hues[selectedChartTeam] || 217;
     const step = total > 1 ? index / (total - 1) : 0.5;
     const lightness = 42 + step * 32; 
     const saturation = 75 + (index % 3) * 5; 
@@ -4069,22 +4161,35 @@ function TeamPointContributionChart({
                 No Points Awarded Yet
               </span>
               <span className="text-[10px] dark:text-white/30 text-slate-400 mt-1">
-                No players on Team {selectedChartTeam} have points.
+                No players on Team {selectedChartTeam} have points logged.
               </span>
             </div>
           ) : (
             <div className="relative w-44 h-44 md:w-48 md:h-48 flex items-center justify-center group/donut">
               <svg 
                 viewBox="0 0 200 200" 
-                className="w-full h-full transform -rotate-180 select-none scale-x-[-1]"
+                className="w-full h-full select-none"
               >
                 {wedges.map((wedge, idx) => {
                   const isHovered = hoveredIndex === idx;
-                  const pathD = getWedgePath(100, 100, isHovered ? 88 : 80, wedge.startAngle, wedge.endAngle);
-                  return (
+                  const isSingleSlice = chartSlices.length === 1 || wedge.percentage >= 0.999;
+
+                  return isSingleSlice ? (
+                    <circle
+                      key={idx}
+                      cx="100"
+                      cy="100"
+                      r={isHovered ? 88 : 80}
+                      fill={wedge.color}
+                      className="transition-all duration-300 cursor-pointer origin-center"
+                      onMouseEnter={() => setHoveredIndex(idx)}
+                      onMouseLeave={() => setHoveredIndex(null)}
+                      onClick={() => onViewProfile?.(wedge.member.steamid || wedge.member.steamId || wedge.member.discord_id || wedge.member.id)}
+                    />
+                  ) : (
                     <path
                       key={idx}
-                      d={pathD}
+                      d={getWedgePath(100, 100, isHovered ? 88 : 80, wedge.startAngle, wedge.endAngle)}
                       fill={wedge.color}
                       className="transition-all duration-300 cursor-pointer origin-center"
                       style={{
@@ -4111,7 +4216,7 @@ function TeamPointContributionChart({
                 {activeWidget ? (
                   <div className="animate-in fade-in zoom-in-95 duration-200">
                     <span className="block text-[10px] uppercase tracking-widest font-extrabold dark:text-white/40 text-slate-400 truncate max-w-[120px]">
-                      {activeWidget.member.steam_name || activeWidget.member.steamName || activeWidget.member.discord_name || 'User'}
+                      {activeWidget.member.steam_name || activeWidget.member.steamName || activeWidget.member.discord_name || activeWidget.member.discordName || 'User'}
                     </span>
                     <span className="block text-lg font-mono font-black dark:text-white text-slate-900 leading-tight">
                       {Number(activeWidget.member.points || 0)} pts
@@ -4155,7 +4260,7 @@ function TeamPointContributionChart({
               const points = Number(member.points || 0);
               const percentage = totalPoints > 0 ? points / totalPoints : 0;
               const hasPoints = points > 0;
-              const sliceIndex = chartSlices.findIndex(s => (s.steamid || s.discord_id) === mId);
+              const sliceIndex = chartSlices.findIndex(s => (s.steamid || s.discord_id || s.id) === mId || (s.steamid && s.steamid === member.steamid));
               const sliceColor = hasPoints && sliceIndex !== -1 ? getSliceColor(sliceIndex, chartSlices.length) : 'transparent';
               
               const isHovered = hoveredIndex === sliceIndex && hasPoints;
