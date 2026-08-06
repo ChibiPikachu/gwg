@@ -510,91 +510,91 @@ export default function MySubmissions() {
   }, [selectedGame]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedGame) return;
+  e.preventDefault();
+  if (!selectedGame) return;
 
-    const earned = parseInt(formData.achievementsEarned) || 0;
-    const hours = parseFloat(formData.hoursPlayed) || 0;
-    const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
-    const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+  // Ensure editingId is a clean string/number
+  const isEditing = Boolean(editingId && editingId !== 'null' && editingId !== 'undefined');
+  
+  // Direct PUT requests to /api/submissions/[id] and POST requests to /api/submissions
+  const url = isEditing ? `/api/submissions/${editingId}` : '/api/submissions';
+  const method = isEditing ? 'PUT' : 'POST';
 
-    const isNintendo = formData.platform === 'Nintendo';
-    const hasNoAchievements = formData.hasNoAchievements === true;
+  // Log to confirm the route before dispatching
+  console.log(`Submitting request -> URL: ${url} | Method: ${method}`);
 
-    if (earned < 0 || achievementsBefore < 0) {
-      alert("Achievements can't be negative.");
+  const earned = parseInt(formData.achievementsEarned) || 0;
+  const hours = parseFloat(formData.hoursPlayed) || 0;
+  const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
+  const hoursBefore = parseFloat(formData.hoursBefore) || 0;
+
+  const isNintendo = formData.platform === 'Nintendo';
+  const hasNoAchievements = formData.hasNoAchievements === true;
+
+  if (earned < 0 || achievementsBefore < 0) {
+    alert("Achievements can't be negative.");
+    return;
+  }
+  if (hours < 0 || hoursBefore < 0) {
+    alert("Hours can't be negative.");
+    return;
+  }
+
+  const finalEarned = Math.max(0, earned - achievementsBefore);
+  const finalHours = parseFloat(Math.max(0, hours - hoursBefore).toFixed(1));
+  const finalHoursBefore = parseFloat(hoursBefore.toFixed(1));
+
+  if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
+    if (hoursBefore <= 0 || achievementsBefore <= 0) {
+      alert("Submitting games without new achievements earned during the event is ONLY allowed if both 'Hours Before' and 'Achievements Before' are greater than 0.");
       return;
     }
-    if (hours < 0 || hoursBefore < 0) {
-      alert("Hours can't be negative.");
-      return;
+  }
+  if (finalHours <= 0) {
+    alert("Playtime during the event must be greater than 0 hours.");
+    return;
+  }
+
+  const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
+  const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
+
+  setSubmitting(true);
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        gameId: selectedGame.id,
+        gameTitle: selectedGame.title,
+        gameImage: selectedGame.image,
+        achievements: finalEarned,
+        hours: parseFloat(hours.toFixed(1)),
+        achievementsBefore,
+        hoursBefore: finalHoursBefore,
+        multiplier: multiplierPreview,
+        completionStatus: formData.completionStatus,
+        beatenPrevious: formData.beatenPrevious,
+        platform: formData.platform,
+        calculatedScore: scorePreview,
+        notes: serializedNotes,
+        steam_appid: selectedGame.steam_appid || null
+      })
+    });
+
+    if (res.ok) {
+      handleResetForm();
+      fetchSubmissions();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(`Submission failed: ${data.error || 'Unknown error'}`);
     }
-
-    const finalEarned = Math.max(0, earned - achievementsBefore);
-    const finalHours = parseFloat(Math.max(0, hours - hoursBefore).toFixed(1));
-    const finalHoursBefore = parseFloat(hoursBefore.toFixed(1));
-
-    if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
-      if (hoursBefore <= 0 || achievementsBefore <= 0) {
-        alert("Submitting games without new achievements earned during the event is ONLY allowed if both 'Hours Before' and 'Achievements Before' are greater than 0 (not 0).");
-        return;
-      }
-    }
-    if (finalHours <= 0) {
-      alert("Playtime during the event must be greater than 0 hours.");
-      return;
-    }
-
-    const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
-    const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
-
-    setSubmitting(true);
-    try {
-      // Clean guard for valid editingId string
-      const validEditId = editingId && editingId !== 'null' && editingId !== 'undefined' ? editingId : null;
-const url = validEditId ? `/api/submissions/${validEditId}` : '/api/submissions';
-const method = validEditId ? 'PUT' : 'POST';
-const gameId = selectedGame.id ?? selectedGame.steam_appid ?? 0;
-const parsedGameId = !isNaN(Number(gameId)) ? Number(gameId) : gameId;
-
-console.log("Submitting to URL:", url, "Method:", method, "EditingID:", editingId);
-      
-      const res = await fetch(url, {
-        method: 'POST',
-  headers: getAuthHeaders(),
-  body: JSON.stringify({
-    gameId: parsedGameId, // Handled properly
-    gameTitle: selectedGame.title,
-    gameImage: selectedGame.image,
-          achievements: finalEarned,
-          hours: parseFloat(hours.toFixed(1)),
-          achievementsBefore,
-          hoursBefore: finalHoursBefore,
-          multiplier: multiplierPreview,
-          completionStatus: formData.completionStatus,
-          beatenPrevious: formData.beatenPrevious,
-          platform: formData.platform,
-          calculatedScore: scorePreview,
-          notes: serializedNotes,
-          steam_appid: selectedGame.steam_appid || null
-        })
-      });
-
-      if (res.ok) {
-        handleResetForm();
-        fetchSubmissions();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        console.error('Server submission error:', data);
-        alert(`Submission failed: ${data.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      console.error('Client submission exception:', err);
-      alert('Failed to submit game. Check console for details.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  } catch (err) {
+    console.error('Client submission error:', err);
+    alert('Failed to submit game. Check console for details.');
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleEdit = (sub: any) => {
   const targetSubmissionId = sub?.id ?? sub?._id;
