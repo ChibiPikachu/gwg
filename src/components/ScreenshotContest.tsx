@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Camera, Image as ImageIcon, Upload, Eye, EyeOff, Heart, MessageSquare, 
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
-  Trash2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers
+  Trash2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
+  ChevronLeft, ChevronRight, Maximize2
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -48,7 +49,9 @@ interface ScreenshotEvent {
   description: string;
   status: 'draft' | 'submissions_open' | 'voting_active' | 'concluded';
   is_admin_only: boolean;
+  is_voting_active?: boolean;
   max_submissions_per_user: number;
+  submission_points?: number;
   created_at: string;
 }
 
@@ -64,6 +67,12 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine'>('all');
   const [searchGame, setSearchGame] = useState('');
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
+
+  // Lightbox state
+  const [lightboxSubId, setLightboxSubId] = useState<string | null>(null);
+
+  // Admin settings state
+  const [editSubmissionPoints, setEditSubmissionPoints] = useState<number>(20);
 
   // Submission Modal state
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
@@ -104,6 +113,9 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       if (res.ok) {
         const data = await res.json();
         setEvent(data.event || null);
+        if (data.event?.submission_points !== undefined) {
+          setEditSubmissionPoints(Number(data.event.submission_points));
+        }
         setSubmissions(data.submissions || []);
         setVotes(data.votes || []);
         setComments(data.comments || []);
@@ -297,6 +309,22 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   };
 
   // Admin Actions
+  const handleAdminUpdatePoints = async (points: number) => {
+    try {
+      const res = await fetch('/api/screenshots?action=admin-event-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionPoints: points })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.event) setEvent(data.event);
+      }
+    } catch (err) {
+      console.error('Failed to update submission points:', err);
+    }
+  };
+
   const handleAdminToggleVoting = async () => {
     try {
       const res = await fetch('/api/screenshots?action=admin-toggle-voting', {
@@ -422,6 +450,32 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
     });
   }, [submissions, activeTab, currentUserId, searchGame]);
 
+  // Lightbox Navigation Handlers
+  const handlePrevLightbox = () => {
+    if (!lightboxSubId || filteredSubmissions.length === 0) return;
+    const currentIndex = filteredSubmissions.findIndex(s => s.id === lightboxSubId);
+    const prevIndex = (currentIndex - 1 + filteredSubmissions.length) % filteredSubmissions.length;
+    setLightboxSubId(filteredSubmissions[prevIndex].id);
+  };
+
+  const handleNextLightbox = () => {
+    if (!lightboxSubId || filteredSubmissions.length === 0) return;
+    const currentIndex = filteredSubmissions.findIndex(s => s.id === lightboxSubId);
+    const nextIndex = (currentIndex + 1) % filteredSubmissions.length;
+    setLightboxSubId(filteredSubmissions[nextIndex].id);
+  };
+
+  useEffect(() => {
+    if (!lightboxSubId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxSubId(null);
+      if (e.key === 'ArrowLeft') handlePrevLightbox();
+      if (e.key === 'ArrowRight') handleNextLightbox();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxSubId, filteredSubmissions]);
+
   const activeCommentsForSub = useMemo(() => {
     if (!activeCommentSubId) return [];
     return comments.filter(c => c.submission_id === activeCommentSubId);
@@ -429,7 +483,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-      {/* Admin Early Access Lock Notice */}
+      {/* Admin Early Access Lock Notice & Settings Box */}
       {user?.isAdmin && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -438,14 +492,34 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             </div>
             <div>
               <p className="text-sm font-bold text-amber-400 flex items-center gap-2">
-                Admin Early Access Phase Active
+                Admin Controls & Event Settings
               </p>
               <p className="text-xs text-amber-200/70">
-                Currently visible to Admins only so you can test features & prepare the contest.
+                Manage event phase, voting window, and global screenshot points.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+            {/* Global Screenshot Points Setting Box */}
+            <div className="flex items-center gap-1.5 bg-black/40 border border-amber-500/30 rounded-xl px-3 py-1 text-xs text-white">
+              <span className="font-bold text-amber-300">Points / Upload:</span>
+              <input
+                type="number"
+                min="0"
+                max="500"
+                value={editSubmissionPoints}
+                onChange={(e) => setEditSubmissionPoints(Number(e.target.value))}
+                onBlur={() => handleAdminUpdatePoints(editSubmissionPoints)}
+                className="w-14 bg-white/10 border border-white/20 rounded-lg px-1.5 py-0.5 text-center font-black text-amber-400 focus:outline-none focus:border-amber-400"
+              />
+              <button
+                onClick={() => handleAdminUpdatePoints(editSubmissionPoints)}
+                className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-[10px] uppercase px-2 py-1 rounded-lg transition-colors cursor-pointer"
+              >
+                Save
+              </button>
+            </div>
+
             <button
               onClick={handleAdminToggleVoting}
               className={cn(
@@ -506,7 +580,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               {event?.title || 'Screenshot Submissions'}
             </h1>
             <p className="text-sm dark:text-white/60 text-slate-600 leading-relaxed">
-              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+20 points</strong> for your team! Select <b>one</b> official screenshot for voting when the Voting Period starts. Screenshots taken during and before the event are allowed.
+              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+{event?.submission_points ?? 20} points</strong> for your team! Select <b>one</b> official screenshot for voting when the Voting Period starts. Screenshots taken during and before the event are allowed.
             </p>
           </div>
 
@@ -617,7 +691,10 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                 className="group relative bg-white dark:bg-[#111111] rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden shadow-md dark:shadow-none flex flex-col justify-between transition-all hover:border-purple-500/30"
               >
                 {/* Image Container */}
-                <div className="relative aspect-video bg-black/90 overflow-hidden flex items-center justify-center">
+                <div
+                  onClick={() => setLightboxSubId(sub.id)}
+                  className="relative aspect-video bg-black/90 overflow-hidden flex items-center justify-center cursor-pointer group/img"
+                >
                   <img
                     src={sub.image_url}
                     alt={sub.caption || sub.game_name}
@@ -627,6 +704,14 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     )}
                   />
 
+                  {/* Hover Fullscreen View Overlay */}
+                  {!isSpoilerHidden && (
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1.5 pointer-events-none z-10">
+                      <Maximize2 size={24} className="drop-shadow-lg" />
+                      <span className="text-[10px] font-black tracking-widest uppercase drop-shadow-md">Full-Screen View</span>
+                    </div>
+                  )}
+
                   {/* Spoiler Overlay */}
                   {isSpoilerHidden && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/60 backdrop-blur-md z-10 text-center gap-2">
@@ -635,7 +720,10 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       </div>
                       <span className="text-xs font-black uppercase tracking-widest text-white/90">Contains Spoiler</span>
                       <button
-                        onClick={() => setRevealedSpoilers(prev => ({ ...prev, [sub.id]: true }))}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRevealedSpoilers(prev => ({ ...prev, [sub.id]: true }));
+                        }}
                         className="mt-1 bg-white/20 hover:bg-white/30 text-white font-bold text-[11px] px-3.5 py-1.5 rounded-xl backdrop-blur-md transition-colors cursor-pointer flex items-center gap-1.5"
                       >
                         <Eye size={12} /> Click to Reveal
@@ -658,7 +746,10 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
 
                       {sub.is_spoiler && !isSpoilerHidden && (
                         <button
-                          onClick={() => setRevealedSpoilers(prev => ({ ...prev, [sub.id]: false }))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRevealedSpoilers(prev => ({ ...prev, [sub.id]: false }));
+                          }}
                           className="bg-black/70 hover:bg-black text-red-400 font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-lg border border-red-500/30 flex items-center gap-1 cursor-pointer"
                         >
                           <EyeOff size={10} /> Blur
@@ -671,28 +762,35 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                   {user?.isAdmin && (
                     <div className="absolute bottom-3 right-3 flex items-center gap-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => handleAdminToggleSpoiler(sub)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminToggleSpoiler(sub);
+                        }}
                         title={sub.is_spoiler ? "Unmark Spoiler" : "Force Spoiler"}
-                        className="p-1.5 bg-black/80 hover:bg-black text-amber-400 rounded-lg border border-amber-500/30 transition-colors"
+                        className="p-1.5 bg-black/80 hover:bg-black text-amber-400 rounded-lg border border-amber-500/30 transition-colors cursor-pointer"
                       >
                         <Eye size={12} />
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setEditingSub(sub);
                           setEditCaption(sub.caption);
                           setEditGameName(sub.game_name);
                           setEditIsSpoiler(sub.is_spoiler);
                         }}
                         title="Edit Submission"
-                        className="p-1.5 bg-black/80 hover:bg-black text-sky-400 rounded-lg border border-sky-500/30 transition-colors"
+                        className="p-1.5 bg-black/80 hover:bg-black text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
                       >
                         <Edit3 size={12} />
                       </button>
                       <button
-                        onClick={() => handleAdminDelete(sub.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminDelete(sub.id);
+                        }}
                         title="Delete Submission"
-                        className="p-1.5 bg-black/80 hover:bg-black text-red-400 rounded-lg border border-red-500/30 transition-colors"
+                        className="p-1.5 bg-black/80 hover:bg-black text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -1168,6 +1266,268 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
+      {/* FULL-SCREEN LIGHTBOX MODAL */}
+      <AnimatePresence>
+        {lightboxSubId && (() => {
+          const currentSub = submissions.find(s => s.id === lightboxSubId);
+          if (!currentSub) return null;
+
+          const isSpoilerHidden = currentSub.is_spoiler && !revealedSpoilers[currentSub.id];
+          const voteCount = voteCounts[currentSub.id] || 0;
+          const hasVoted = myVotedSubIds.has(currentSub.id);
+          const isMine = currentSub.user_id === currentUserId;
+          const subComments = comments.filter(c => c.submission_id === currentSub.id);
+          const currentIndex = filteredSubmissions.findIndex(s => s.id === lightboxSubId);
+          const totalCount = filteredSubmissions.length;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex flex-col select-none overflow-hidden"
+            >
+              {/* Lightbox Top Header */}
+              <div className="flex items-center justify-between p-4 px-6 border-b border-white/10 bg-black/60 backdrop-blur-md z-10 shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1.5">
+                    <Camera size={14} /> {currentSub.game_name}
+                  </span>
+                  {totalCount > 1 && (
+                    <span className="text-xs font-bold text-white/50">
+                      {currentIndex >= 0 ? currentIndex + 1 : 1} of {totalCount}
+                    </span>
+                  )}
+                  {currentSub.is_selected && (
+                    <span className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1">
+                      <Star size={12} className="fill-black" /> Official Voting Entry
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="hidden md:inline-block text-[11px] text-white/40 font-mono">
+                    Use ← → to navigate, Esc to close
+                  </span>
+                  <button
+                    onClick={() => setLightboxSubId(null)}
+                    className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                    title="Close (Esc)"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Lightbox Main Container (Image + Interactive Overlay Details Panel) */}
+              <div className="flex-1 relative flex flex-col md:flex-row overflow-hidden">
+                {/* Main Image View Container */}
+                <div className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-8 overflow-hidden group">
+                  {/* Prev / Next Controls */}
+                  {totalCount > 1 && (
+                    <>
+                      <button
+                        onClick={handlePrevLightbox}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 p-3.5 bg-black/60 hover:bg-black/90 text-white/80 hover:text-white rounded-full border border-white/10 backdrop-blur-md transition-all z-30 cursor-pointer hover:scale-110 active:scale-95"
+                        title="Previous Screenshot (←)"
+                      >
+                        <ChevronLeft size={24} />
+                      </button>
+                      <button
+                        onClick={handleNextLightbox}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-3.5 bg-black/60 hover:bg-black/90 text-white/80 hover:text-white rounded-full border border-white/10 backdrop-blur-md transition-all z-30 cursor-pointer hover:scale-110 active:scale-95"
+                        title="Next Screenshot (→)"
+                      >
+                        <ChevronRight size={24} />
+                      </button>
+                    </>
+                  )}
+
+                  {/* Full Image */}
+                  <div className="relative max-w-full max-h-full flex items-center justify-center">
+                    <img
+                      src={currentSub.image_url}
+                      alt={currentSub.caption || currentSub.game_name}
+                      className={cn(
+                        "max-w-full max-h-[75vh] md:max-h-[85vh] object-contain rounded-xl shadow-2xl transition-all duration-300",
+                        isSpoilerHidden && "blur-2xl scale-105 pointer-events-none select-none opacity-30"
+                      )}
+                    />
+
+                    {/* Spoiler Blur Overlay inside Lightbox */}
+                    {isSpoilerHidden && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-black/70 backdrop-blur-lg rounded-xl text-center gap-3">
+                        <div className="p-3 bg-red-500/20 text-red-400 rounded-full">
+                          <EyeOff size={28} />
+                        </div>
+                        <h3 className="text-sm font-black uppercase tracking-widest text-white">Contains Spoiler</h3>
+                        <button
+                          onClick={() => setRevealedSpoilers(prev => ({ ...prev, [currentSub.id]: true }))}
+                          className="bg-white/20 hover:bg-white/30 text-white font-bold text-xs px-4 py-2 rounded-xl backdrop-blur-md transition-colors cursor-pointer flex items-center gap-2"
+                        >
+                          <Eye size={14} /> Click to Reveal Image
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Side Overlay Panel with Details & Interactive Controls */}
+                <div className="w-full md:w-96 bg-[#121215] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between overflow-y-auto p-6 space-y-6 shrink-0">
+                  <div className="space-y-5">
+                    {/* Contributor Profile */}
+                    <div className="flex items-center justify-between gap-3 pb-4 border-b border-white/10">
+                      <div className="flex items-center gap-3 truncate">
+                        {currentSub.user_avatar ? (
+                          <img src={currentSub.user_avatar} alt="" className="w-10 h-10 rounded-full border border-white/20" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-sm">
+                            {currentSub.user_name?.[0]?.toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <div className="truncate">
+                          <h4 className="text-sm font-bold text-white truncate">{currentSub.user_name}</h4>
+                          <span className="text-[11px] text-white/40">
+                            {new Date(currentSub.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {currentSub.user_team && currentSub.user_team !== 'none' && (
+                        <span className={cn(
+                          "text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border shrink-0",
+                          TEAM_COLORS[currentSub.user_team as Team]?.secondary,
+                          TEAM_COLORS[currentSub.user_team as Team]?.primary,
+                          TEAM_COLORS[currentSub.user_team as Team]?.border
+                        )}>
+                          Team {currentSub.user_team}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Game Title & Overlay Caption Box */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">Game Title</span>
+                      <h3 className="text-base font-extrabold text-white">{currentSub.game_name}</h3>
+
+                      {currentSub.caption ? (
+                        <div className="mt-3 p-3.5 rounded-xl bg-white/5 border border-white/10">
+                          <p className="text-xs text-white/90 leading-relaxed italic">
+                            "{currentSub.caption}"
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs italic text-white/30">No caption provided</p>
+                      )}
+                    </div>
+
+                    {/* Lightbox Voting & Official Entry Controls */}
+                    <div className="space-y-2.5 pt-2">
+                      <button
+                        onClick={() => handleVote(currentSub)}
+                        disabled={isMine}
+                        className={cn(
+                          "w-full py-2.5 px-4 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-95",
+                          hasVoted
+                            ? "bg-rose-500 text-white shadow-rose-500/30"
+                            : "bg-white/10 hover:bg-rose-500/20 text-white hover:text-rose-400 border border-white/10",
+                          isMine && "opacity-40 cursor-not-allowed hover:bg-white/10 hover:text-white"
+                        )}
+                      >
+                        <Heart size={16} className={cn(hasVoted && "fill-white")} />
+                        <span>{hasVoted ? 'You Voted for this Screenshot!' : `Vote for Screenshot (${voteCount})`}</span>
+                      </button>
+
+                      {isMine && (
+                        <button
+                          onClick={() => handleSetForVoting(currentSub.id)}
+                          className={cn(
+                            "w-full py-2 px-3 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                            currentSub.is_selected
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : "bg-white/5 text-white/70 border-white/10 hover:border-amber-500/40"
+                          )}
+                        >
+                          <Star size={14} className={currentSub.is_selected ? "fill-amber-400 text-amber-400" : ""} />
+                          {currentSub.is_selected ? "Official Entry for Voting" : "Set as Official Voting Entry"}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Lightbox Comments Section */}
+                    <div className="space-y-3 pt-4 border-t border-white/10">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <MessageSquare size={14} className="text-purple-400" />
+                          Comments ({subComments.length})
+                        </h4>
+                      </div>
+
+                      <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
+                        {subComments.length === 0 ? (
+                          <p className="text-xs italic text-white/40 text-center py-4">No comments yet. Be the first!</p>
+                        ) : (
+                          subComments.map(c => (
+                            <div key={c.id} className="p-2.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-bold text-purple-300">{c.user_name}</span>
+                                <span className="text-[9px] text-white/30">{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <p className="text-xs text-white/80 leading-normal">{c.content}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Comment Input */}
+                      <div className="flex items-center gap-2 pt-2">
+                        <input
+                          type="text"
+                          placeholder="Write a comment..."
+                          value={activeCommentSubId === currentSub.id ? commentText : ''}
+                          onFocus={() => setActiveCommentSubId(currentSub.id)}
+                          onChange={(e) => {
+                            setActiveCommentSubId(currentSub.id);
+                            setCommentText(e.target.value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddComment(currentSub.id);
+                          }}
+                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                        />
+                        <button
+                          onClick={() => handleAddComment(currentSub.id)}
+                          disabled={commenting || !commentText.trim()}
+                          className="p-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer"
+                        >
+                          <Send size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Admin Delete Action inside Lightbox */}
+                  {user?.isAdmin && (
+                    <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-[10px] text-amber-400 font-mono">Admin Action</span>
+                      <button
+                        onClick={() => {
+                          handleAdminDelete(currentSub.id);
+                          setLightboxSubId(null);
+                        }}
+                        className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 size={12} /> Delete Submission
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

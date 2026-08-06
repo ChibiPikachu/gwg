@@ -17,6 +17,7 @@ let memoryEvent: any = {
   is_voting_active: false,
   is_admin_only: true,
   max_submissions_per_user: 10,
+  submission_points: 20,
   created_at: new Date().toISOString()
 };
 
@@ -47,6 +48,7 @@ export default async function handler(req: Request, res: Response) {
         return res.status(200).json({
           event: {
             ...eventData,
+            submission_points: eventData.submission_points !== undefined && eventData.submission_points !== null ? Number(eventData.submission_points) : 20,
             is_voting_active: eventData.status === 'voting_active'
           },
           submissions: subs || [],
@@ -57,6 +59,7 @@ export default async function handler(req: Request, res: Response) {
         return res.status(200).json({
           event: {
             ...memoryEvent,
+            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : 20,
             is_voting_active: memoryEvent.status === 'voting_active'
           },
           submissions: memorySubmissions,
@@ -110,14 +113,23 @@ export default async function handler(req: Request, res: Response) {
           const { data: inserted, error } = await supabase.from('screenshot_submissions').insert([newSub]).select().single();
           if (error) throw error;
 
-          // Award +20 points to user's team
-          if (userTeam && userTeam !== 'none') {
+          // Fetch current event submission points
+          let ptsToAward = memoryEvent.submission_points ?? 20;
+          if (supabase) {
+            const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
+            if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
+              ptsToAward = Number(currentEvt.submission_points);
+            }
+          }
+
+          // Award submission points to user's team
+          if (userTeam && userTeam !== 'none' && ptsToAward > 0) {
             await supabase.from('submissions').insert([{
               user_id: userId,
-              game_name: 'Screenshot Contest Submission (+20 pts)',
+              game_name: `Screenshot Contest Submission (+${ptsToAward} pts)`,
               platform: 'Screenshot Event',
-              points: 20,
-              calculated_score: 20,
+              points: ptsToAward,
+              calculated_score: ptsToAward,
               status: 'verified',
               notes: `__META_START__${JSON.stringify({ userNotes: `Submitted screenshot for ${gameName || 'Game'}` })}__META_END__`,
               created_at: new Date().toISOString()
@@ -430,24 +442,29 @@ export default async function handler(req: Request, res: Response) {
         });
       }
 
-      // ADMIN: UPDATE EVENT STATUS ('draft' | 'submissions_open' | 'voting_active' | 'concluded')
-      if (action === 'admin-event-status') {
-        const { status, isAdminOnly } = req.body;
+      // ADMIN: UPDATE EVENT STATUS & SETTINGS ('draft' | 'submissions_open' | 'voting_active' | 'concluded', submission_points)
+      if (action === 'admin-event-status' || action === 'admin-update-event') {
+        const { status, isAdminOnly, submissionPoints } = req.body;
+
+        const updateData: any = {};
+        if (status) updateData.status = status;
+        if (isAdminOnly !== undefined) updateData.is_admin_only = Boolean(isAdminOnly);
+        if (submissionPoints !== undefined && !isNaN(Number(submissionPoints))) {
+          updateData.submission_points = Math.max(0, Number(submissionPoints));
+        }
 
         if (supabase) {
           const { data: updated, error } = await supabase
             .from('screenshot_events')
-            .update({
-              status: status,
-              is_admin_only: isAdminOnly !== undefined ? Boolean(isAdminOnly) : undefined
-            })
+            .update(updateData)
             .eq('id', memoryEvent.id)
             .select()
             .single();
 
           if (error) {
-            memoryEvent.status = status;
+            if (status) memoryEvent.status = status;
             if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
+            if (submissionPoints !== undefined) memoryEvent.submission_points = Math.max(0, Number(submissionPoints));
           } else {
             memoryEvent = updated;
           }
@@ -455,16 +472,19 @@ export default async function handler(req: Request, res: Response) {
             success: true,
             event: {
               ...memoryEvent,
+              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : 20,
               is_voting_active: memoryEvent.status === 'voting_active'
             }
           });
         } else {
-          memoryEvent.status = status;
+          if (status) memoryEvent.status = status;
           if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
+          if (submissionPoints !== undefined) memoryEvent.submission_points = Math.max(0, Number(submissionPoints));
           return res.status(200).json({
             success: true,
             event: {
               ...memoryEvent,
+              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : 20,
               is_voting_active: memoryEvent.status === 'voting_active'
             }
           });
