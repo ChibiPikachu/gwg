@@ -11,9 +11,10 @@ const supabase = (supabaseUrl && supabaseServiceKey)
 // In-memory fallback for local dev when Supabase is not connected
 let memoryEvent: any = {
   id: 'evt_screenshot_01',
-  title: 'Screenshot Submissions',
+  title: 'Screenshot Showcase & Contest',
   description: 'Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting!',
   status: 'submissions_open', // 'draft' | 'submissions_open' | 'voting_active' | 'concluded'
+  is_voting_active: false,
   is_admin_only: true,
   max_submissions_per_user: 10,
   created_at: new Date().toISOString()
@@ -42,15 +43,22 @@ export default async function handler(req: Request, res: Response) {
         const { data: votes } = await supabase.from('screenshot_votes').select('*');
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
+        const eventData = evt || memoryEvent;
         return res.status(200).json({
-          event: evt || memoryEvent,
+          event: {
+            ...eventData,
+            is_voting_active: eventData.status === 'voting_active'
+          },
           submissions: subs || [],
           votes: votes || [],
           comments: comments || []
         });
       } else {
         return res.status(200).json({
-          event: memoryEvent,
+          event: {
+            ...memoryEvent,
+            is_voting_active: memoryEvent.status === 'voting_active'
+          },
           submissions: memorySubmissions,
           votes: memoryVotes,
           comments: memoryComments
@@ -195,8 +203,14 @@ export default async function handler(req: Request, res: Response) {
       if (action === 'vote') {
         const { submissionId, userId, eventStatus } = req.body;
         
-        if (eventStatus !== 'voting_active' && memoryEvent.status !== 'voting_active') {
-          return res.status(400).json({ error: "You can't vote for this yet! Voting period is not currently active." });
+        let currentStatus = memoryEvent.status;
+        if (supabase) {
+          const { data: evt } = await supabase.from('screenshot_events').select('status').eq('id', memoryEvent.id).maybeSingle();
+          if (evt) currentStatus = evt.status;
+        }
+
+        if (currentStatus !== 'voting_active' && eventStatus !== 'voting_active') {
+          return res.status(400).json({ error: "You can't vote yet!" });
         }
 
         if (!submissionId || !userId) {
@@ -209,7 +223,7 @@ export default async function handler(req: Request, res: Response) {
           if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
 
           if (targetSub.user_id === userId) {
-            return res.status(400).json({ error: 'You cannot vote for your own screenshot!' });
+            return res.status(400).json({ error: "You can't vote for yourself, silly!" });
           }
 
           if (!targetSub.is_selected) {
@@ -239,7 +253,7 @@ export default async function handler(req: Request, res: Response) {
         } else {
           const targetSub = memorySubmissions.find(s => s.id === submissionId);
           if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-          if (targetSub.user_id === userId) return res.status(400).json({ error: 'You cannot vote for your own screenshot!' });
+          if (targetSub.user_id === userId) return res.status(400).json({ error: "You can't vote for yourself, silly!" });
 
           const existingIndex = memoryVotes.findIndex(v => v.user_id === userId && v.submission_id === submissionId);
           if (existingIndex >= 0) {
@@ -319,21 +333,101 @@ export default async function handler(req: Request, res: Response) {
         }
       }
 
-      // ADMIN: DELETE SUBMISSION
-      if (action === 'admin-delete-submission') {
+      // ADMIN OR USER: DELETE SUBMISSION (removes +20 points awarded & updates leaderboard)
+      if (action === 'admin-delete-submission' || action === 'delete-submission') {
         const { submissionId } = req.body;
 
         if (supabase) {
+          // Fetch target submission details to identify user
+          const { data: targetSub } = await supabase
+            .from('screenshot_submissions')
+            .select('*')
+            .eq('id', submissionId)
+            .maybeSingle();
+
+          const targetUserId = targetSub?.user_id;
+
           await supabase.from('screenshot_comments').delete().eq('submission_id', submissionId);
           await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
           await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
-          return res.status(200).json({ success: true });
+
+          if (targetUserId) {
+            // Find 1 corresponding submission record for this screenshot upload
+            const { data: subPointRow } = await supabase
+              .from('submissions')
+              .select('id')
+              .eq('user_id', targetUserId)
+              .eq('platform', 'Screenshot Event')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (subPointRow) {
+              await supabase.from('submissions').delete().eq('id', subPointRow.id);
+            }
+
+            // Recalculate user's profile points and update profile in Supabase
+            const { data: userSubs } = await supabase
+              .from('submissions')
+              .select('points, calculated_score, game_name')
+              .or(`user_id.eq.${targetUserId},user_id.eq.discord_${targetUserId}`)
+              .eq('status', 'verified');
+
+            let newTotal = 0;
+            for (const s of (userSubs || [])) {
+              if (s.game_name === 'Event Update') continue;
+              const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
+              newTotal += Math.round(pts);
+            }
+
+            await supabase
+              .from('profiles')
+              .update({ points: newTotal })
+              .or(`steamid.eq.${targetUserId},discord_id.eq.${targetUserId},id.eq.${targetUserId}`);
+          }
+
+          return res.status(200).json({ success: true, message: 'Submission deleted and 20 points deducted' });
         } else {
           memorySubmissions = memorySubmissions.filter(s => s.id !== submissionId);
           memoryVotes = memoryVotes.filter(v => v.submission_id !== submissionId);
           memoryComments = memoryComments.filter(c => c.submission_id !== submissionId);
-          return res.status(200).json({ success: true });
+          return res.status(200).json({ success: true, message: 'Submission deleted' });
         }
+      }
+
+      // ADMIN: TOGGLE VOTING PERIOD
+      if (action === 'admin-toggle-voting') {
+        let currentStatus = memoryEvent.status;
+        if (supabase) {
+          const { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
+          if (evt) currentStatus = evt.status;
+        }
+
+        const newStatus = currentStatus === 'voting_active' ? 'submissions_open' : 'voting_active';
+
+        if (supabase) {
+          const { data: updated } = await supabase
+            .from('screenshot_events')
+            .update({ status: newStatus })
+            .eq('id', memoryEvent.id)
+            .select()
+            .single();
+
+          if (updated) memoryEvent = updated;
+          else memoryEvent.status = newStatus;
+        } else {
+          memoryEvent.status = newStatus;
+        }
+
+        return res.status(200).json({
+          success: true,
+          status: memoryEvent.status,
+          is_voting_active: memoryEvent.status === 'voting_active',
+          event: {
+            ...memoryEvent,
+            is_voting_active: memoryEvent.status === 'voting_active'
+          }
+        });
       }
 
       // ADMIN: UPDATE EVENT STATUS ('draft' | 'submissions_open' | 'voting_active' | 'concluded')
@@ -357,11 +451,23 @@ export default async function handler(req: Request, res: Response) {
           } else {
             memoryEvent = updated;
           }
-          return res.status(200).json({ success: true, event: memoryEvent });
+          return res.status(200).json({
+            success: true,
+            event: {
+              ...memoryEvent,
+              is_voting_active: memoryEvent.status === 'voting_active'
+            }
+          });
         } else {
           memoryEvent.status = status;
           if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
-          return res.status(200).json({ success: true, event: memoryEvent });
+          return res.status(200).json({
+            success: true,
+            event: {
+              ...memoryEvent,
+              is_voting_active: memoryEvent.status === 'voting_active'
+            }
+          });
         }
       }
 

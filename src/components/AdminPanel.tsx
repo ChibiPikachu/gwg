@@ -1413,6 +1413,25 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
                         <button 
                           onClick={async () => {
+                            setIsAdminMenuOpen(false);
+                            try {
+                              const res = await fetch('/api/screenshots?action=admin-toggle-voting', { method: 'POST' });
+                              const d = await res.json();
+                              if (res.ok) {
+                                alert(`Screenshot Contest Voting Period is now ${d.is_voting_active ? 'ACTIVE (Open)' : 'PAUSED / CLOSED'}!`);
+                              } else {
+                                alert(`Error toggling voting: ${d.error}`);
+                              }
+                            } catch (err) { alert('Failed to toggle voting period'); }
+                          }}
+                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold uppercase dark:text-amber-400 text-amber-600 hover:dark:bg-amber-500/10 hover:bg-amber-50 rounded-xl transition-colors text-left"
+                        >
+                          <Camera size={14} />
+                          Toggle Screenshot Voting
+                        </button>
+
+                        <button 
+                          onClick={async () => {
                             if (!window.confirm('Search IGDB for missing IDs?')) return;
                             setIsAdminMenuOpen(false);
                             setLoading(true);

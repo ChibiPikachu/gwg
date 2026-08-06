@@ -234,13 +234,14 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
 
   // Vote for Screenshot
   const handleVote = async (sub: ScreenshotSubmission) => {
-    if (event?.status !== 'voting_active') {
-      setVotingNoticeMessage("You can't vote for this yet! Voting is only open during the official voting phase.");
+    const isVotingActive = event?.status === 'voting_active' || event?.is_voting_active;
+    if (!isVotingActive) {
+      setVotingNoticeMessage("You can't vote yet!");
       return;
     }
 
     if (sub.user_id === currentUserId) {
-      setVotingNoticeMessage("You cannot vote for your own screenshot submission!");
+      setVotingNoticeMessage("You can't vote for yourself, silly!");
       return;
     }
 
@@ -256,7 +257,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       });
       const data = await res.json();
       if (!res.ok) {
-        setVotingNoticeMessage(data.error || 'Failed to register vote');
+        setVotingNoticeMessage(data.error || "You can't vote yet!");
       } else {
         fetchData();
       }
@@ -296,6 +297,18 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   };
 
   // Admin Actions
+  const handleAdminToggleVoting = async () => {
+    try {
+      const res = await fetch('/api/screenshots?action=admin-toggle-voting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Failed to toggle voting period:', err);
+    }
+  };
+
   const handleAdminUpdateStatus = async (newStatus: string) => {
     try {
       const res = await fetch('/api/screenshots?action=admin-event-status', {
@@ -335,7 +348,11 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId: subId })
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        fetchData();
+        // Dispatch custom event to notify other components (e.g. Leaderboard)
+        window.dispatchEvent(new Event('leaderboard-updated'));
+      }
     } catch (err) {
       console.error('Failed to delete submission:', err);
     }
@@ -428,7 +445,19 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+            <button
+              onClick={handleAdminToggleVoting}
+              className={cn(
+                "font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer border",
+                (event?.status === 'voting_active' || event?.is_voting_active)
+                  ? "bg-amber-500 text-black border-amber-400 hover:bg-amber-400"
+                  : "bg-purple-600 text-white border-purple-500 hover:bg-purple-500"
+              )}
+            >
+              <Star size={14} className={(event?.status === 'voting_active' || event?.is_voting_active) ? "fill-black" : ""} />
+              {(event?.status === 'voting_active' || event?.is_voting_active) ? "Voting Period: Active (Click to Pause)" : "Toggle Voting Period"}
+            </button>
             <select
               value={event?.status || 'submissions_open'}
               onChange={(e) => handleAdminUpdateStatus(e.target.value)}
@@ -442,7 +471,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             <button
               onClick={handleAdminTallyPoints}
               disabled={isTallying}
-              className="bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+              className="bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
             >
               <Trophy size={14} />
               {isTallying ? 'Calculating...' : 'Tally & Award Points'}
@@ -829,7 +858,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     >
                       <Upload size={32} className="mx-auto text-purple-400 opacity-60" />
                       <p className="text-xs font-bold text-white">Click or Drag Image Here</p>
-                      <p className="text-[10px] text-white/40">PNG, JPG, WEBP up to 2MB</p>
+                      <p className="text-[10px] text-white/40">PNG, JPG, WEBP up to 8MB</p>
                       <input
                         id="fileInput"
                         type="file"
@@ -903,8 +932,8 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       onChange={(e) => setIsSelectedInput(e.target.checked)}
                       className="w-4 h-4 rounded bg-black/40 border-white/20 text-amber-500 focus:ring-0 cursor-pointer"
                     />
-                    <span className="text-slate-300 font-bold flex items-center gap-1">
-                      <Star size={12} className="fill-slate-300" />
+                    <span className="text-indigo-400 font-bold flex items-center gap-1">
+                      <Star size={12} className="fill-indigo-400" />
                       Set as my official entry for Voting
                     </span>
                   </label>
