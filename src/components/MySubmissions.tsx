@@ -290,84 +290,67 @@ export default function MySubmissions() {
   }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus, formData.beatenPrevious]);
 
   const fetchSubmissions = React.useCallback(async () => {
-    if (isSupabaseConfigured && supabase && user?.steamId) {
-      try {
-        const { data, error } = await supabase
-          .from('submissions')
-          .select('*')
-          .eq('user_id', user.steamId)
-          .order('created_at', { ascending: false });
+    setLoading(true);
 
-        if (!error && data) {
-          setSubmissions(data);
-          setLoading(false);
+    try {
+      // 1. Fetch submissions and profiles concurrently using Supabase
+      if (isSupabaseConfigured && supabase) {
+        const [{ data: rawSubmissions, error: subErr }, { data: profiles, error: profErr }] = await Promise.all([
+          supabase.from('submissions').select('*').order('created_at', { ascending: false }),
+          supabase.from('profiles').select('steamid, id, team')
+        ]);
+
+        if (!subErr && rawSubmissions) {
+          // Map user IDs to profile data
+          const profileMap = new Map();
+          (profiles || []).forEach(p => {
+            if (p.steamid) profileMap.set(p.steamid, p);
+            if (p.id) profileMap.set(p.id, p);
+          });
+
+          // Enrich submissions with team info and filter for current user
+          const formattedSubmissions = rawSubmissions
+            .filter((sub: any) => sub.user_id === user?.steamId)
+            .map((sub: any) => {
+              const prof = profileMap.get(sub.steamid || sub.user_id);
+              return {
+                ...sub,
+                team: sub.team && sub.team !== 'none' ? sub.team : (prof?.team || 'none')
+              };
+            });
+
+          setSubmissions(formattedSubmissions);
 
           // Batch fetch HLTB data for these submissions
-          const uniqueTitles = Array.from(new Set(data.map((s: any) => s.game_name)));
+          const uniqueTitles = Array.from(new Set(formattedSubmissions.map((s: any) => s.game_name)));
           if (uniqueTitles.length > 0) {
             fetch('/api/hltb-batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ titles: uniqueTitles })
             })
-            .then(async r => {
-              if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
-                return r.json();
-              }
-              return {};
-            })
-            .then(hltb => {
-              if (hltb && typeof hltb === 'object') {
-                setHltbData(prev => ({ ...prev, ...hltb }));
-              }
-            })
+            .then(async r => (r.ok && r.headers.get('content-type')?.includes('application/json')) ? r.json() : {})
+            .then(hltb => hltb && typeof hltb === 'object' && setHltbData(prev => ({ ...prev, ...hltb })))
             .catch(err => console.warn('HLTB batch fetch failed:', err));
           }
+
+          setLoading(false);
           return;
         }
-      } catch (err) {
-        console.warn('Direct Supabase fetch for my submissions failed:', err);
       }
-    }
 
-    try {
-      const res = await fetch('/api/submissions', {
-        headers: getAuthHeaders()
-      });
-      const contentType = res.headers.get('content-type');
-      if (res.ok && contentType && contentType.includes('application/json')) {
+      // 2. API Fallback
+      const res = await fetch('/api/submissions', { headers: getAuthHeaders() });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json();
-        const subArray = Array.isArray(data) ? data : [];
-        setSubmissions(subArray);
-
-        // Batch fetch HLTB data for these submissions
-        const uniqueTitles = Array.from(new Set(subArray.map((s: any) => s.game_name)));
-        if (uniqueTitles.length > 0) {
-          fetch('/api/hltb-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ titles: uniqueTitles })
-          })
-          .then(async r => {
-            if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
-              return r.json();
-            }
-            return {};
-          })
-          .then(hltb => {
-            if (hltb && typeof hltb === 'object') {
-              setHltbData(prev => ({ ...prev, ...hltb }));
-            }
-          })
-          .catch(err => console.warn('HLTB batch fetch failed:', err));
-        }
+        setSubmissions(Array.isArray(data) ? data : []);
       }
     } catch (err) {
-      console.warn('Failed to fetch submissions:', err);
+      console.warn('Failed to fetch submissions with teams:', err);
     } finally {
       setLoading(false);
     }
-  }, [user?.steamId]);
+  }, [user?.steamId, getAuthHeaders]);
 
   React.useEffect(() => {
     fetchSubmissions();
