@@ -549,54 +549,46 @@ export default function MySubmissions() {
     const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
 
     setSubmitting(true);
-try {
-  // 1. Guard against empty/invalid editingId before firing a PUT request
-  if (editingId && (editingId === 'undefined' || editingId === 'null')) {
-    throw new Error('Invalid editing state: editingId is not set properly.');
-  }
+    try {
+      const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';
+      const method = editingId ? 'PUT' : 'POST';
 
-  const isEditing = Boolean(editingId);
-  const url = isEditing ? `/api/submissions/${editingId}` : '/api/submissions';
-  const method = isEditing ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          gameId: selectedGame.id,
+          gameTitle: selectedGame.title,
+          gameImage: selectedGame.image,
+          achievements: finalEarned,
+          hours: parseFloat(hours.toFixed(1)),
+          achievementsBefore,
+          hoursBefore: finalHoursBefore,
+          multiplier: multiplierPreview,
+          completionStatus: formData.completionStatus,
+          beatenPrevious: formData.beatenPrevious,
+          platform: formData.platform,
+          calculatedScore: scorePreview,
+          notes: serializedNotes,
+          steam_appid: selectedGame.steam_appid || null
+        })
+      });
 
-  // Debug log to check the exact URL and ID being sent
-  console.log(`Sending ${method} request to ${url}`);
-
-  const res = await fetch(url, {
-    method,
-    headers: getAuthHeaders(),
-    body: JSON.stringify({
-      gameId: selectedGame.id,
-      gameTitle: selectedGame.title,
-      gameImage: selectedGame.image,
-      achievements: finalEarned,
-      hours: parseFloat(hours.toFixed(1)),
-      achievementsBefore,
-      hoursBefore: finalHoursBefore,
-      multiplier: multiplierPreview,
-      completionStatus: formData.completionStatus,
-      beatenPrevious: formData.beatenPrevious,
-      platform: formData.platform,
-      calculatedScore: scorePreview,
-      notes: serializedNotes,
-      steam_appid: selectedGame.steam_appid || null
-    })
-  })
-
-  if (res.ok) {
-    handleResetForm();
-    fetchSubmissions();
-  } else {
-    const data = await res.json().catch(() => ({}));
-    console.error('Server submission error:', data);
-    alert(`Submission failed: ${data.error || 'Unknown error'}`);
-  }
-} catch (err: any) {
-  console.error('Client submission exception:', err);
-  alert(`Failed to submit game: ${err.message || 'Check console for details.'}`);
-} finally {
-  setSubmitting(false);
-}
+      if (res.ok) {
+        handleResetForm();
+        fetchSubmissions();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error('Server submission error:', data);
+        alert(`Submission failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Client submission exception:', err);
+      alert('Failed to submit game. Check console for details.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleEdit = (sub: any) => {
     // We always want to edit existing entries as per requirements
