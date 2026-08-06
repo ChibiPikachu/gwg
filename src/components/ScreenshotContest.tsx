@@ -474,7 +474,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             </div>
 
             <h1 className="text-2xl md:text-4xl font-black tracking-tight dark:text-white text-slate-900">
-              {event?.title || 'Screenshot Showcase & Contest'}
+              {event?.title || 'Screenshot Submissions'}
             </h1>
             <p className="text-sm dark:text-white/60 text-slate-600 leading-relaxed">
               Submit up to 10 screenshots from Steam or other games. Every submission earns <strong className="text-emerald-400">+20 points</strong> for your team! Select 1 official screenshot for community voting when the voting window opens.

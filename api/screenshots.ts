@@ -11,7 +11,7 @@ const supabase = (supabaseUrl && supabaseServiceKey)
 // In-memory fallback for local dev when Supabase is not connected
 let memoryEvent: any = {
   id: 'evt_screenshot_01',
-  title: 'Screenshot Showcase & Contest',
+  title: 'Screenshot Submissions',
   description: 'Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting!',
   status: 'submissions_open', // 'draft' | 'submissions_open' | 'voting_active' | 'concluded'
   is_admin_only: true,
