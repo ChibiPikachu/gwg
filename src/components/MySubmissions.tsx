@@ -581,7 +581,7 @@ try {
       notes: serializedNotes,
       steam_appid: selectedGame.steam_appid || null
     })
-  });
+  })
 
   if (res.ok) {
     handleResetForm();
@@ -596,7 +596,7 @@ try {
   alert(`Failed to submit game: ${err.message || 'Check console for details.'}`);
 } finally {
   setSubmitting(false);
-};
+}
 
   const handleEdit = (sub: any) => {
     // We always want to edit existing entries as per requirements
