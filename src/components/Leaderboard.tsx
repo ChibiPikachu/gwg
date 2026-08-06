@@ -194,22 +194,6 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   }, []);
 
   const fetchAdjustments = React.useCallback(async () => {
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('team_adjustments')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!error && data) {
-          setAdjustments(data);
-          return;
-        }
-      } catch (err) {
-        console.warn('Direct Supabase fetch for team adjustments failed:', err);
-      }
-    }
-
     fetch('/api/team-adjustments')
       .then(res => res.json())
       .then(data => {
@@ -631,8 +615,33 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                 </div>
               ) : (
                 filteredUsers.map((u) => {
-                  const hasScreenshotPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Screenshot Points');
-                  const hasBingoPoints = adjustments.some(adj => adj.user_id === u.steamid && adj.game_name === 'Bingo Points');
+                  const uSteamId = String(u.steamid || u.steamId || '');
+                  const uDiscordId = String(u.discord_id || u.discordId || '');
+                  const uUid = String(u.uid || u.id || '');
+
+                  const userAdjs = adjustments.filter(adj => {
+                    const adjUserId = String(adj.user_id || adj.userId || '');
+                    return Boolean(
+                      (uSteamId && adjUserId === uSteamId) ||
+                      (uDiscordId && (adjUserId === uDiscordId || adjUserId === `discord_${uDiscordId}`)) ||
+                      (uUid && adjUserId === uUid)
+                    );
+                  });
+
+                  const hasScreenshotPoints = userAdjs.some(adj => {
+                    const g = (adj.game_name || '').toLowerCase();
+                    const p = (adj.platform || '').toLowerCase();
+                    const n = (adj.notes || adj.reason || '').toLowerCase();
+                    return g.includes('screenshot') || p.includes('screenshot') || n.includes('screenshot');
+                  });
+
+                  const hasBingoPoints = userAdjs.some(adj => {
+                    const g = (adj.game_name || '').toLowerCase();
+                    const p = (adj.platform || '').toLowerCase();
+                    const n = (adj.notes || adj.reason || '').toLowerCase();
+                    return g.includes('bingo') || p.includes('bingo') || n.includes('bingo');
+                  });
+
                   return (
                     <div key={u.steamid} className="flex items-center gap-4 p-4 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 group hover:border-black/10 dark:hover:border-white/10 transition-all shadow-sm dark:shadow-none">
                       <div className="text-sm font-bold opacity-30 w-4 dark:text-white text-slate-500">
@@ -674,17 +683,17 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                                TEAM_COLORS[u.team as Team]?.primary,
                                TEAM_COLORS[u.team as Team]?.border
                              )}>
-                               Team {u.team}
+                                Team {u.team}
                              </span>
                            )}
                            {hasScreenshotPoints && (
                              <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 shrink-0">
-                               screenshot points
+                               screenshot
                              </span>
                            )}
                            {hasBingoPoints && (
                              <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20 shrink-0">
-                               bingo points
+                               bingo
                              </span>
                            )}
                         </div>
@@ -747,12 +756,12 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                             <div className="mt-1 flex items-center gap-2">
                               {isScreenshot && (
                                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
-                                  screenshot points
+                                  screenshot
                                 </span>
                               )}
                               {isBingo && (
                                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 shrink-0">
-                                  bingo points
+                                  bingo
                                 </span>
                               )}
                             </div>

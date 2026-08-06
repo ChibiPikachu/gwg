@@ -1155,6 +1155,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       const userAdjs = (teamAdjustments || []).filter(a => {
         const adjUserId = String(a.user_id || a.userId || '');
         if (adjUserId.startsWith('team_pts_')) return false;
+        if (a.id && userSubs.some(s => String(s.id) === String(a.id))) return false;
         return Boolean(
           (uSteamId && adjUserId === uSteamId) ||
           (uDiscordId && adjUserId === uDiscordId) ||
@@ -4027,6 +4028,7 @@ function TeamPointContributionChart({
         const userAdjs = (teamAdjustments || []).filter(a => {
           const adjUserId = String(a.user_id || a.userId || '');
           if (adjUserId.startsWith('team_pts_')) return false;
+          if (a.id && userSubs.some(s => String(s.id) === String(a.id))) return false;
           return Boolean(
             (uSteamId && adjUserId === uSteamId) ||
             (uDiscordId && adjUserId === uDiscordId) ||
