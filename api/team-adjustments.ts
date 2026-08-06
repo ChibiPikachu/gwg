@@ -17,11 +17,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (!error && Array.isArray(data)) {
+      return res.status(200).json(data);
+    }
 
-    return res.status(200).json(data || []);
+    // Fallback: Query submissions table for team adjustments
+    const { data: subData } = await supabase
+      .from('submissions')
+      .select('*')
+      .or('user_id.ilike.team_pts_%,game_name.ilike.%Points%,platform.ilike.%Adjustment%')
+      .order('created_at', { ascending: false });
+
+    return res.status(200).json(subData || []);
   } catch (err: any) {
     console.error('Error fetching team adjustments:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(200).json([]);
   }
 }
