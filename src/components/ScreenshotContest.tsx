@@ -477,7 +477,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               {event?.title || 'Screenshot Submissions'}
             </h1>
             <p className="text-sm dark:text-white/60 text-slate-600 leading-relaxed">
-              Submit up to 10 screenshots from Steam or other games. Every submission earns <strong className="text-emerald-400">+20 points</strong> for your team! Select 1 official screenshot for community voting when the voting window opens.
+              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+20 points</strong> for your team! Select <b>one</b> official screenshot for voting when the Voting Period starts. Screenshots taken during and before the event are allowed.
             </p>
           </div>
 
@@ -829,7 +829,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     >
                       <Upload size={32} className="mx-auto text-purple-400 opacity-60" />
                       <p className="text-xs font-bold text-white">Click or Drag Image Here</p>
-                      <p className="text-[10px] text-white/40">PNG, JPG, WEBP up to 8MB</p>
+                      <p className="text-[10px] text-white/40">PNG, JPG, WEBP up to 2MB</p>
                       <input
                         id="fileInput"
                         type="file"
@@ -893,7 +893,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       onChange={(e) => setIsSpoilerInput(e.target.checked)}
                       className="w-4 h-4 rounded bg-black/40 border-white/20 text-purple-600 focus:ring-0 cursor-pointer"
                     />
-                    <span>Contains Spoilers (adds Discord-style blur overlay)</span>
+                    <span>Contains Spoilers</span>
                   </label>
 
                   <label className="flex items-center gap-2.5 text-xs text-white/80 cursor-pointer select-none">
@@ -903,8 +903,8 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       onChange={(e) => setIsSelectedInput(e.target.checked)}
                       className="w-4 h-4 rounded bg-black/40 border-white/20 text-amber-500 focus:ring-0 cursor-pointer"
                     />
-                    <span className="text-amber-300 font-bold flex items-center gap-1">
-                      <Star size={12} className="fill-amber-300" />
+                    <span className="text-slate-300 font-bold flex items-center gap-1">
+                      <Star size={12} className="fill-slate-300" />
                       Set as my official entry for Voting
                     </span>
                   </label>
