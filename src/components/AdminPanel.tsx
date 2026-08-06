@@ -579,6 +579,27 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     } 
   }, []);
 
+  const getSubmissionUserTeam = React.useCallback((sub: any): string => {
+    if (sub.userTeam && sub.userTeam !== 'none') return sub.userTeam;
+    if (sub.user_team && sub.user_team !== 'none') return sub.user_team;
+    if (sub.team && sub.team !== 'none') return sub.team;
+
+    const uId = String(sub.user_id || sub.steamid || sub.steamId || '');
+    const u = users.find(usr => 
+      String(usr.steamid || usr.id) === uId || 
+      String(usr.discord_id) === uId ||
+      (uId.startsWith('discord_') && String(usr.discord_id) === uId.replace('discord_', ''))
+    );
+
+    if (u?.team && u.team !== 'none') return u.team;
+
+    if (uId.startsWith('team_pts_')) {
+      return uId.replace('team_pts_', '');
+    }
+
+    return 'none';
+  }, [users]);
+
   const fetchSubmissions = React.useCallback(async () => {
     if (isSupabaseConfigured && supabase) {
       try {
@@ -588,7 +609,36 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          setSubmissions(data);
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('steamid, discord_id, team, steam_name, steam_avatar, discord_name, discord_avatar');
+
+          const profMap: Record<string, any> = {};
+          (profs || []).forEach((p: any) => {
+            if (p.steamid) profMap[String(p.steamid)] = p;
+            if (p.discord_id) profMap[String(p.discord_id)] = p;
+          });
+
+          const enriched = data.map((s: any) => {
+            const uId = String(s.user_id || '');
+            const p = profMap[uId] || (profs || []).find((prof: any) => 
+              String(prof.steamid) === uId || 
+              String(prof.discord_id) === uId ||
+              (uId.startsWith('discord_') && String(prof.discord_id) === uId.replace('discord_', ''))
+            );
+
+            const team = s.userTeam || s.user_team || p?.team || 'none';
+
+            return {
+              ...s,
+              user_name: p?.steam_name || p?.discord_name || s.user_name,
+              user_avatar: p?.steam_avatar || p?.discord_avatar || s.user_avatar,
+              userTeam: team,
+              user_team: team
+            };
+          });
+
+          setSubmissions(enriched);
           return;
         }
       } catch (e) {
@@ -845,7 +895,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           title: status === 'verified' ? 'Submission Approved!' : 'Submission Rejected',
           gameTitle: sub?.game_name || sub?.gameTitle || 'Game Submission',
           userName: sub?.steam_name || sub?.user_name || sub?.userName || 'Player',
-          userTeam: sub?.team || 'none',
+          userTeam: getSubmissionUserTeam(sub),
           points: finalPts,
           status,
           rejectionReason: status === 'rejected' ? rejectionReason : ''
@@ -1148,7 +1198,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     if (activeTab === 'submissions' && !isCurrent) return false;
     if (activeTab === 'previous_submissions' && isCurrent) return false;
 
-    const matchesTeam = filterTeam === 'all' || (sub.userTeam || 'none') === filterTeam;
+    const subTeam = getSubmissionUserTeam(sub);
+    const matchesTeam = filterTeam === 'all' || subTeam === filterTeam;
     const matchesStatus = subStatusFilter === 'all' || sub.status === subStatusFilter;
     const matchesCompletion = completionFilter === 'all' || sub.completion_status === completionFilter || (completionFilter === 'unfinished' && !sub.completion_status);
     const matchesSearch = (sub.game_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1849,13 +1900,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               </div>
             ) : (
               filteredSubmissions.map(sub => {
+                const subTeam = getSubmissionUserTeam(sub);
                 // Custom Outer Glow Mapping
                 let outerGlowClass = "shadow-[0_0_20px_-5px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_-5px_rgba(255,255,255,0.05)] hover:dark:shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)] border-black/5 dark:border-white/5";
                 
-                if (sub.userTeam === 'blue') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] hover:shadow-[0_0_40px_-5px_rgba(59,130,246,0.5)] border-blue-500/40 hover:border-blue-500/60";
-                if (sub.userTeam === 'green') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] hover:shadow-[0_0_40px_-5px_rgba(16,185,129,0.5)] border-green-500/40 hover:border-green-500/60";
-                if (sub.userTeam === 'purple') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(168,85,247,0.3)] hover:shadow-[0_0_40px_-5px_rgba(168,85,247,0.5)] border-purple-500/40 hover:border-purple-500/60";
-                if (sub.userTeam === 'red') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(239,68,68,0.3)] hover:shadow-[0_0_40px_-5px_rgba(239,68,68,0.5)] border-red-500/40 hover:border-red-500/60";
+                if (subTeam === 'blue') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] hover:shadow-[0_0_40px_-5px_rgba(59,130,246,0.5)] border-blue-500/40 hover:border-blue-500/60";
+                if (subTeam === 'green') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] hover:shadow-[0_0_40px_-5px_rgba(16,185,129,0.5)] border-green-500/40 hover:border-green-500/60";
+                if (subTeam === 'purple') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(168,85,247,0.3)] hover:shadow-[0_0_40px_-5px_rgba(168,85,247,0.5)] border-purple-500/40 hover:border-purple-500/60";
+                if (subTeam === 'red') outerGlowClass = "shadow-[0_0_30px_-5px_rgba(239,68,68,0.3)] hover:shadow-[0_0_40px_-5px_rgba(239,68,68,0.5)] border-red-500/40 hover:border-red-500/60";
 
                 return (
                   <div key={sub.id} className={cn(
@@ -1916,12 +1968,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                              title="Select for bulk action"
                            />
                            <div className={cn(
-                             "px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] uppercase font-bold tracking-widest border shrink-0",
-                             (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].primary : TEAM_COLORS.none.primary,
-                             (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].border : TEAM_COLORS.none.border,
-                             (sub.userTeam && TEAM_COLORS[sub.userTeam as Team]) ? TEAM_COLORS[sub.userTeam as Team].secondary : TEAM_COLORS.none.secondary
+                             "px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] uppercase font-bold tracking-widest border shrink-0 capitalize",
+                             (subTeam && TEAM_COLORS[subTeam as Team]) ? TEAM_COLORS[subTeam as Team].primary : TEAM_COLORS.none.primary,
+                             (subTeam && TEAM_COLORS[subTeam as Team]) ? TEAM_COLORS[subTeam as Team].border : TEAM_COLORS.none.border,
+                             (subTeam && TEAM_COLORS[subTeam as Team]) ? TEAM_COLORS[subTeam as Team].secondary : TEAM_COLORS.none.secondary
                            )}>
-                             Team {sub.userTeam || 'none'}
+                             Team {subTeam}
                            </div>
                            <span className="text-[8px] md:text-[10px] opacity-30 font-bold uppercase tracking-widest dark:text-white text-slate-500 shrink-0">Submission</span>
                         </div>
