@@ -1,10 +1,56 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&family=Agbalumo&family=Roboto+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+:root {
+  --team-color-primary: #c084fc;
+  --team-color-border: rgba(192, 132, 252, 0.4);
+  --team-color-bg: rgba(192, 132, 252, 0.1);
+  --team-color-glow: rgba(192, 132, 252, 0.3);
+}
+
+[data-team="blue"] {
+  --team-color-primary: #38bdf8;
+  --team-color-border: rgba(56, 189, 248, 0.4);
+  --team-color-bg: rgba(56, 189, 248, 0.1);
+  --team-color-glow: rgba(56, 189, 248, 0.3);
+}
+
+[data-team="green"] {
+  --team-color-primary: #4ade80;
+  --team-color-border: rgba(74, 222, 128, 0.4);
+  --team-color-bg: rgba(74, 222, 128, 0.1);
+  --team-color-glow: rgba(74, 222, 128, 0.3);
+}
+
+[data-team="purple"] {
+  --team-color-primary: #c084fc;
+  --team-color-border: rgba(192, 132, 252, 0.4);
+  --team-color-bg: rgba(192, 132, 252, 0.1);
+  --team-color-glow: rgba(192, 132, 252, 0.3);
+}
+
+[data-team="red"] {
+  --team-color-primary: #f87171;
+  --team-color-border: rgba(248, 113, 113, 0.4);
+  --team-color-bg: rgba(248, 113, 113, 0.1);
+  --team-color-glow: rgba(248, 113, 113, 0.3);
+}
+
+[data-team="none"] {
+  --team-color-primary: #94a3b8;
+  --team-color-border: rgba(148, 163, 184, 0.3);
+  --team-color-bg: rgba(148, 163, 184, 0.1);
+  --team-color-glow: rgba(148, 163, 184, 0.2);
+}
+
 @theme {
   --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Agbalumo", cursive;
   --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-team-primary: var(--team-color-primary, #c084fc);
+  --color-team-border: var(--team-color-border, rgba(192, 132, 252, 0.4));
+  --color-team-bg: var(--team-color-bg, rgba(192, 132, 252, 0.1));
 
   --color-blue-accent: #60a5fa;
   --color-green-accent: #4ade80;

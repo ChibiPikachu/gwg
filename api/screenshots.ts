@@ -365,17 +365,19 @@ export default async function handler(req: Request, res: Response) {
           };
 
           if (supabase) {
-            await supabase.from('notifications').insert([{
-              user_id: creatorId,
-              title: notifObj.title,
-              message: notifObj.message,
-              type: 'screenshot_comment',
-              data: JSON.stringify({ submissionId, gameName, userName, content: content.trim() }),
-              created_at: notifObj.created_at,
-              is_read: false
-            }]).catch((err) => {
+            try {
+              await supabase.from('notifications').insert([{
+                user_id: creatorId,
+                title: notifObj.title,
+                message: notifObj.message,
+                type: 'screenshot_comment',
+                data: JSON.stringify({ submissionId, gameName, userName, content: content.trim() }),
+                created_at: notifObj.created_at,
+                is_read: false
+              }]);
+            } catch (err) {
               console.warn('Could not insert into Supabase notifications table, using fallback:', err);
-            });
+            }
           }
           memoryNotifications.unshift(notifObj);
         }

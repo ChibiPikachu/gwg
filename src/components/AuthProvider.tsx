@@ -40,6 +40,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isDarkMode]);
 
+  useEffect(() => {
+    const team = user?.team || 'none';
+    document.documentElement.setAttribute('data-team', team);
+
+    const colorMap: Record<string, { primary: string; border: string; bg: string; glow: string }> = {
+      blue: { primary: '#38bdf8', border: 'rgba(56, 189, 248, 0.4)', bg: 'rgba(56, 189, 248, 0.1)', glow: 'rgba(56, 189, 248, 0.3)' },
+      green: { primary: '#4ade80', border: 'rgba(74, 222, 128, 0.4)', bg: 'rgba(74, 222, 128, 0.1)', glow: 'rgba(74, 222, 128, 0.3)' },
+      purple: { primary: '#c084fc', border: 'rgba(192, 132, 252, 0.4)', bg: 'rgba(192, 132, 252, 0.1)', glow: 'rgba(192, 132, 252, 0.3)' },
+      red: { primary: '#f87171', border: 'rgba(248, 113, 113, 0.4)', bg: 'rgba(248, 113, 113, 0.1)', glow: 'rgba(248, 113, 113, 0.3)' },
+      none: { primary: '#94a3b8', border: 'rgba(148, 163, 184, 0.3)', bg: 'rgba(148, 163, 184, 0.1)', glow: 'rgba(148, 163, 184, 0.2)' }
+    };
+    const c = colorMap[team] || colorMap.none;
+    document.documentElement.style.setProperty('--team-color-primary', c.primary);
+    document.documentElement.style.setProperty('--team-color-border', c.border);
+    document.documentElement.style.setProperty('--team-color-bg', c.bg);
+    document.documentElement.style.setProperty('--team-color-glow', c.glow);
+  }, [user?.team]);
+
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
   const updateProfile = async (data: { displayName: string; status: string }) => {

@@ -199,8 +199,11 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed, formData.hoursBefore]);
 
   const filteredSubmissions = React.useMemo(() => {
+    const currentUserIdCandidates = [user?.steamId, user?.uid, user?.discordId, user?.discordId ? `discord_${user.discordId}` : null].filter(Boolean);
+
     // Filter out system notifications and team point adjustments from entries
     let result = submissions.filter(s => 
+      (currentUserIdCandidates.length === 0 || currentUserIdCandidates.includes(s.user_id)) &&
       s.game_name !== 'Event Update' && 
       s.game_name !== 'Screenshot Points' && 
       s.game_name !== 'Bingo Points' &&
@@ -221,7 +224,7 @@ export default function MySubmissions() {
       result = result.filter(s => s.game_name && s.game_name.toLowerCase().includes(q));
     }
     return result;
-  }, [submissions, completionFilter, submissionsSearchQuery]);
+  }, [submissions, completionFilter, submissionsSearchQuery, user]);
 
   const activeEventIds = React.useMemo(() => {
     return new Set(events.filter(e => e.is_active).map(e => e.id));

@@ -343,6 +343,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(logs || []);
     }
 
+    // 15. Close Event: POST /api/admin/close-event
+    if (path.includes('close-event')) {
+      const eventId = req.body?.id || id;
+      if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+
+      await supabase.from('events').update({ is_active: false }).eq('id', eventId);
+      return res.status(200).json({ success: true });
+    }
+
+    // 16. Manage Events: /api/admin/events or /api/admin?action=events
+    if (path.includes('events') || path.includes('event')) {
+      if (req.method === 'GET') {
+        const { data, error } = await supabase.from('events').select('*').order('start_date', { ascending: false });
+        if (error) throw error;
+        return res.status(200).json(data || []);
+      }
+
+      if (req.method === 'POST') {
+        const { title, description, startDate, start_date, endDate, end_date, isActive, is_active, hideScores, hide_scores, winnerTeam, winner_team } = req.body || {};
+        const { data, error } = await supabase.from('events').insert([{
+          title: title || 'New Event',
+          description: description || '',
+          start_date: startDate || start_date || new Date().toISOString(),
+          end_date: endDate || end_date || new Date().toISOString(),
+          is_active: isActive !== undefined ? isActive : (is_active !== undefined ? is_active : true),
+          hide_scores: hideScores !== undefined ? hideScores : (hide_scores !== undefined ? hide_scores : false),
+          winner_team: (winnerTeam === 'auto' || winner_team === 'auto') ? null : (winnerTeam || winner_team || null)
+        }]).select().single();
+
+        if (error) throw error;
+        return res.status(200).json(data);
+      }
+
+      if (req.method === 'PUT' || req.method === 'PATCH') {
+        const eventId = req.query.id || req.body?.id || id;
+        if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+
+        const { title, description, startDate, start_date, endDate, end_date, isActive, is_active, hideScores, hide_scores, winnerTeam, winner_team } = req.body || {};
+        const updateData: any = {};
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (startDate || start_date) updateData.start_date = startDate || start_date;
+        if (endDate || end_date) updateData.end_date = endDate || end_date;
+        if (isActive !== undefined || is_active !== undefined) updateData.is_active = Boolean(isActive !== undefined ? isActive : is_active);
+        if (hideScores !== undefined || hide_scores !== undefined) updateData.hide_scores = Boolean(hideScores !== undefined ? hideScores : hide_scores);
+        if (winnerTeam !== undefined || winner_team !== undefined) {
+          const w = winnerTeam !== undefined ? winnerTeam : winner_team;
+          updateData.winner_team = (w === 'auto' || !w) ? null : w;
+        }
+
+        const { data, error } = await supabase.from('events').update(updateData).eq('id', eventId).select().maybeSingle();
+        if (error) throw error;
+        return res.status(200).json(data || { success: true });
+      }
+
+      if (req.method === 'DELETE') {
+        const eventId = req.query.id || id;
+        if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+        await supabase.from('events').delete().eq('id', eventId);
+        return res.status(200).json({ success: true });
+      }
+    }
+
     // Fallback for generic GET/POST admin routes
     return res.status(200).json({ success: true });
   } catch (err: any) {

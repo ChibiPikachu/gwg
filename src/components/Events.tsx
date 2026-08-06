@@ -66,13 +66,15 @@ export default function EventsPanel() {
 
     const startParts = parseDateTimeToLocalParts(event.start_date);
     const endParts = parseDateTimeToLocalParts(event.end_date);
+    const winnerTeamVal = (event.winner_team && ['blue', 'green', 'purple', 'red'].includes(event.winner_team)) ? event.winner_team : 'auto';
 
     setEditingEvent({
       ...event,
       raw_description: rawDesc,
       description: cleanDesc,
       start_date: startParts ? `${startParts.year}-${startParts.month}-${startParts.day}` : event.start_date,
-      end_date: endParts ? `${endParts.year}-${endParts.month}-${endParts.day}` : event.end_date
+      end_date: endParts ? `${endParts.year}-${endParts.month}-${endParts.day}` : event.end_date,
+      winner_team: winnerTeamVal
     });
 
     setStartTime(startParts ? `${startParts.hour}:${startParts.minute}` : '00:00');
@@ -223,10 +225,6 @@ export default function EventsPanel() {
     setSubmitting(true);
     try {
       const isNew = !editingEvent.id;
-      const url = isNew 
-        ? '/api/admin/events'
-        : `/api/admin/events/${editingEvent.id}`;
-      
       const finalStartDate = combineDateAndTimeStr(editingEvent.start_date, startTime);
       const finalEndDate = combineDateAndTimeStr(editingEvent.end_date, endTime);
 
@@ -238,33 +236,83 @@ export default function EventsPanel() {
       if (finalVotingStr) finalDescription += ` <!--VOTING:${finalVotingStr}-->`;
       if (systemComments) finalDescription += `\n${systemComments}`;
 
-      const res = await fetch(url, {
-        method: isNew ? 'POST' : 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editingEvent.title,
-          description: finalDescription,
-          startDate: finalStartDate,
-          endDate: finalEndDate,
-          isActive: editingEvent.is_active,
-          hideScores: !!editingEvent.hide_scores,
-          winnerTeam: editingEvent.winner_team || 'auto'
-        })
-      });
+      const winnerTeamVal = (editingEvent.winner_team && ['blue', 'green', 'purple', 'red'].includes(editingEvent.winner_team))
+        ? editingEvent.winner_team
+        : null;
 
-      if (res.ok) {
+      let saved = false;
+
+      // 1. Direct Supabase update if configured
+      if (isSupabaseConfigured && supabase) {
+        try {
+          if (isNew) {
+            const { error } = await supabase.from('events').insert([{
+              title: editingEvent.title,
+              description: finalDescription,
+              start_date: finalStartDate,
+              end_date: finalEndDate,
+              is_active: editingEvent.is_active ?? true,
+              hide_scores: !!editingEvent.hide_scores,
+              winner_team: winnerTeamVal
+            }]);
+            if (!error) saved = true;
+          } else {
+            const { error } = await supabase.from('events').update({
+              title: editingEvent.title,
+              description: finalDescription,
+              start_date: finalStartDate,
+              end_date: finalEndDate,
+              is_active: editingEvent.is_active,
+              hide_scores: !!editingEvent.hide_scores,
+              winner_team: winnerTeamVal
+            }).eq('id', editingEvent.id);
+            if (!error) saved = true;
+          }
+        } catch (supaErr) {
+          console.warn('Supabase save event error:', supaErr);
+        }
+      }
+
+      // 2. API Endpoint fallback
+      if (!saved) {
+        const url = isNew ? '/api/events' : `/api/events?id=${editingEvent.id}`;
+        const res = await fetch(url, {
+          method: isNew ? 'POST' : 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingEvent.id,
+            title: editingEvent.title,
+            description: finalDescription,
+            startDate: finalStartDate,
+            endDate: finalEndDate,
+            start_date: finalStartDate,
+            end_date: finalEndDate,
+            isActive: editingEvent.is_active,
+            is_active: editingEvent.is_active,
+            hideScores: !!editingEvent.hide_scores,
+            hide_scores: !!editingEvent.hide_scores,
+            winnerTeam: winnerTeamVal,
+            winner_team: winnerTeamVal
+          })
+        });
+
+        if (res.ok) {
+          saved = true;
+        } else {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to save event via server API');
+        }
+      }
+
+      if (saved) {
         setIsEditing(false);
         setEditingEvent(null);
-        fetchEvents();
+        await fetchEvents();
         window.dispatchEvent(new Event('active-event-updated'));
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Server error saving event:', errorData);
-        alert(`Failed to save event: ${errorData.error || 'Unknown error'}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save error:', err);
-      alert('Error saving event. Check console for details.');
+      alert(`Error saving event: ${err.message || 'Check console'}`);
     } finally {
       setSubmitting(false);
     }
@@ -582,8 +630,8 @@ export default function EventsPanel() {
                   <span className={cn("text-[9px] font-bold uppercase", theme.text)}>Badges & Historical Winner</span>
                 </label>
                 <select
-                  value={editingEvent?.winner_team || 'auto'}
-                  onChange={e => setEditingEvent({ ...editingEvent!, winner_team: e.target.value === 'auto' ? null : e.target.value })}
+                  value={editingEvent?.winner_team && ['blue', 'green', 'purple', 'red'].includes(editingEvent.winner_team) ? editingEvent.winner_team : 'auto'}
+                  onChange={e => setEditingEvent({ ...editingEvent!, winner_team: e.target.value === 'auto' ? 'auto' : e.target.value })}
                   className={cn("w-full dark:bg-white/5 bg-slate-50 border dark:border-white/10 border-slate-200 rounded-xl p-3 text-xs font-bold uppercase tracking-wider focus:outline-none transition-all dark:text-white text-slate-900 cursor-pointer", theme.border_focus)}
                 >
                   <option value="auto" className="dark:bg-[#111] bg-white text-slate-900 dark:text-white">Auto (Calculate from submissions)</option>

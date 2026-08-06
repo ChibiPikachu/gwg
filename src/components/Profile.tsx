@@ -66,16 +66,24 @@ export default function Profile({ steamId }: { steamId?: string }) {
   }, [events]);
 
   const userGameSubmissions = React.useMemo(() => {
-    return (submissions || []).filter((s: any) => 
-      s.game_name !== 'Event Update' && 
-      s.game_name !== 'Screenshot Points' && 
-      s.game_name !== 'Bingo Points' &&
-      s.game_name !== 'Team Award' &&
-      s.platform !== 'System' &&
-      s.user_id !== 'system_notification' &&
-      !String(s.user_id || '').startsWith('team_pts_')
-    );
-  }, [submissions]);
+    const candidateOwnerIds = isOwnProfile
+      ? [currentUser?.steamId, currentUser?.uid, currentUser?.discordId, currentUser?.discordId ? `discord_${currentUser.discordId}` : null].filter(Boolean)
+      : [steamId, targetUser?.steamId, targetUser?.discordId, targetUser?.discordId ? `discord_${targetUser.discordId}` : null].filter(Boolean);
+
+    return (submissions || []).filter((s: any) => {
+      const isOwner = candidateOwnerIds.length === 0 || candidateOwnerIds.includes(s.user_id);
+      return (
+        isOwner &&
+        s.game_name !== 'Event Update' && 
+        s.game_name !== 'Screenshot Points' && 
+        s.game_name !== 'Bingo Points' &&
+        s.game_name !== 'Team Award' &&
+        s.platform !== 'System' &&
+        s.user_id !== 'system_notification' &&
+        !String(s.user_id || '').startsWith('team_pts_')
+      );
+    });
+  }, [submissions, isOwnProfile, currentUser, steamId, targetUser]);
 
   const filteredSubmissions = React.useMemo(() => {
     return userGameSubmissions.filter((s: any) => {
