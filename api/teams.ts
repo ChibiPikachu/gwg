@@ -1,29 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 
-// Helper type extensions for Vercel query/json methods
-interface Request extends IncomingMessage {
-  query: Record<string, string | string[]>;
-  method?: string;
-}
-
-interface Response extends ServerResponse {
-  status: (statusCode: number) => Response;
-  json: (data: any) => void;
-  setHeader: (name: string, value: string | string[]) => Response;
-}
-
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl!, supabaseKey!);
 
-export default async function handler(req: Request, res: Response) {
+export default async function handler(req: IncomingMessage & { query?: Record<string, string | string[]> }, res: ServerResponse) {
+  const response = res as any;
+
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
-    return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
+    return response.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
-  const { name } = req.query;
+  const name = req.query?.name;
 
   try {
     let query = supabase.from('profiles').select('*');
@@ -49,9 +39,9 @@ export default async function handler(req: Request, res: Response) {
       points: memberPoints[p.steamid] || 0
     }));
 
-    return res.status(200).json(membersWithScores);
+    return response.status(200).json(membersWithScores);
   } catch (err: any) {
     console.error('Error fetching team data:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return response.status(500).json({ error: err.message || 'Internal server error' });
   }
 }
