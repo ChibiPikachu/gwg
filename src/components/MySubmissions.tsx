@@ -554,17 +554,18 @@ export default function MySubmissions() {
       const validEditId = editingId && editingId !== 'null' && editingId !== 'undefined' ? editingId : null;
 const url = validEditId ? `/api/submissions/${validEditId}` : '/api/submissions';
 const method = validEditId ? 'PUT' : 'POST';
+const gameId = selectedGame.id ?? selectedGame.steam_appid ?? 0;
+const parsedGameId = !isNaN(Number(gameId)) ? Number(gameId) : gameId;
 
 console.log("Submitting to URL:", url, "Method:", method, "EditingID:", editingId);
       
       const res = await fetch(url, {
-        method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: validEditId, // Pass id explicitly in payload if needed by API
-          gameId: selectedGame.id,
-          gameTitle: selectedGame.title,
-          gameImage: selectedGame.image,
+        method: 'POST',
+  headers: getAuthHeaders(),
+  body: JSON.stringify({
+    gameId: parsedGameId, // Handled properly
+    gameTitle: selectedGame.title,
+    gameImage: selectedGame.image,
           achievements: finalEarned,
           hours: parseFloat(hours.toFixed(1)),
           achievementsBefore,
