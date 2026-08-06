@@ -290,67 +290,84 @@ export default function MySubmissions() {
   }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus, formData.beatenPrevious]);
 
   const fetchSubmissions = React.useCallback(async () => {
-    setLoading(true);
+    if (isSupabaseConfigured && supabase && user?.steamId) {
+      try {
+        const { data, error } = await supabase
+          .from('submissions')
+          .select('*')
+          .eq('user_id', user.steamId)
+          .order('created_at', { ascending: false });
 
-    try {
-      // 1. Fetch submissions and profiles concurrently using Supabase
-      if (isSupabaseConfigured && supabase) {
-        const [{ data: rawSubmissions, error: subErr }, { data: profiles, error: profErr }] = await Promise.all([
-          supabase.from('submissions').select('*').order('created_at', { ascending: false }),
-          supabase.from('profiles').select('steamid, id, team')
-        ]);
-
-        if (!subErr && rawSubmissions) {
-          // Map user IDs to profile data
-          const profileMap = new Map();
-          (profiles || []).forEach(p => {
-            if (p.steamid) profileMap.set(p.steamid, p);
-            if (p.id) profileMap.set(p.id, p);
-          });
-
-          // Enrich submissions with team info and filter for current user
-          const formattedSubmissions = rawSubmissions
-            .filter((sub: any) => sub.user_id === user?.steamId)
-            .map((sub: any) => {
-              const prof = profileMap.get(sub.steamid || sub.user_id);
-              return {
-                ...sub,
-                team: sub.team && sub.team !== 'none' ? sub.team : (prof?.team || 'none')
-              };
-            });
-
-          setSubmissions(formattedSubmissions);
+        if (!error && data) {
+          setSubmissions(data);
+          setLoading(false);
 
           // Batch fetch HLTB data for these submissions
-          const uniqueTitles = Array.from(new Set(formattedSubmissions.map((s: any) => s.game_name)));
+          const uniqueTitles = Array.from(new Set(data.map((s: any) => s.game_name)));
           if (uniqueTitles.length > 0) {
             fetch('/api/hltb-batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ titles: uniqueTitles })
             })
-            .then(async r => (r.ok && r.headers.get('content-type')?.includes('application/json')) ? r.json() : {})
-            .then(hltb => hltb && typeof hltb === 'object' && setHltbData(prev => ({ ...prev, ...hltb })))
+            .then(async r => {
+              if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+                return r.json();
+              }
+              return {};
+            })
+            .then(hltb => {
+              if (hltb && typeof hltb === 'object') {
+                setHltbData(prev => ({ ...prev, ...hltb }));
+              }
+            })
             .catch(err => console.warn('HLTB batch fetch failed:', err));
           }
-
-          setLoading(false);
           return;
         }
+      } catch (err) {
+        console.warn('Direct Supabase fetch for my submissions failed:', err);
       }
+    }
 
-      // 2. API Fallback
-      const res = await fetch('/api/submissions', { headers: getAuthHeaders() });
-      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+    try {
+      const res = await fetch('/api/submissions', {
+        headers: getAuthHeaders()
+      });
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
-        setSubmissions(Array.isArray(data) ? data : []);
+        const subArray = Array.isArray(data) ? data : [];
+        setSubmissions(subArray);
+
+        // Batch fetch HLTB data for these submissions
+        const uniqueTitles = Array.from(new Set(subArray.map((s: any) => s.game_name)));
+        if (uniqueTitles.length > 0) {
+          fetch('/api/hltb-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titles: uniqueTitles })
+          })
+          .then(async r => {
+            if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+              return r.json();
+            }
+            return {};
+          })
+          .then(hltb => {
+            if (hltb && typeof hltb === 'object') {
+              setHltbData(prev => ({ ...prev, ...hltb }));
+            }
+          })
+          .catch(err => console.warn('HLTB batch fetch failed:', err));
+        }
       }
     } catch (err) {
-      console.warn('Failed to fetch submissions with teams:', err);
+      console.warn('Failed to fetch submissions:', err);
     } finally {
       setLoading(false);
     }
-  }, [user?.steamId, getAuthHeaders]);
+  }, [user?.steamId]);
 
   React.useEffect(() => {
     fetchSubmissions();
@@ -399,11 +416,11 @@ export default function MySubmissions() {
       try {
         let url = '';
         if (steamAppIdSearch.trim()) {
-          url = `/api/games/search?steamAppId=${encodeURIComponent(steamAppIdSearch.trim())}`;
+          url = `/api/games?steamAppId=${encodeURIComponent(steamAppIdSearch.trim())}`;
         } else if (igdbIdSearch.trim()) {
-          url = `/api/games/search?igdbId=${encodeURIComponent(igdbIdSearch.trim())}`;
+          url = `/api/games?igdbId=${encodeURIComponent(igdbIdSearch.trim())}`;
         } else {
-          url = `/api/games/search?query=${encodeURIComponent(gameSearch.trim())}`;
+          url = `/api/games?query=${encodeURIComponent(gameSearch.trim())}`;
         }
 
         const res = await fetch(url);
@@ -493,124 +510,111 @@ export default function MySubmissions() {
   }, [selectedGame]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!selectedGame) return;
+    e.preventDefault();
+    if (!selectedGame) return;
 
-  // Ensure editingId is a clean string/number
-  const isEditing = Boolean(editingId && editingId !== 'null' && editingId !== 'undefined');
-  
-  // Direct PUT requests to /api/submissions/[id] and POST requests to /api/submissions
-  const url = isEditing ? `/api/submissions/${editingId}` : '/api/submissions';
-  const method = isEditing ? 'PUT' : 'POST';
+    const earned = parseInt(formData.achievementsEarned) || 0;
+    const hours = parseFloat(formData.hoursPlayed) || 0;
+    const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
+    const hoursBefore = parseFloat(formData.hoursBefore) || 0;
 
-  // Log to confirm the route before dispatching
-  console.log(`Submitting request -> URL: ${url} | Method: ${method}`);
+    const isNintendo = formData.platform === 'Nintendo';
+    const hasNoAchievements = formData.hasNoAchievements === true;
 
-  const earned = parseInt(formData.achievementsEarned) || 0;
-  const hours = parseFloat(formData.hoursPlayed) || 0;
-  const achievementsBefore = parseInt(formData.achievementsBefore) || 0;
-  const hoursBefore = parseFloat(formData.hoursBefore) || 0;
-
-  const isNintendo = formData.platform === 'Nintendo';
-  const hasNoAchievements = formData.hasNoAchievements === true;
-
-  if (earned < 0 || achievementsBefore < 0) {
-    alert("Achievements can't be negative.");
-    return;
-  }
-  if (hours < 0 || hoursBefore < 0) {
-    alert("Hours can't be negative.");
-    return;
-  }
-
-  const finalEarned = Math.max(0, earned - achievementsBefore);
-  const finalHours = parseFloat(Math.max(0, hours - hoursBefore).toFixed(1));
-  const finalHoursBefore = parseFloat(hoursBefore.toFixed(1));
-
-  if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
-    if (hoursBefore <= 0 || achievementsBefore <= 0) {
-      alert("Submitting games without new achievements earned during the event is ONLY allowed if both 'Hours Before' and 'Achievements Before' are greater than 0.");
+    if (earned < 0 || achievementsBefore < 0) {
+      alert("Achievements can't be negative.");
       return;
     }
-  }
-  if (finalHours <= 0) {
-    alert("Playtime during the event must be greater than 0 hours.");
-    return;
-  }
-
-  const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
-  const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
-
-  setSubmitting(true);
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        gameId: selectedGame.id,
-        gameTitle: selectedGame.title,
-        gameImage: selectedGame.image,
-        achievements: finalEarned,
-        hours: parseFloat(hours.toFixed(1)),
-        achievementsBefore,
-        hoursBefore: finalHoursBefore,
-        multiplier: multiplierPreview,
-        completionStatus: formData.completionStatus,
-        beatenPrevious: formData.beatenPrevious,
-        platform: formData.platform,
-        calculatedScore: scorePreview,
-        notes: serializedNotes,
-        steam_appid: selectedGame.steam_appid || null
-      })
-    });
-
-    if (res.ok) {
-      handleResetForm();
-      fetchSubmissions();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      alert(`Submission failed: ${data.error || 'Unknown error'}`);
+    if (hours < 0 || hoursBefore < 0) {
+      alert("Hours can't be negative.");
+      return;
     }
-  } catch (err) {
-    console.error('Client submission error:', err);
-    alert('Failed to submit game. Check console for details.');
-  } finally {
-    setSubmitting(false);
-  }
-};
+
+    const finalEarned = Math.max(0, earned - achievementsBefore);
+    const finalHours = parseFloat(Math.max(0, hours - hoursBefore).toFixed(1));
+    const finalHoursBefore = parseFloat(hoursBefore.toFixed(1));
+
+    if (finalEarned === 0 && !isNintendo && !hasNoAchievements) {
+      if (hoursBefore <= 0 || achievementsBefore <= 0) {
+        alert("Submitting games without new achievements earned during the event is ONLY allowed if both 'Hours Before' and 'Achievements Before' are greater than 0 (not 0).");
+        return;
+      }
+    }
+    if (finalHours <= 0) {
+      alert("Playtime during the event must be greater than 0 hours.");
+      return;
+    }
+
+    const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
+    const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
+
+    setSubmitting(true);
+    try {
+      const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';
+      const method = editingId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          gameId: selectedGame.id,
+          gameTitle: selectedGame.title,
+          gameImage: selectedGame.image,
+          achievements: finalEarned,
+          hours: parseFloat(hours.toFixed(1)),
+          achievementsBefore,
+          hoursBefore: finalHoursBefore,
+          multiplier: multiplierPreview,
+          completionStatus: formData.completionStatus,
+          beatenPrevious: formData.beatenPrevious,
+          platform: formData.platform,
+          calculatedScore: scorePreview,
+          notes: serializedNotes,
+          steam_appid: selectedGame.steam_appid || null
+        })
+      });
+
+      if (res.ok) {
+        handleResetForm();
+        fetchSubmissions();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error('Server submission error:', data);
+        alert(`Submission failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Client submission exception:', err);
+      alert('Failed to submit game. Check console for details.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleEdit = (sub: any) => {
-  const targetSubmissionId = sub?.id ?? sub?._id;
-  
-  if (!targetSubmissionId) {
-    alert("Error: Cannot edit item because submission ID is missing.");
-    return;
-  }
-
-  setEditingId(String(targetSubmissionId));
-  
-  setSelectedGame({
-    id: sub.game_id,
-    title: sub.game_name,
-    image: sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image,
-    steam_appid: sub.steam_appid || null
-  });
-  
-  const meta = parseNotesMeta(sub.notes || '');
-  setFormData({
-    achievementsEarned: String(Number(sub.achievements_during || 0) + Number(sub.achievements_before || 0)),
-    hoursPlayed: String(Number(sub.hours_during || 0).toFixed(1)),
-    achievementsBefore: String(sub.achievements_before || 0),
-    hoursBefore: String(sub.hours_before || 0),
-    completionStatus: sub.completion_status || 'beaten',
-    platform: sub.platform || 'Steam',
-    notes: meta.userNotes,
-    hasNoAchievements: meta.hasNoAchievements,
-    level: meta.level !== undefined ? meta.level : 2,
-    beatenPrevious: sub.beaten_previous || 'no'
-  });
-  setShowForm(true);
-};
+    // We always want to edit existing entries as per requirements
+    setEditingId(sub.id);
+    
+    setSelectedGame({
+      id: sub.game_id,
+      title: sub.game_name,
+      image: sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image,
+      steam_appid: sub.steam_appid || null
+    });
+    const meta = parseNotesMeta(sub.notes || '');
+    setFormData({
+      achievementsEarned: String(Number(sub.achievements_during || 0) + Number(sub.achievements_before || 0)),
+      hoursPlayed: String(Number(sub.hours_during || 0).toFixed(1)),
+      achievementsBefore: String(sub.achievements_before || 0),
+      hoursBefore: String(sub.hours_before || 0),
+      completionStatus: sub.completion_status || 'beaten',
+      platform: sub.platform || 'Steam',
+      notes: meta.userNotes,
+      hasNoAchievements: meta.hasNoAchievements,
+      level: meta.level !== undefined ? meta.level : 2,
+      beatenPrevious: sub.beaten_previous || 'no'
+    });
+    setShowForm(true);
+  };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this submission?')) return;

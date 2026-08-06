@@ -723,7 +723,9 @@ const getAndSyncGameData = async (supabase: any, title: string, gameId: string, 
     return safeGameId;
 };
 
-import { getHLTBData } from './hltb.js';
+async function getHLTBData(title: string): Promise<any> {
+  return null;
+}
 
 const hltbCache = new Map<string, any>();
 
@@ -1772,6 +1774,7 @@ async function createServer() {
 
   app.all('/api/game-search', handleGameSearch);
   app.all('/api/games/search', handleGameSearch);
+  app.all('/api/games', handleGameSearch);
 
   app.get('/api/games/:id', async (req, res) => {
     const supabase = getSupabase();

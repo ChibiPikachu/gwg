@@ -29,7 +29,12 @@
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
     "@types/node": "^22.14.0",
+    "@types/passport": "^1.0.17",
+    "@types/passport-discord": "^0.1.15",
+    "@types/passport-steam": "^1.0.6",
     "@vercel/node": "^5.9.5",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
