@@ -94,7 +94,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
     const timer = setTimeout(() => {
       setIsSearchingIgdb(true);
-      fetch(`/api/game-search?query=${encodeURIComponent(query)}`)
+      fetch(`/api/games?query=${encodeURIComponent(query)}`)
         .then(res => res.json())
         .then(data => {
           setIgdbSearchResults(Array.isArray(data) ? data : []);
