@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, ListChecks, Group, ChevronLeft, ChevronRight, XCircle, Gamepad2 } from 'lucide-react';
+import { Home, ClipboardList, Users, Trophy, Calendar, Settings, ShieldCheck, ListChecks, Group, ChevronLeft, ChevronRight, XCircle, Gamepad2, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS, CompetitionEvent } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
@@ -235,6 +235,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     { id: 'admin-users', label: 'All users', icon: Users, section: 'admin' },
     { id: 'admin-submissions', label: 'All submissions', icon: ListChecks, section: 'admin' },
     { id: 'admin-team_points', label: 'Team points', icon: ShieldCheck, section: 'admin' },
+    { id: 'screenshots', label: 'Screenshot Contest 🔒', icon: Camera, section: 'admin' },
   ];
 
   return (

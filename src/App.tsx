@@ -15,6 +15,7 @@ import Profile from '@/components/Profile';
 import MyTeam from '@/components/MyTeam';
 import Games from '@/components/Games';
 import AdminPanel from '@/components/AdminPanel';
+import ScreenshotContest from '@/components/ScreenshotContest';
 import DiscordRegistration from '@/components/DiscordRegistration';
 import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -98,6 +99,8 @@ function AppContent() {
         return <Leaderboard onViewProfile={handleViewProfile} />;
       case 'events':
         return <EventsPanel />;
+      case 'screenshots':
+        return <ScreenshotContest onViewProfile={handleViewProfile} />;
       case 'admin-users':
       case 'admin-submissions':
       case 'admin-team_points':

@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { createClient } from '@supabase/supabase-js';
+import screenshotHandler from './api/screenshots.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4844,6 +4845,8 @@ async function createServer() {
       res.json([]);
     }
   });
+
+  app.all('/api/screenshots', (req, res) => screenshotHandler(req, res));
 
   app.post('/api/admin/team-adjustments', async (req, res) => {
     if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
