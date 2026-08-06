@@ -1,10 +1,14 @@
-// api/auth/steam/[action].ts
-export default async function handler(req, res) {
-  const { action } = req.query;
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 
-  switch (action) {
-    case 'login':
-      export default function handler(req: any, res: any) {
+const getSupabaseAdmin = () => {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+};
+
+async function handleLogin(req: VercelRequest, res: VercelResponse) {
   try {
     const protocol = (req.headers['x-forwarded-proto'] as string) || 'https';
     const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
@@ -23,7 +27,6 @@ export default async function handler(req, res) {
 
     const steamLoginUrl = `https://steamcommunity.com/openid/login?${params.toString()}`;
 
-    // Return JSON if requested, otherwise 302 redirect
     if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
       return res.status(200).json({ url: steamLoginUrl });
     }
@@ -35,27 +38,14 @@ export default async function handler(req, res) {
   }
 }
 
-      break;
-    case 'callback':
-      import { createClient } from '@supabase/supabase-js';
-
-const getSupabaseAdmin = () => {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-};
-
-export default async function handler(req: any, res: any) {
+async function handleCallback(req: VercelRequest, res: VercelResponse) {
   try {
     const query = req.query;
 
-    // Verify OpenID parameters exist
     if (!query['openid.assoc_handle'] || !query['openid.signed'] || !query['openid.sig'] || !query['openid.claimed_id']) {
       return res.redirect('/?error=InvalidSteamOpenID');
     }
 
-    // 1. Verify response with Steam OpenID provider
     const validationParams = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) {
       if (typeof value === 'string') {
@@ -80,7 +70,6 @@ export default async function handler(req: any, res: any) {
       return res.redirect('/?error=SteamVerificationFailed');
     }
 
-    // 2. Extract Steam ID 64
     const claimedId = String(query['openid.claimed_id']);
     const steamId = claimedId.split('/').pop();
 
@@ -88,7 +77,6 @@ export default async function handler(req: any, res: any) {
       return res.redirect('/?error=InvalidSteamId');
     }
 
-    // 3. Fetch Steam Profile Summary
     const apiKey = process.env.STEAM_API_KEY;
     let steamName = 'Steam Gamer';
     let steamAvatar = 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg';
@@ -107,7 +95,6 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 4. Sync profile with Supabase if available
     const supabase = getSupabaseAdmin();
     if (supabase) {
       const { data: existingProfile } = await supabase
@@ -139,7 +126,6 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 5. Set session cookie and redirect to home
     res.setHeader('Set-Cookie', [
       `steam_id=${steamId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
       `steam_name=${encodeURIComponent(steamName)}; Path=/; SameSite=Lax; Max-Age=2592000`
@@ -152,13 +138,10 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-      break;
-    case 'url':
-      export default function handler(req, res) {
+async function handleUrl(req: VercelRequest, res: VercelResponse) {
   try {
     const host = req.headers.host;
     const appUrl = `https://${host}`;
-
     const returnTo = `${appUrl}/api/auth/steam/callback`;
 
     const params = new URLSearchParams({
@@ -173,13 +156,22 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       url: `https://steamcommunity.com/openid/login?${params.toString()}`
     });
-
-  } catch (err) {
+  } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 }
-      break;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const { action } = req.query;
+
+  switch (action) {
+    case 'login':
+      return handleLogin(req, res);
+    case 'callback':
+      return handleCallback(req, res);
+    case 'url':
+      return handleUrl(req, res);
     default:
-      res.status(404).end();
+      return res.status(404).json({ error: 'Action not found' });
   }
 }

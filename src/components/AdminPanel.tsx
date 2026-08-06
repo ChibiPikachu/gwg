@@ -51,7 +51,7 @@ export function serializeNotesMeta(hasNoAchievements: boolean, level: number | u
   return userNotes;
 }
 
-export function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltb: { hltb_main?: number, hltb_extras?: number }, completionStatus: string): number {
+export function calculateNonAchievementPoints(level: number, hoursPlayed: number, completionStatus: string): number {
   let basePoints = 20;
   if (hoursPlayed >= 50) {
     basePoints = 200;
@@ -108,8 +108,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const [editingUserEventTeams, setEditingUserEventTeams] = React.useState<any | null>(null);
   const [pointsAwarded, setPointsAwarded] = React.useState('0');
   const [selectedLevel, setSelectedLevel] = React.useState<number>(2);
-  const [hltbData, setHltbData] = React.useState<Record<string, any>>({});
-  const [fetchingHLTB, setFetchingHLTB] = React.useState<string | null>(null);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = React.useState(false);
   const [backfillProgress, setBackfillProgress] = React.useState<{ processed: number, remaining: number, total: number } | null>(null);
 
@@ -528,22 +526,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
-  const fetchHLTBForGame = async (title: string) => {
-    if (hltbData[title] && !hltbData[title].notFound) return;
-    
-    setFetchingHLTB(title);
-    try {
-      const res = await fetch(`/api/hltb/${encodeURIComponent(title)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setHltbData(prev => ({ ...prev, [title]: data }));
-      }
-    } catch (err) {
-      console.error(`Failed to fetch HLTB for ${title}:`, err);
-    } finally {
-      setFetchingHLTB(null);
-    }
-  };
   const [rejectionReason, setRejectionReason] = React.useState('');
   const [editHours, setEditHours] = React.useState('0');
   const [editAchievements, setEditAchievements] = React.useState('0');
@@ -607,25 +589,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
         if (!error && Array.isArray(data)) {
           setSubmissions(data);
-
-          const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name || s.gameName).filter(Boolean)));
-          if (uniqueTitles.length > 0) {
-            try {
-              const r = await fetch('/api/hltb-batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ titles: uniqueTitles })
-              });
-              if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
-                const hltb = await r.json();
-                if (hltb && typeof hltb === 'object') {
-                  setHltbData(prev => ({ ...prev, ...hltb }));
-                }
-              }
-            } catch (err) {
-              console.warn('HLTB batch fetch failed:', err);
-            }
-          }
           return;
         }
       } catch (e) {
@@ -639,25 +602,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setSubmissions(Array.isArray(data) ? data : []);
-        
-        const uniqueTitles = Array.from(new Set((data || []).map((s: any) => s.game_name || s.gameName).filter(Boolean)));
-        if (uniqueTitles.length > 0) {
-          try {
-            const r = await fetch('/api/hltb-batch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ titles: uniqueTitles })
-            });
-            if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
-              const hltb = await r.json();
-              if (hltb && typeof hltb === 'object') {
-                setHltbData(prev => ({ ...prev, ...hltb }));
-              }
-            }
-          } catch (err) {
-            console.warn('HLTB batch fetch failed:', err);
-          }
-        }
       }
     } catch (err) {
       console.warn('Failed to fetch submissions:', err);
@@ -846,8 +790,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       const hoursPlayed = parseFloat(editHours) || Number(sub?.hours_during || 0);
       const hoursBefore = Number(sub?.hours_before || 0);
       const finalPlayTime = Math.max(0, hoursPlayed - hoursBefore);
-      const hltb = hltbData[sub?.game_name || ''] || { hltb_main: sub?.hltb_main, hltb_extras: sub?.hltb_extras };
-      const nonAchPts = calculateNonAchievementPoints(levelVal, finalPlayTime, hltb, effectiveAdminStatus);
+      const nonAchPts = calculateNonAchievementPoints(levelVal, finalPlayTime, effectiveAdminStatus);
       return String(nonAchPts);
     }
     const achs = parseInt(achievementsVal) || 0;
@@ -1392,50 +1335,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           Repair Missing IDs
                         </button>
 
-                        <button 
-                          onClick={async () => {
-                            if (!window.confirm('Backfill HLTB times in batches? (Limited to games with existing submissions)')) return;
-                            setIsAdminMenuOpen(false);
-                            setBackfillProgress({ processed: 0, remaining: 1, total: 0 });
-                            
-                            let remaining = 1; 
-                            let totalProcessed = 0;
-                            let totalUpdated = 0;
-                            let isFirst = true;
 
-                            try {
-                              while (remaining > 0) {
-                                const res = await fetch('/api/admin/backfill-hltb', { method: 'POST' });
-                                const data = await res.json();
-                                if (data.error) throw new Error(data.error);
-                                
-                                if (isFirst) {
-                                  const total = (data.processedCount || 0) + (data.remaining || 0);
-                                  setBackfillProgress({ processed: 0, remaining: total, total: total });
-                                  isFirst = false;
-                                }
-
-                                remaining = data.remaining || 0;
-                                totalProcessed += (data.processedCount || 0);
-                                totalUpdated += (data.updated || 0);
-                                
-                                setBackfillProgress(prev => prev ? ({ ...prev, processed: totalProcessed, remaining }) : null);
-
-                                if (remaining > 0) await new Promise(r => setTimeout(r, 1000));
-                              }
-                              alert(`HLTB Backfill Complete! Successfully updated ${totalUpdated} games. Total processed: ${totalProcessed}`);
-                              fetchSubmissions(); // Refresh the submissions list as HLTB data might have changed
-                            } catch (err: any) { 
-                              alert(`Backfill stopped: ${err.message}`); 
-                            } finally { 
-                              setBackfillProgress(null);
-                            }
-                          }}
-                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold uppercase dark:text-blue-400 text-blue-600 hover:dark:bg-blue-500/10 hover:bg-blue-50 rounded-xl transition-colors text-left"
-                        >
-                          <Search size={14} />
-                          Backfill HLTB Cache
-                        </button>
 
                         <button 
                           onClick={async () => {
@@ -2062,61 +1962,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         </div>
                       </div>
 
-                      {/* HLTB & Stats Wrap */}
+                      {/* HowLongToBeat Dynamic Link */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 md:gap-3 w-full xl:w-auto min-w-0 overflow-hidden">
-                         
                          <div className="flex overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-hide items-center gap-2">
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                               <div className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-purple-500/10 border border-purple-500/20 shadow-lg shadow-purple-500/5 shrink-0">
-                                 <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
-                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-purple-400">Main</span>
-                                   <span className="text-xs md:text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].hltb_main}h</span>
-                                 </div>
-                                 <div className="w-px h-5 md:h-6 dark:bg-white/10 bg-black/5 mx-0.5 md:mx-1" />
-                                 <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
-                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-blue-400">Extra</span>
-                                   <span className="text-xs md:text-sm font-black text-blue-400 leading-none">{hltbData[sub.game_name].hltb_extras}h</span>
-                                 </div>
-                                 <div className="w-px h-5 md:h-6 dark:bg-white/10 bg-black/5 mx-0.5 md:mx-1" />
-                                 <div className="flex flex-col items-center min-w-[24px] md:min-w-[30px]">
-                                   <span className="text-[6px] md:text-[7px] uppercase font-bold opacity-50 text-purple-400">Comp</span>
-                                   <span className="text-xs md:text-sm font-black text-purple-400 leading-none">{hltbData[sub.game_name].hltb_completionist}h</span>
-                                 </div>
-                               </div>
-                             )}
-
-                             {hltbData[sub.game_name]?.notFound && (
-                                <div className="flex flex-col items-center px-2 py-1 md:py-1.5 rounded-lg md:rounded-xl bg-slate-500/10 border border-slate-500/20 opacity-40 shrink-0">
-                                  <span className="text-[7px] md:text-[8px] uppercase font-black tracking-widest text-slate-500">HLTB NA</span>
-                                  <span className="text-[9px] md:text-[10px] font-bold text-slate-500">Not Found</span>
-                                </div>
-                             )}
-
-                             {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                                   <>
-                                     {sub.hours_during >= (parseInt(hltbData[sub.game_name].hltb_main) || 1) * 5 ? (
-                                       <div className="flex items-center gap-1.5 px-2 py-1.5 md:py-2 rounded-lg bg-red-600/20 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)] shrink-0">
-                                         <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-red-500 animate-pulse ring-2 md:ring-4 ring-red-500/20" />
-                                         <span className="text-[8px] md:text-[10px] font-black text-red-500 uppercase tracking-widest leading-none">Review!</span>
-                                       </div>
-                                     ) : (
-                                       <div className="flex items-center gap-1.5 px-2 py-1.5 md:py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
-                                         <div className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-emerald-500/60" />
-                                         <span className="text-[8px] md:text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest leading-none">Normal</span>
-                                       </div>
-                                     )}
-                                   </>
-                                 )}
-                                 {(!hltbData[sub.game_name] || hltbData[sub.game_name]?.loading || fetchingHLTB === sub.game_name) && (
-                                   <div className="flex flex-col items-center px-3 py-1.5 md:py-2 border border-blue-500/20 rounded-lg md:rounded-xl bg-blue-500/5 animate-pulse shrink-0">
-                                      <span className="text-[8px] md:text-[10px] font-black text-blue-400 uppercase tracking-widest">Searching</span>
-                                      <div className="flex gap-1 mt-0.5 md:mt-1">
-                                        <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-75" />
-                                        <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-150" />
-                                        <div className="w-1 h-1 bg-blue-400 rounded-full animate-bounce delay-225" />
-                                      </div>
-                                   </div>
-                                 )}
+                            <a
+                              href={`https://howlongtobeat.com/?q=${encodeURIComponent(sub.game_name)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg md:rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 hover:text-purple-300 transition-all text-xs font-bold shrink-0"
+                              title={`Search HowLongToBeat for ${sub.game_name}`}
+                            >
+                              <ExternalLink size={13} />
+                              <span>HowLongToBeat</span>
+                            </a>
                          </div>
 
                          <div className="hidden bg-black/5 dark:bg-white/5 px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center gap-3 md:gap-6 border border-black/5 dark:border-white/5 shrink-0 w-full sm:w-auto justify-between sm:justify-start">
@@ -2305,7 +2163,6 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <button 
                           onClick={() => {
                             setReviewingId(sub.id);
-                            fetchHLTBForGame(sub.game_name);
                             
                             // Load existing values for editing
                             const hours = Number(sub.hours_during || 0);
@@ -2336,10 +2193,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             const effectiveReviewStatus = (sub.completion_status === 'beaten' && isBeatenPrev) ? 'unfinished' : (sub.completion_status || 'unfinished');
 
                             if (meta.hasNoAchievements) {
-                              const hltb = hltbData[sub.game_name] || { hltb_main: sub.hltb_main, hltb_extras: sub.hltb_extras };
                               const hoursBefore = Number(sub.hours_before || 0);
                               const finalPlayTime = Math.max(0, hours - hoursBefore);
-                              basePoints = calculateNonAchievementPoints(initialLvl, finalPlayTime, hltb, effectiveReviewStatus);
+                              basePoints = calculateNonAchievementPoints(initialLvl, finalPlayTime, effectiveReviewStatus);
                             } else {
                               let bonus = 0;
                               if (effectiveReviewStatus === 'completed') {
@@ -2380,27 +2236,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           <p className="text-[9px] md:text-[10px] opacity-40 uppercase font-black tracking-tighter dark:text-white">Reviewing: {sub.game_name}</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full sm:w-auto">
-                          {hltbData[sub.game_name] && !hltbData[sub.game_name].notFound && (
-                            <div className="flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 rounded-lg md:rounded-xl bg-white/5 border border-white/10">
-                               <div className="flex flex-col items-center">
-                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-purple-400/50">Story</span>
-                                 <span className="text-[10px] md:text-xs font-black text-purple-400">{hltbData[sub.game_name].hltb_main}h</span>
-                               </div>
-                               <div className="w-px h-5 md:h-6 bg-white/10" />
-                               <div className="flex flex-col items-center">
-                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-blue-400/50">Extra</span>
-                                 <span className="text-[10px] md:text-xs font-black text-blue-400">{hltbData[sub.game_name].hltb_extras}h</span>
-                               </div>
-                               <div className="w-px h-5 md:h-6 bg-white/10" />
-                               <div className="flex flex-col items-center">
-                                 <span className="text-[7px] md:text-[8px] uppercase font-bold text-purple-400/50">Comp</span>
-                                 <span className="text-[10px] md:text-xs font-black text-purple-400">{hltbData[sub.game_name].hltb_completionist}h</span>
-                               </div>
-                            </div>
-                          )}
-                          {fetchingHLTB === sub.game_name && (
-                            <div className="text-[9px] md:text-[10px] font-bold uppercase animate-pulse text-purple-400">Fetching HLTB...</div>
-                          )}
+                          <a
+                            href={`https://howlongtobeat.com/?q=${encodeURIComponent(sub.game_name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg md:rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 hover:text-purple-300 transition-all text-xs font-bold shrink-0"
+                            title={`Search HowLongToBeat for ${sub.game_name}`}
+                          >
+                            <ExternalLink size={13} />
+                            <span>HowLongToBeat</span>
+                          </a>
                           <button onClick={() => setReviewingId(null)} className="dark:text-white/40 text-slate-400 hover:dark:text-white hover:text-white transition-colors ml-auto sm:ml-0 p-2">
                             <Plus className="rotate-45" size={24} />
                           </button>
@@ -2436,7 +2281,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                                     setPointsAwarded(calculateReviewPoints(editAchievements, editMultiplier, lvl, sub));
                                   }}
                                 >
-                                  <option value="0">Level 0 (x0.1 HLTB)</option>
+                                  <option value="0">Level 0 (x0.1 Base)</option>
                                   <option value="1">Level 1 (x0.4 Time)</option>
                                   <option value="2">Level 2 (Full Bracketed)</option>
                                 </select>
