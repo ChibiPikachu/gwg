@@ -594,38 +594,37 @@ export default function MySubmissions() {
   };
 
   const handleEdit = (sub: any) => {
-    // Ensure we fall back to sub._id or sub.id dynamically
-    const targetId = sub?.id || sub?._id;
+  const targetSubmissionId = sub?.id ?? sub?._id;
+  
+  if (!targetSubmissionId) {
+    alert("Error: Cannot edit item because submission ID is missing.");
+    return;
+  }
 
-    if (!targetId) {
-      console.error('Cannot edit: Submission object is missing a valid ID', sub);
-      alert('Error: Submission ID is missing.');
-      return;
-    }
-
-    setEditingId(String(targetId));
-    
-    setSelectedGame({
-      id: sub.game_id,
-      title: sub.game_name,
-      image: sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image,
-      steam_appid: sub.steam_appid || null
-    });
-    const meta = parseNotesMeta(sub.notes || '');
-    setFormData({
-      achievementsEarned: String(Number(sub.achievements_during || 0) + Number(sub.achievements_before || 0)),
-      hoursPlayed: String(Number(sub.hours_during || 0).toFixed(1)),
-      achievementsBefore: String(sub.achievements_before || 0),
-      hoursBefore: String(sub.hours_before || 0),
-      completionStatus: sub.completion_status || 'beaten',
-      platform: sub.platform || 'Steam',
-      notes: meta.userNotes,
-      hasNoAchievements: meta.hasNoAchievements,
-      level: meta.level !== undefined ? meta.level : 2,
-      beatenPrevious: sub.beaten_previous || 'no'
-    });
-    setShowForm(true);
-  };
+  setEditingId(String(targetSubmissionId));
+  
+  setSelectedGame({
+    id: sub.game_id,
+    title: sub.game_name,
+    image: sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_image?.includes('1471391') ? (sub.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : sub.game_image,
+    steam_appid: sub.steam_appid || null
+  });
+  
+  const meta = parseNotesMeta(sub.notes || '');
+  setFormData({
+    achievementsEarned: String(Number(sub.achievements_during || 0) + Number(sub.achievements_before || 0)),
+    hoursPlayed: String(Number(sub.hours_during || 0).toFixed(1)),
+    achievementsBefore: String(sub.achievements_before || 0),
+    hoursBefore: String(sub.hours_before || 0),
+    completionStatus: sub.completion_status || 'beaten',
+    platform: sub.platform || 'Steam',
+    notes: meta.userNotes,
+    hasNoAchievements: meta.hasNoAchievements,
+    level: meta.level !== undefined ? meta.level : 2,
+    beatenPrevious: sub.beaten_previous || 'no'
+  });
+  setShowForm(true);
+};
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this submission?')) return;

@@ -1,19 +1,22 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client using environment variables
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Extract the submission ID from the URL query parameters
-  const { id } = req.query;
+  // Extract ID cleanly from query params
+  const rawId = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
 
-  if (!id || Array.isArray(id)) {
+  // Validate ID presence
+  if (!rawId || rawId === 'undefined' || rawId === 'null' || rawId.trim() === '') {
     return res.status(400).json({ error: 'Valid submission ID is required' });
   }
+
+  // Parse ID (cast to number if your Supabase primary key is an Integer/BigInt)
+  const id = !isNaN(Number(rawId)) ? Number(rawId) : rawId;
 
   // Handle PUT: Update an existing submission
   if (req.method === 'PUT') {
@@ -43,13 +46,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (error) throw error;
 
+      if (!data || data.length === 0) {
+        return res.status(404).json({ error: 'Submission not found' });
+      }
+
       return res.status(200).json(data[0]);
     } catch (error: any) {
+      console.error('Supabase PUT Error:', error);
       return res.status(500).json({ error: error.message || 'Failed to update submission' });
     }
   }
 
-  // Handle DELETE: Remove a submission by ID
+  // Handle DELETE
   if (req.method === 'DELETE') {
     try {
       const { error } = await supabase
@@ -65,6 +73,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Reject any other HTTP method
   return res.status(405).json({ error: 'Method not allowed' });
 }
