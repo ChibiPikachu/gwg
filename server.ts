@@ -4815,19 +4815,30 @@ async function createServer() {
         activeEvent = recentEvent;
       }
 
-      const { data: rawSubs, error } = await supabase
-        .from('submissions')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [subsRes, teamAdjRes] = await Promise.all([
+        supabase.from('submissions').select('*').order('created_at', { ascending: false }),
+        supabase.from('team_adjustments').select('*').order('created_at', { ascending: false })
+      ]);
 
-      if (error) throw error;
+      const rawSubs = subsRes.data || [];
+      const rawTeamAdj = teamAdjRes.data || [];
 
-      const data = (rawSubs || []).filter((sub: any) =>
+      const filteredSubs = rawSubs.filter((sub: any) =>
         (sub.user_id && String(sub.user_id).startsWith('team_pts_')) ||
-        (sub.game_name && (sub.game_name.includes('Points') || sub.game_name.includes('Award'))) ||
-        (sub.platform && (sub.platform.includes('Points') || sub.platform.includes('Award')))
+        (sub.game_name && (sub.game_name.includes('Points') || sub.game_name.includes('Award') || sub.game_name.includes('Bingo') || sub.game_name.includes('Screenshot'))) ||
+        (sub.platform && (sub.platform.includes('Points') || sub.platform.includes('Award') || sub.platform.includes('Bingo') || sub.platform.includes('Screenshot'))) ||
+        (sub.notes && (sub.notes.includes('Bingo') || sub.notes.includes('Screenshot')))
       );
-      res.json(data || []);
+
+      const combined = [...filteredSubs, ...rawTeamAdj];
+      const map = new Map();
+      for (const item of combined) {
+        if (item && item.id && !map.has(String(item.id))) {
+          map.set(String(item.id), item);
+        }
+      }
+
+      res.json(Array.from(map.values()));
     } catch (err) {
       console.error('Failed to fetch team adjustments:', err);
       res.json([]);

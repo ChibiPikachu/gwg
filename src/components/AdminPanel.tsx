@@ -1164,10 +1164,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
 
       const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || 0), 0);
-      const calculatedPoints = subPtsSum + adjPtsSum;
-      const finalPoints = (userSubs.length > 0 || userAdjs.length > 0)
-        ? Math.max(calculatedPoints, Number(u.points || 0))
-        : Number(u.points || 0);
+      const finalPoints = Math.max(Number(u.points || 0), subPtsSum, adjPtsSum);
 
       return {
         ...u,
@@ -4037,10 +4034,7 @@ function TeamPointContributionChart({
         });
 
         const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || 0), 0);
-        const calculatedPoints = subPtsSum + adjPtsSum;
-        const finalPoints = (userSubs.length > 0 || userAdjs.length > 0)
-          ? Math.max(calculatedPoints, Number(u.points || 0))
-          : Number(u.points || 0);
+        const finalPoints = Math.max(Number(u.points || 0), subPtsSum, adjPtsSum);
 
         return {
           ...u,

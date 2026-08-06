@@ -314,14 +314,38 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
   const hideScores = !!activeEvent?.hide_scores;
 
-  const safeUsers = Array.isArray(users) 
-    ? [...users].sort((a, b) => {
-        if (hideScores) {
-          return (a.steam_name || '').localeCompare(b.steam_name || '');
-        }
-        return (Number(b.points) || 0) - (Number(a.points) || 0);
-      }) 
-    : [];
+  const safeUsers = React.useMemo(() => {
+    if (!Array.isArray(users)) return [];
+
+    return users.map(u => {
+      const uSteamId = String(u.steamid || u.steamId || '');
+      const uDiscordId = String(u.discord_id || u.discordId || '');
+      const uUid = String(u.uid || u.id || '');
+
+      const userAdjs = (adjustments || []).filter(a => {
+        const adjUserId = String(a.user_id || a.userId || '');
+        if (adjUserId.startsWith('team_pts_')) return false;
+        return Boolean(
+          (uSteamId && adjUserId === uSteamId) ||
+          (uDiscordId && (adjUserId === uDiscordId || adjUserId === `discord_${uDiscordId}`)) ||
+          (uUid && adjUserId === uUid)
+        );
+      });
+
+      const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || a.calculated_score || 0), 0);
+      const displayPoints = Math.max(Number(u.points || 0), adjPtsSum);
+
+      return {
+        ...u,
+        points: displayPoints
+      };
+    }).sort((a, b) => {
+      if (hideScores) {
+        return (a.steam_name || '').localeCompare(b.steam_name || '');
+      }
+      return (Number(b.points) || 0) - (Number(a.points) || 0);
+    });
+  }, [users, adjustments, hideScores]);
 
   const filteredUsers = React.useMemo(() => {
     return safeUsers.map((u, originalRankIndex) => ({ ...u, originalRank: originalRankIndex + 1 })).filter(u => {

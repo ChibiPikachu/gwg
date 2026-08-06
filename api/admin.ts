@@ -267,7 +267,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             created_at: new Date().toISOString()
           }));
           const { data, error } = await supabase.from('submissions').insert(adjustmentsArray).select();
-          if (!error && data) return res.status(200).json(data);
+          if (!error && data) {
+            for (const uid of targetUserIds) {
+              try {
+                const { data: userSubs } = await supabase
+                  .from('submissions')
+                  .select('points, calculated_score, game_name')
+                  .or(`user_id.eq.${uid},user_id.eq.discord_${uid}`)
+                  .eq('status', 'verified');
+
+                let newTotal = 0;
+                for (const s of (userSubs || [])) {
+                  if (s.game_name === 'Event Update') continue;
+                  const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
+                  newTotal += Math.round(pts);
+                }
+
+                await supabase
+                  .from('profiles')
+                  .update({ points: newTotal })
+                  .or(`steamid.eq.${uid},discord_id.eq.${uid},id.eq.${uid}`);
+              } catch (syncErr) {
+                console.warn('Sync profiles points failed in api/admin.ts:', syncErr);
+              }
+            }
+            return res.status(200).json(data);
+          }
         } else {
           const { data, error } = await supabase.from('submissions').insert([{
             user_id: `team_pts_${targetTeam}`,

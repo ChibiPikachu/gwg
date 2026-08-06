@@ -12,23 +12,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data: teamAdj } = await supabase
       .from('team_adjustments')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && Array.isArray(data)) {
-      return res.status(200).json(data);
-    }
-
-    // Fallback: Query submissions table for team adjustments
     const { data: subData } = await supabase
       .from('submissions')
       .select('*')
-      .or('user_id.ilike.team_pts_%,game_name.ilike.%Points%,platform.ilike.%Adjustment%')
+      .or('user_id.ilike.team_pts_%,game_name.ilike.%Bingo%,game_name.ilike.%Screenshot%,game_name.ilike.%Award%,platform.ilike.%Bingo%,platform.ilike.%Screenshot%')
       .order('created_at', { ascending: false });
 
-    return res.status(200).json(subData || []);
+    const combined = [...(Array.isArray(subData) ? subData : []), ...(Array.isArray(teamAdj) ? teamAdj : [])];
+    const map = new Map();
+    for (const item of combined) {
+      if (item && item.id && !map.has(String(item.id))) {
+        map.set(String(item.id), item);
+      }
+    }
+
+    return res.status(200).json(Array.from(map.values()));
   } catch (err: any) {
     console.error('Error fetching team adjustments:', err);
     return res.status(200).json([]);
