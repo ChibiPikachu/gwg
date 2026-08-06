@@ -55,8 +55,20 @@ interface ScreenshotEvent {
   created_at: string;
 }
 
+const TEAM_HOVER_BORDERS: Record<string, string> = {
+  blue: 'hover:border-sky-500 hover:shadow-sky-500/20',
+  green: 'hover:border-green-500 hover:shadow-green-500/20',
+  purple: 'hover:border-purple-500 hover:shadow-purple-500/20',
+  red: 'hover:border-red-500 hover:shadow-red-500/20',
+  none: 'hover:border-slate-400 hover:shadow-slate-500/20'
+};
+
 export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (steamId: string) => void }) {
   const { user, theme } = useAuth();
+  const currentUserId = user?.steamId || user?.discordId || user?.uid || '';
+  const userTeam = user?.team || 'none';
+  const hoverBorderClass = TEAM_HOVER_BORDERS[userTeam] || TEAM_HOVER_BORDERS['none'];
+
   const [event, setEvent] = useState<ScreenshotEvent | null>(null);
   const [submissions, setSubmissions] = useState<ScreenshotSubmission[]>([]);
   const [votes, setVotes] = useState<ScreenshotVote[]>([]);
@@ -66,6 +78,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   // Filter & view state
   const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine'>('all');
   const [searchGame, setSearchGame] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
 
   // Lightbox state
@@ -103,8 +116,6 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   // Admin tally result modal
   const [tallyResults, setTallyResults] = useState<any[] | null>(null);
   const [isTallying, setIsTallying] = useState(false);
-
-  const currentUserId = user?.steamId || user?.discordId || user?.uid || '';
 
   const fetchData = async () => {
     setLoading(true);
@@ -169,6 +180,29 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       setImagePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      handleFileChange(file);
+    }
   };
 
   // Submit Screenshot
@@ -688,7 +722,10 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                 layout
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="group relative bg-white dark:bg-[#111111] rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden shadow-md dark:shadow-none flex flex-col justify-between transition-all hover:border-purple-500/30"
+                className={cn(
+                  "group relative bg-white dark:bg-[#111111] rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden shadow-md dark:shadow-none flex flex-col justify-between transition-all",
+                  hoverBorderClass
+                )}
               >
                 {/* Image Container */}
                 <div
@@ -952,7 +989,15 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                   ) : (
                     <div
                       onClick={() => document.getElementById('fileInput')?.click()}
-                      className="border-2 border-dashed border-white/20 hover:border-purple-500/50 rounded-2xl p-6 text-center space-y-2 cursor-pointer bg-white/5 transition-all"
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={cn(
+                        "border-2 border-dashed rounded-2xl p-6 text-center space-y-2 cursor-pointer transition-all",
+                        isDragging
+                          ? "border-purple-400 bg-purple-500/20 scale-[1.02]"
+                          : "border-white/20 hover:border-purple-500/50 bg-white/5"
+                      )}
                     >
                       <Upload size={32} className="mx-auto text-purple-400 opacity-60" />
                       <p className="text-xs font-bold text-white">Click or Drag Image Here</p>

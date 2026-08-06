@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured, buildProfileOrFilter } from '@/lib/supabase';
-import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull, Search, X, Filter } from 'lucide-react';
+import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull, Search, X, Filter, Bell, MessageSquare, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
 
@@ -26,6 +26,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   const [activeAvatar, setActiveAvatar] = useState('steam');
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
+
+  // Real-time screenshot notifications state
+  const [screenshotNotifs, setScreenshotNotifs] = useState<any[]>([]);
+  const [loadingNotifs, setLoadingNotifs] = useState(false);
 
   const isOwnProfile = !steamId || steamId === currentUser?.uid;
 
@@ -125,16 +129,20 @@ export default function Profile({ steamId }: { steamId?: string }) {
       const primaryId = steamId || currentUser?.uid;
       if (!primaryId) return;
 
-      const candidateIds = Array.from(new Set([
-        primaryId,
-        currentUser?.steamId,
-        currentUser?.uid,
-        currentUser?.discordId,
-        currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
-        targetUser?.steamId,
-        targetUser?.discordId,
-        targetUser?.discordId ? `discord_${targetUser.discordId}` : null
-      ].filter(Boolean))) as string[];
+      const candidateIds = isOwnProfile
+        ? Array.from(new Set([
+            primaryId,
+            currentUser?.steamId,
+            currentUser?.uid,
+            currentUser?.discordId,
+            currentUser?.discordId ? `discord_${currentUser.discordId}` : null
+          ].filter(Boolean))) as string[]
+        : Array.from(new Set([
+            steamId,
+            targetUser?.steamId,
+            targetUser?.discordId,
+            targetUser?.discordId ? `discord_${targetUser.discordId}` : null
+          ].filter(Boolean))) as string[];
 
       setLoadingSubmissions(true);
 
@@ -175,7 +183,46 @@ export default function Profile({ steamId }: { steamId?: string }) {
     };
 
     fetchSubmissions();
-  }, [steamId, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId]);
+  }, [steamId, isOwnProfile, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId]);
+
+  // Real-time Screenshot Comment Notifications Fetcher & Subscription
+  React.useEffect(() => {
+    const fetchScreenshotNotifs = async () => {
+      const primaryId = steamId || currentUser?.uid;
+      if (!primaryId) return;
+
+      setLoadingNotifs(true);
+      try {
+        const res = await fetch(`/api/screenshots?action=notifications&userId=${primaryId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setScreenshotNotifs(data.notifications || []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch screenshot notifications:', err);
+      } finally {
+        setLoadingNotifs(false);
+      }
+    };
+
+    fetchScreenshotNotifs();
+
+    if (isSupabaseConfigured && supabase) {
+      const channel = supabase
+        .channel('realtime-screenshot-notifs')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'screenshot_comments' }, () => {
+          fetchScreenshotNotifs();
+        })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
+          fetchScreenshotNotifs();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [steamId, currentUser?.uid]);
 
   React.useEffect(() => {
     if (isOwnProfile) {
@@ -681,6 +728,69 @@ export default function Profile({ steamId }: { steamId?: string }) {
             )}
           </div>
       </div>
+
+      {/* Real-time Screenshot Comment Notifications Section */}
+      {isOwnProfile && (
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={cn("p-2 rounded-lg bg-sky-500/10 text-sky-400")}>
+                <Bell size={20} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold dark:text-white text-slate-800 flex items-center gap-2">
+                  Screenshot Comment Alerts
+                  {screenshotNotifs.filter(n => !n.is_read).length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-sky-500 text-white font-mono animate-pulse">
+                      {screenshotNotifs.filter(n => !n.is_read).length} new
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs opacity-50 dark:text-white text-slate-500">Real-time alerts when users comment on your screenshot submissions</p>
+              </div>
+            </div>
+          </div>
+
+          {loadingNotifs ? (
+            <div className="p-4 text-xs opacity-40 italic">Loading alerts...</div>
+          ) : screenshotNotifs.length === 0 ? (
+            <div className="p-6 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 text-center text-xs opacity-50">
+              No comment alerts yet. Submit screenshots in the Screenshot Contest to get feedback!
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {screenshotNotifs.slice(0, 6).map((notif, idx) => (
+                <div 
+                  key={notif.id || idx}
+                  className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-start gap-3 shadow-sm hover:border-sky-500/40 transition-all"
+                >
+                  <div className="w-9 h-9 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center shrink-0 mt-0.5">
+                    <MessageSquare size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold dark:text-white text-slate-800 truncate">
+                        {notif.actor_name || notif.title || 'New Comment'}
+                      </span>
+                      <span className="text-[10px] opacity-40 font-mono shrink-0">
+                        {notif.created_at ? new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+                      </span>
+                    </div>
+                    <p className="text-xs opacity-80 dark:text-slate-300 text-slate-600 line-clamp-2">
+                      {notif.content || notif.message}
+                    </p>
+                    {notif.game_name && (
+                      <span className="inline-block mt-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded">
+                        🎮 {notif.game_name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Submissions Section */}
       <section className="flex flex-col gap-6">

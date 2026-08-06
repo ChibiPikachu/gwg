@@ -7,12 +7,26 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface TopBarProps {
   user: UserProfile | null;
+  activeTab?: string;
   onLogout: () => void;
   onProfileClick: () => void;
   onMenuClick?: () => void;
 }
 
-export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: TopBarProps) {
+const TAB_TITLES: Record<string, string> = {
+  submissions: 'My Submissions',
+  profile: 'Profile',
+  team: 'My Team',
+  games: 'Game Submissions',
+  leaderboard: 'Leaderboard',
+  events: 'Events',
+  screenshots: 'Screenshot Contest',
+  'admin-users': 'Admin: Users',
+  'admin-submissions': 'Admin: Submissions',
+  'admin-team_points': 'Admin: Team Points',
+};
+
+export default function TopBar({ user, activeTab = 'submissions', onLogout, onProfileClick, onMenuClick }: TopBarProps) {
   const { theme, isDarkMode, toggleDarkMode } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
   const [notifications, setNotifications] = React.useState<any[]>([]);
@@ -311,8 +325,13 @@ export default function TopBar({ user, onLogout, onProfileClick, onMenuClick }: 
         )}
         <div className="flex-1 flex items-center gap-2">
           <Logo />
+          {activeTab && TAB_TITLES[activeTab] && (
+            <span className="lg:hidden text-xs font-black tracking-wide dark:text-purple-300 text-purple-700 bg-purple-500/10 px-2.5 py-1 rounded-xl border border-purple-500/20 whitespace-nowrap">
+              {TAB_TITLES[activeTab]}
+            </span>
+          )}
           {activeEventToUse && (
-            <div className="lg:hidden flex items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
+            <div className="hidden sm:flex lg:hidden items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
               <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
               <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
             </div>

@@ -24,6 +24,7 @@ let memoryEvent: any = {
 let memorySubmissions: any[] = [];
 let memoryVotes: any[] = [];
 let memoryComments: any[] = [];
+let memoryNotifications: any[] = [];
 
 export default async function handler(req: Request, res: Response) {
   const method = req.method;
@@ -31,6 +32,27 @@ export default async function handler(req: Request, res: Response) {
 
   try {
     if (method === 'GET') {
+      if (action === 'notifications' || req.query.notifications === 'true') {
+        const queryUserId = (req.query.userId || req.query.user_id) as string;
+        if (supabase && queryUserId) {
+          const { data: dbNotifs } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', queryUserId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+          if (dbNotifs && dbNotifs.length > 0) {
+            return res.status(200).json({ notifications: dbNotifs });
+          }
+        }
+
+        const filtered = queryUserId 
+          ? memoryNotifications.filter(n => n.user_id === queryUserId)
+          : memoryNotifications;
+        return res.status(200).json({ notifications: filtered });
+      }
+
       // 1. Get Event, Submissions, Votes, Comments
       if (supabase) {
         let { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
@@ -304,6 +326,59 @@ export default async function handler(req: Request, res: Response) {
           content: content.trim(),
           created_at: new Date().toISOString()
         };
+
+        // Find screenshot creator to notify
+        let creatorId: string | null = null;
+        let gameName = '';
+        if (supabase) {
+          const { data: subData } = await supabase
+            .from('screenshot_submissions')
+            .select('user_id, game_name')
+            .eq('id', submissionId)
+            .maybeSingle();
+          if (subData) {
+            creatorId = subData.user_id;
+            gameName = subData.game_name || 'Screenshot';
+          }
+        } else {
+          const subData = memorySubmissions.find(s => s.id === submissionId);
+          if (subData) {
+            creatorId = subData.user_id;
+            gameName = subData.game_name || 'Screenshot';
+          }
+        }
+
+        // Send alert if commenter is not the creator
+        if (creatorId && creatorId !== userId) {
+          const notifObj = {
+            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            user_id: creatorId,
+            actor_name: userName || 'Someone',
+            actor_avatar: userAvatar || '',
+            game_name: gameName,
+            submission_id: submissionId,
+            content: content.trim(),
+            title: 'New Comment on your Screenshot',
+            message: `${userName || 'Someone'} commented on your ${gameName} screenshot: "${content.trim()}"`,
+            created_at: new Date().toISOString(),
+            is_read: false
+          };
+
+          if (supabase) {
+            await supabase.from('notifications').insert([{
+              user_id: creatorId,
+              title: notifObj.title,
+              message: notifObj.message,
+              type: 'screenshot_comment',
+              data: JSON.stringify({ submissionId, gameName, userName, content: content.trim() }),
+              created_at: notifObj.created_at,
+              is_read: false
+            }]).catch((err) => {
+              console.warn('Could not insert into Supabase notifications table, using fallback:', err);
+            });
+          }
+          memoryNotifications.unshift(notifObj);
+        }
 
         if (supabase) {
           const { data: inserted, error } = await supabase.from('screenshot_comments').insert([newComment]).select().single();

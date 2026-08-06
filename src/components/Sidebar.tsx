@@ -24,6 +24,32 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
   // Desktop-only collapse state
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  // Swipe-to-close gesture state for mobile
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+    setTouchCurrentX(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX !== null) {
+      setTouchCurrentX(e.touches[0].clientX);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX !== null && touchCurrentX !== null) {
+      const diffX = touchStartX - touchCurrentX;
+      if (diffX > 40 && isOpen && onClose) {
+        onClose();
+      }
+    }
+    setTouchStartX(null);
+    setTouchCurrentX(null);
+  };
+
   const [isCountdownCollapsed, setIsCountdownCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('sidebar-countdown-collapsed') === 'true';
@@ -245,15 +271,23 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
         <div 
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] lg:hidden"
           onClick={onClose}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         />
       )}
 
-      {/* OUTER WRAPPER: Handles sizing, borders, and position. (Removed overflow-y-auto and padding) */}
-      <div className={cn(
-        "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-screen flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:z-[60] shadow-xl dark:shadow-none",
-        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
-        isCollapsed ? "w-72 lg:w-20" : "w-72"
-      )}>
+      {/* OUTER WRAPPER: Handles sizing, borders, and position */}
+      <div 
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className={cn(
+          "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-screen flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:z-[60] shadow-xl dark:shadow-none",
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+          isCollapsed ? "w-72 lg:w-20" : "w-72"
+        )}
+      >
         
         {/* Desktop Collapse Toggle */}
         <button
@@ -392,23 +426,36 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
               </div>
               {isCollapsed && <div className="hidden lg:block w-full h-px bg-black/5 dark:bg-white/5 mb-4" />}
               <div className="space-y-1">
-                {menuItems.map((item) => (
-                  <button
-                    key={item.id}
-                    title={item.label}
-                    onClick={() => setActiveTab(item.id)}
-                    className={cn(
-                      "w-full flex items-center rounded-lg text-sm transition-all text-left",
-                      isCollapsed ? "lg:justify-center lg:px-0 lg:py-3 px-3 py-2 gap-3" : "gap-3 px-3 py-2",
-                      activeTab === item.id 
-                        ? `bg-black/5 dark:bg-white/5 ${colors.primary} border-l-2 ${colors.border}` 
-                        : "dark:text-white/40 text-slate-500 hover:dark:text-white/70 hover:text-slate-900 dark:hover:bg-white/5 hover:bg-black/5"
-                    )}
-                  >
-                    <item.icon size={18} className="shrink-0" />
-                    <span className={cn("whitespace-nowrap transition-all", isCollapsed ? "lg:hidden" : "")}>{item.label}</span>
-                  </button>
-                ))}
+                {menuItems.map((item) => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      title={item.label}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        onClose?.();
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between rounded-xl text-sm transition-all text-left font-bold",
+                        isCollapsed ? "lg:justify-center lg:px-0 lg:py-3 px-3 py-2.5 gap-3" : "gap-3 px-3 py-2.5",
+                        isActive 
+                          ? `bg-black/5 dark:bg-white/10 ${colors.primary} border-l-4 ${colors.border} shadow-sm` 
+                          : "dark:text-white/40 text-slate-500 hover:dark:text-white/80 hover:text-slate-900 dark:hover:bg-white/5 hover:bg-black/5"
+                      )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <item.icon size={18} className="shrink-0" />
+                        <span className={cn("whitespace-nowrap truncate transition-all", isCollapsed ? "lg:hidden" : "")}>{item.label}</span>
+                      </div>
+                      {isActive && !isCollapsed && (
+                        <span className={cn("text-[9px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-full bg-white/10 text-white shrink-0 ml-1")}>
+                          ACTIVE
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -419,23 +466,36 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                 </div>
                 {isCollapsed && <div className="hidden lg:block w-full h-px bg-black/5 dark:bg-white/5 mb-4 mt-2" />}
                 <div className="space-y-1">
-                  {adminItems.map((item) => (
-                    <button
-                      key={item.id}
-                      title={item.label}
-                      onClick={() => setActiveTab(item.id)}
-                      className={cn(
-                        "w-full flex items-center rounded-lg text-sm transition-all text-left",
-                        isCollapsed ? "lg:justify-center lg:px-0 lg:py-3 px-3 py-2 gap-3" : "gap-3 px-3 py-2",
-                        activeTab === item.id 
-                          ? `bg-black/5 dark:bg-white/5 ${colors.primary} border-l-2 ${colors.border}` 
-                          : "dark:text-white/40 text-slate-500 hover:dark:text-white/70 hover:text-slate-900 dark:hover:bg-white/5 hover:bg-black/5"
-                      )}
-                    >
-                      <item.icon size={18} className="shrink-0" />
-                      <span className={cn("whitespace-nowrap transition-all", isCollapsed ? "lg:hidden" : "")}>{item.label}</span>
-                    </button>
-                  ))}
+                  {adminItems.map((item) => {
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        title={item.label}
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          onClose?.();
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between rounded-xl text-sm transition-all text-left font-bold",
+                          isCollapsed ? "lg:justify-center lg:px-0 lg:py-3 px-3 py-2.5 gap-3" : "gap-3 px-3 py-2.5",
+                          isActive 
+                            ? `bg-black/5 dark:bg-white/10 ${colors.primary} border-l-4 ${colors.border} shadow-sm` 
+                            : "dark:text-white/40 text-slate-500 hover:dark:text-white/80 hover:text-slate-900 dark:hover:bg-white/5 hover:bg-black/5"
+                        )}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <item.icon size={18} className="shrink-0" />
+                          <span className={cn("whitespace-nowrap truncate transition-all", isCollapsed ? "lg:hidden" : "")}>{item.label}</span>
+                        </div>
+                        {isActive && !isCollapsed && (
+                          <span className={cn("text-[9px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-full bg-white/10 text-white shrink-0 ml-1")}>
+                            ACTIVE
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
