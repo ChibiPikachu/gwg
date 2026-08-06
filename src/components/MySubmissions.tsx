@@ -550,13 +550,16 @@ export default function MySubmissions() {
 
     setSubmitting(true);
     try {
-      const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';
-      const method = editingId ? 'PUT' : 'POST';
+      // Clean guard for valid editingId string
+      const validEditId = editingId && editingId !== 'undefined' && editingId !== 'null' ? editingId : null;
+      const url = validEditId ? `/api/submissions/${validEditId}` : '/api/submissions';
+      const method = validEditId ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method,
         headers: getAuthHeaders(),
         body: JSON.stringify({
+          id: validEditId, // Pass id explicitly in payload if needed by API
           gameId: selectedGame.id,
           gameTitle: selectedGame.title,
           gameImage: selectedGame.image,
@@ -591,8 +594,16 @@ export default function MySubmissions() {
   };
 
   const handleEdit = (sub: any) => {
-    // We always want to edit existing entries as per requirements
-    setEditingId(sub.id);
+    // Ensure we fall back to sub._id or sub.id dynamically
+    const targetId = sub?.id || sub?._id;
+
+    if (!targetId) {
+      console.error('Cannot edit: Submission object is missing a valid ID', sub);
+      alert('Error: Submission ID is missing.');
+      return;
+    }
+
+    setEditingId(String(targetId));
     
     setSelectedGame({
       id: sub.game_id,
