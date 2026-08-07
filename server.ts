@@ -2453,46 +2453,92 @@ async function createServer() {
 
     try {
       const { eventId } = req.query;
-      let targetEventId = eventId;
+      let targetEventId = eventId ? String(eventId) : null;
 
-      if (!targetEventId) {
-        // Get active event if no eventId provided
-        const { data: event } = await supabase
-          .from('events')
-          .select('id')
-          .eq('is_active', true)
-          .maybeSingle();
+      // Fetch active event info
+      const { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
 
-        if (!event) return res.json([]);
-        targetEventId = event.id;
+      if (!targetEventId || targetEventId === 'null' || targetEventId === 'undefined') {
+        if (!activeEvent) return res.json([]);
+        targetEventId = activeEvent.id;
       }
 
-      // 2. Get all submissions for this event
-      const { data: submissions, error } = await supabase
+      const isActiveTarget = activeEvent ? activeEvent.id === targetEventId : false;
+
+      // 2. Query submissions for target event
+      let subQuery = supabase
         .from('submissions')
-        .select('game_id, game_name, game_image, steam_appid, user_id')
-        .eq('event_id', targetEventId);
+        .select('game_id, game_name, game_image, steam_appid, user_id, user_name, user_avatar, event_id, status');
+
+      if (targetEventId === 'all') {
+        // No event_id filter
+      } else if (isActiveTarget) {
+        subQuery = subQuery.or(`event_id.eq.${targetEventId},event_id.is.null`);
+      } else {
+        subQuery = subQuery.eq('event_id', targetEventId);
+      }
+
+      const { data: submissions, error } = await subQuery;
 
       if (error) throw error;
       if (!submissions || submissions.length === 0) return res.json([]);
 
-      // 3. Fetch user profiles for these submissions
-      const userIds = Array.from(new Set(submissions.map((s: any) => s.user_id)));
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('steamid, steam_name, steam_avatar')
-        .in('steamid', userIds);
+      // Filter out non-game entries
+      const validSubmissions = submissions.filter((s: any) => {
+        if (!s.game_name) return false;
+        const lower = s.game_name.toLowerCase();
+        if (
+          lower === 'event update' || 
+          lower === 'team adjustment' || 
+          lower === 'bingo points' || 
+          lower === 'screenshot points' || 
+          lower === 'team award' || 
+          lower.includes('manual award')
+        ) return false;
+        return true;
+      });
 
-      const profileMap: Record<string, any> = {};
-      (profiles || []).forEach(p => { profileMap[p.steamid] = p; });
+      if (validSubmissions.length === 0) return res.json([]);
+
+      // 3. Fetch user profiles for these submissions
+      const userIds = Array.from(new Set(validSubmissions.map((s: any) => s.user_id).filter(Boolean)));
+      let profileMap: Record<string, any> = {};
+
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('steamid, id, discord_id, steam_name, discord_name, steam_avatar, discord_avatar, active_avatar');
+
+        (profiles || []).forEach((p: any) => {
+          let avatar = p.steam_avatar || p.discord_avatar || '';
+          if (p.active_avatar === 'discord' && p.discord_avatar) avatar = p.discord_avatar;
+          
+          const profileObj = {
+            steamid: p.steamid || p.id || (p.discord_id ? `discord_${p.discord_id}` : 'gamer'),
+            steam_name: p.steam_name || p.discord_name || 'Member',
+            steam_avatar: avatar
+          };
+
+          const keys = [p.steamid, p.id, p.discord_id, p.discord_id ? `discord_${p.discord_id}` : null].filter(Boolean);
+          keys.forEach(k => {
+            profileMap[String(k)] = profileObj;
+          });
+        });
+      }
 
       // 4. Group by game
       const gamesMap = new Map();
-      submissions.forEach((s: any) => {
-        const key = s.game_id;
+      validSubmissions.forEach((s: any) => {
+        const key = s.game_id || s.game_name || (s.steam_appid ? String(s.steam_appid) : null);
+        if (!key) return;
+
         if (!gamesMap.has(key)) {
           gamesMap.set(key, {
-            game_id: s.game_id,
+            game_id: s.game_id || key,
             game_name: s.game_name,
             game_image: s.game_image,
             steam_appid: s.steam_appid,
@@ -2500,9 +2546,15 @@ async function createServer() {
           });
         }
         const game = gamesMap.get(key);
-        const profile = profileMap[s.user_id];
-        if (profile && !game.users.find((u: any) => u.steamid === profile.steamid)) {
-          game.users.push(profile);
+        const profile = profileMap[String(s.user_id)];
+        const userObj = profile || {
+          steamid: s.user_id,
+          steam_name: s.user_name || 'Member',
+          steam_avatar: s.user_avatar || ''
+        };
+
+        if (!game.users.find((u: any) => u.steamid === userObj.steamid)) {
+          game.users.push(userObj);
         }
       });
 
@@ -4801,20 +4853,23 @@ async function createServer() {
       if (profileIdArr.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, role')
-          .in('steamid', profileIdArr);
+          .select('steamid, id, discord_id, steam_name, discord_name, steam_avatar, discord_avatar, active_avatar, team, role');
 
         (profiles || []).forEach((p: any) => {
-          let avatar = p.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+          let avatar = p.steam_avatar || p.discord_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
           if (p.active_avatar === 'discord' && p.discord_avatar) {
             avatar = p.discord_avatar;
           }
-          profileMap[p.steamid] = {
-            name: p.steam_name || p.discord_name || 'User',
+          const profObj = {
+            name: p.steam_name || p.discord_name || 'Member',
             avatar,
             team: p.team,
             role: p.role
           };
+          const keys = [p.steamid, p.id, p.discord_id, p.discord_id ? `discord_${p.discord_id}` : null].filter(Boolean);
+          keys.forEach(k => {
+            profileMap[String(k)] = profObj;
+          });
         });
       }
 
@@ -4822,25 +4877,29 @@ async function createServer() {
         const meta = parseNotesMeta(sub.notes || '');
         let adminId = meta.adminId || sub.verifier_id || null;
         let adminAvatar = 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
-        let resolvedProfileName = (adminId && profileMap[adminId]) ? profileMap[adminId].name : null;
+        let resolvedProfileName = (adminId && profileMap[String(adminId)]) ? profileMap[String(adminId)].name : null;
 
-        if (adminId && profileMap[adminId]) {
-          adminAvatar = profileMap[adminId].avatar;
+        if (adminId && profileMap[String(adminId)]) {
+          adminAvatar = profileMap[String(adminId)].avatar;
         }
 
-        // Prefer real profile name over generic 'Admin' or 'Administrator'
         let adminName = meta.adminName;
-        if (!adminName || adminName === 'Admin' || adminName === 'Administrator') {
-          adminName = resolvedProfileName || meta.adminName || 'Administrator';
+        if (!adminName || adminName.toLowerCase() === 'admin' || adminName.toLowerCase() === 'administrator') {
+          adminName = resolvedProfileName || (sub.admin_name && !sub.admin_name.toLowerCase().includes('admin') ? sub.admin_name : null) || 'Administrator';
         }
 
-        const userProfile = profileMap[sub.user_id];
+        const isTeamPts = String(sub.user_id).startsWith('team_pts_');
+        const userProfile = profileMap[String(sub.user_id)];
+        const targetUserName = isTeamPts 
+          ? `${String(sub.user_id).replace('team_pts_', '').toUpperCase()} TEAM`
+          : (userProfile?.name || (sub.user_name && sub.user_name !== 'Team Adjustment' && sub.user_name !== 'admin' && sub.user_name !== 'administrator' ? sub.user_name : null) || 'Member');
+
         return {
           id: sub.id,
           user_id: sub.user_id,
-          user_name: sub.user_name || (userProfile?.name) || 'Team Adjustment',
+          user_name: targetUserName,
           user_avatar: sub.user_avatar || (userProfile?.avatar) || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
-          user_team: userProfile?.team || (sub.user_id.startsWith('team_pts_') ? sub.user_id.replace('team_pts_', '') : 'none'),
+          user_team: userProfile?.team || (isTeamPts ? String(sub.user_id).replace('team_pts_', '') : 'none'),
           game_name: sub.game_name,
           platform: sub.platform,
           points: Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0,
@@ -5028,7 +5087,7 @@ async function createServer() {
         const { data: userProfiles, error: profileErr } = await supabase
           .from('profiles')
           .select('*')
-          .in('steamid', targetUserIds);
+          .or(targetUserIds.map((id: string) => `steamid.eq.${id},id.eq.${id},discord_id.eq.${id}`).join(','));
 
         if (profileErr || !userProfiles || userProfiles.length === 0) {
           return res.status(404).json({ error: 'No user profiles found for the selected members' });
@@ -5044,28 +5103,35 @@ async function createServer() {
 
         const numPoints = Math.round(Number(points) || 0);
 
-        const adjustmentsArray = userProfiles.map(userProfile => ({
-          user_id: userProfile.steamid,
-          user_name: userProfile.steam_name,
-          user_avatar: userProfile.steam_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png',
-          game_id: defaultGameId,
-          game_name: adjType,
-          game_image: imgUrl,
-          achievements_during: 0,
-          hours_during: 0,
-          achievements_before: 0,
-          hours_before: 0,
-          multiplier: 1.0,
-          calculated_score: numPoints,
-          completion_status: 'unfinished',
-          platform: adjType,
-          points: numPoints,
-          notes: formattedNotes,
-          status: 'verified',
-          verifier_id: adminId,
-          event_id: activeEventId,
-          created_at: new Date().toISOString()
-        }));
+        const adjustmentsArray = userProfiles.map(userProfile => {
+          const uName = userProfile.steam_name || userProfile.discord_name || 'Member';
+          let uAvatar = userProfile.steam_avatar || userProfile.discord_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+          if (userProfile.active_avatar === 'discord' && userProfile.discord_avatar) {
+            uAvatar = userProfile.discord_avatar;
+          }
+          return {
+            user_id: userProfile.steamid || userProfile.id || `discord_${userProfile.discord_id}`,
+            user_name: uName,
+            user_avatar: uAvatar,
+            game_id: defaultGameId,
+            game_name: adjType,
+            game_image: imgUrl,
+            achievements_during: 0,
+            hours_during: 0,
+            achievements_before: 0,
+            hours_before: 0,
+            multiplier: 1.0,
+            calculated_score: numPoints,
+            completion_status: 'unfinished',
+            platform: adjType,
+            points: numPoints,
+            notes: formattedNotes,
+            status: 'verified',
+            verifier_id: adminId,
+            event_id: activeEventId,
+            created_at: new Date().toISOString()
+          };
+        });
 
         const { data, error } = await supabase
           .from('submissions')

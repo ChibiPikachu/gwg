@@ -3119,13 +3119,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               const filteredAdjustments = teamAdjustments.filter((adj) => {
                 const meta = parseNotesMeta(adj.notes || '');
                 const isUserAdj = !adj.user_id?.startsWith('team_pts_');
-                const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
+                const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id || u.id === adj.user_id || u.discord_id === adj.user_id || `discord_${u.discord_id}` === adj.user_id) : null;
                 const userName = isUserAdj
-                  ? (targetUser?.steam_name || adj.user_name || 'Member')
+                  ? (targetUser?.steam_name || targetUser?.discord_name || (adj.user_name && adj.user_name !== 'Team Adjustment' && !adj.user_name.toLowerCase().includes('admin') ? adj.user_name : null) || 'Member')
                   : (adj.user_name || `Team ${adj.user_id.replace('team_pts_', '').toUpperCase()}`);
                 
-                const adminUser = users.find(u => u.steamid === (meta.adminId || adj.verifier_id));
-                const adminName = meta.adminName || adminUser?.steam_name || 'Admin';
+                const adminTargetId = String(meta.adminId || adj.verifier_id || '');
+                const adminUser = users.find(u => u.steamid === adminTargetId || u.id === adminTargetId || u.discord_id === adminTargetId || `discord_${u.discord_id}` === adminTargetId);
+                const adminName = (meta.adminName && !meta.adminName.toLowerCase().includes('admin') ? meta.adminName : null) || adminUser?.steam_name || adminUser?.discord_name || (adj.admin_name && !adj.admin_name.toLowerCase().includes('admin') ? adj.admin_name : null) || meta.adminName || 'Admin';
 
                 const isScreenshot = adj.game_name === 'Screenshot Points' || adj.platform === 'Screenshot Points';
                 const isBingo = adj.game_name === 'Bingo Points' || adj.platform === 'Bingo Points';
@@ -3233,9 +3234,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                   {filteredAdjustments.map((adj) => {
                     const meta = parseNotesMeta(adj.notes || '');
                     const isUserAdj = !adj.user_id?.startsWith('team_pts_');
-                    const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id) : null;
+                    const targetUser = isUserAdj ? users.find(u => u.steamid === adj.user_id || u.id === adj.user_id || u.discord_id === adj.user_id || `discord_${u.discord_id}` === adj.user_id) : null;
                     const userName = isUserAdj
-                      ? (targetUser?.steam_name || adj.user_name || 'Member')
+                      ? (targetUser?.steam_name || targetUser?.discord_name || (adj.user_name && adj.user_name !== 'Team Adjustment' && !adj.user_name.toLowerCase().includes('admin') ? adj.user_name : null) || 'Member')
                       : (adj.user_name || `Team ${adj.user_id.replace('team_pts_', '').toUpperCase()}`);
                     const userAvatar = isUserAdj
                       ? (targetUser?.steam_avatar || adj.user_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png')
@@ -3245,8 +3246,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     const isScreenshot = adj.game_name === 'Screenshot Points' || adj.platform === 'Screenshot Points';
                     const isBingo = adj.game_name === 'Bingo Points' || adj.platform === 'Bingo Points';
 
-                    const adminUser = users.find(u => u.steamid === (meta.adminId || adj.verifier_id));
-                    const adminName = meta.adminName || adminUser?.steam_name || 'Admin';
+                    const adminTargetId = String(meta.adminId || adj.verifier_id || '');
+                    const adminUser = users.find(u => u.steamid === adminTargetId || u.id === adminTargetId || u.discord_id === adminTargetId || `discord_${u.discord_id}` === adminTargetId);
+                    const adminName = (meta.adminName && !meta.adminName.toLowerCase().includes('admin') ? meta.adminName : null) || adminUser?.steam_name || adminUser?.discord_name || (adj.admin_name && !adj.admin_name.toLowerCase().includes('admin') ? adj.admin_name : null) || meta.adminName || 'Admin';
 
                     const points = Number(adj.points !== undefined && adj.points !== null ? adj.points : adj.calculated_score) || 0;
                     const cleanReason = meta.userNotes || (isUserAdj ? 'No description provided.' : (adj.notes && !adj.notes.startsWith('__META_START__') ? adj.notes : 'Bonus points awarded'));

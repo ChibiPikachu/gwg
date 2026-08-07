@@ -66,10 +66,9 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
   // Fetch games when selectedEventId changes
   React.useEffect(() => {
-    if (!selectedEventId) return;
-    
     setLoading(true);
-    fetch(`/api/leaderboard/games?eventId=${selectedEventId}`)
+    const url = selectedEventId ? `/api/leaderboard/games?eventId=${selectedEventId}` : '/api/leaderboard/games';
+    fetch(url)
       .then(res => res.json())
       .then(data => {
         setGames(Array.isArray(data) ? data : []);
@@ -94,7 +93,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
     const timer = setTimeout(() => {
       setIsSearchingIgdb(true);
-      fetch(`/api/games?query=${encodeURIComponent(query)}`)
+      fetch(`/api/game-search?query=${encodeURIComponent(query)}`)
         .then(res => res.json())
         .then(data => {
           setIgdbSearchResults(Array.isArray(data) ? data : []);

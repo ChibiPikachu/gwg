@@ -1332,10 +1332,16 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex flex-col select-none overflow-hidden"
+              className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex flex-col select-none overflow-hidden cursor-pointer"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setLightboxSubId(null);
+              }}
             >
               {/* Lightbox Top Header */}
-              <div className="flex items-center justify-between p-4 px-6 border-b border-white/10 bg-black/60 backdrop-blur-md z-10 shrink-0">
+              <div 
+                className="flex items-center justify-between p-4 px-6 border-b border-white/10 bg-black/60 backdrop-blur-md z-10 shrink-0 cursor-default"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="flex items-center gap-3">
                   <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1.5">
                     <Camera size={14} /> {currentSub.game_name}
@@ -1369,7 +1375,12 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               {/* Lightbox Main Container (Image + Interactive Overlay Details Panel) */}
               <div className="flex-1 relative flex flex-col md:flex-row overflow-hidden">
                 {/* Main Image View Container */}
-                <div className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-8 overflow-hidden group">
+                <div 
+                  className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-8 overflow-hidden group cursor-pointer"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setLightboxSubId(null);
+                  }}
+                >
                   {/* Prev / Next Controls */}
                   {totalCount > 1 && (
                     <>
@@ -1420,7 +1431,10 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                 </div>
 
                 {/* Side Overlay Panel with Details & Interactive Controls */}
-                <div className="w-full md:w-96 bg-[#121215] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between overflow-y-auto p-6 space-y-6 shrink-0">
+                <div 
+                  className="w-full md:w-96 bg-[#121215] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between overflow-y-auto p-6 space-y-6 shrink-0 cursor-default"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="space-y-5">
                     {/* Contributor Profile */}
                     <div className="flex items-center justify-between gap-3 pb-4 border-b border-white/10">
