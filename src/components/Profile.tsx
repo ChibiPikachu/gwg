@@ -136,23 +136,26 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   React.useEffect(() => {
     const fetchSubmissions = async () => {
-      const primaryId = steamId || currentUser?.uid;
+      const primaryId = steamId || currentUser?.uid || targetUser?.steamId || targetUser?.id;
       if (!primaryId) return;
 
-      const candidateIds = isOwnProfile
-        ? Array.from(new Set([
-            primaryId,
-            currentUser?.steamId,
-            currentUser?.uid,
-            currentUser?.discordId,
-            currentUser?.discordId ? `discord_${currentUser.discordId}` : null
-          ].filter(Boolean))) as string[]
-        : Array.from(new Set([
-            steamId,
-            targetUser?.steamId,
-            targetUser?.discordId,
-            targetUser?.discordId ? `discord_${targetUser.discordId}` : null
-          ].filter(Boolean))) as string[];
+      const candidateIds = Array.from(new Set([
+        primaryId,
+        steamId,
+        currentUser?.steamId,
+        currentUser?.uid,
+        currentUser?.discordId,
+        currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
+        currentUser?.id,
+        targetUser?.id,
+        targetUser?.uid,
+        targetUser?.steamId,
+        targetUser?.steamid,
+        targetUser?.discordId,
+        targetUser?.discord_id,
+        targetUser?.discordId ? `discord_${targetUser.discordId}` : null,
+        targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
+      ].filter(Boolean))) as string[];
 
       setLoadingSubmissions(true);
 
@@ -213,7 +216,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
     };
 
     fetchSubmissions();
-  }, [steamId, isOwnProfile, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId]);
+  }, [steamId, isOwnProfile, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId, targetUser?.id, targetUser?.discord_id, targetUser?.points]);
 
   // Real-time Screenshot Comment Notifications Fetcher & Subscription
   React.useEffect(() => {
@@ -419,19 +422,22 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const displayedPoints = React.useMemo(() => {
     if (!targetUser) return 0;
 
-    const candidateOwnerIds = isOwnProfile
-      ? Array.from(new Set([
-          currentUser?.steamId,
-          currentUser?.uid,
-          currentUser?.discordId,
-          currentUser?.discordId ? `discord_${currentUser.discordId}` : null
-        ].filter(Boolean))) as string[]
-      : Array.from(new Set([
-          steamId,
-          targetUser?.steamId,
-          targetUser?.discordId,
-          targetUser?.discordId ? `discord_${targetUser.discordId}` : null
-        ].filter(Boolean))) as string[];
+    const candidateOwnerIds = Array.from(new Set([
+      steamId,
+      currentUser?.steamId,
+      currentUser?.uid,
+      currentUser?.discordId,
+      currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
+      currentUser?.id,
+      targetUser?.id,
+      targetUser?.uid,
+      targetUser?.steamId,
+      targetUser?.steamid,
+      targetUser?.discordId,
+      targetUser?.discord_id,
+      targetUser?.discordId ? `discord_${targetUser.discordId}` : null,
+      targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
+    ].filter(Boolean))) as string[];
 
     const targetEvt = displayedEvent;
 
@@ -474,6 +480,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
     }, 0);
 
     const calculatedTotal = sumFromSubmissions + sumFromAdjustments;
+
+    if (calculatedTotal === 0 && typeof targetUser.points === 'number' && targetUser.points > 0) {
+      return targetUser.points;
+    }
 
     return calculatedTotal;
   }, [displayedEvent, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser]);

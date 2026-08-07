@@ -2323,8 +2323,8 @@ async function createServer() {
       // Fetch all verified submissions for active event
       let subQuery = supabase
         .from('submissions')
-        .select('user_id, points, calculated_score, game_name')
-        .eq('status', 'verified');
+        .select('user_id, points, calculated_score, game_name, status')
+        .or('status.eq.verified,status.eq.approved');
 
       if (activeEvent) {
         subQuery = subQuery.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
@@ -2334,16 +2334,30 @@ async function createServer() {
 
       const userPointsMap: Record<string, number> = {};
       (verifiedSubs || []).forEach((sub: any) => {
-        if (!sub.user_id || sub.user_id === 'system_notification' || sub.user_id.startsWith('team_pts_')) return;
+        if (!sub.user_id || sub.user_id === 'system_notification' || String(sub.user_id).startsWith('team_pts_')) return;
         if (sub.game_name === 'Event Update') return;
         const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
-        userPointsMap[sub.user_id] = (userPointsMap[sub.user_id] || 0) + pts;
+        const subUserId = String(sub.user_id);
+        userPointsMap[subUserId] = (userPointsMap[subUserId] || 0) + pts;
+      });
+
+      // Fetch adjustments for active event as well
+      let adjQuery = supabase.from('team_adjustments').select('user_id, points');
+      if (activeEvent) {
+        adjQuery = adjQuery.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
+      }
+      const { data: adjustments } = await adjQuery;
+      (adjustments || []).forEach((adj: any) => {
+        if (!adj.user_id || String(adj.user_id).startsWith('team_pts_')) return;
+        const pts = Math.round(Number(adj.points) || 0);
+        const adjUserId = String(adj.user_id);
+        userPointsMap[adjUserId] = (userPointsMap[adjUserId] || 0) + pts;
       });
 
       // Publicly return profiles assigned to a team
       const { data: users, error } = await supabase
         .from('profiles')
-        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
+        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role, id')
         .not('team', 'is', null)
         .neq('team', 'none');
 
@@ -2354,10 +2368,24 @@ async function createServer() {
         if (u.active_avatar === 'discord' && u.discord_avatar) {
           finalAvatar = u.discord_avatar;
         }
-        const calcPoints = userPointsMap[u.steamid] !== undefined ? userPointsMap[u.steamid] : (u.points || 0);
+
+        const candidateIds = Array.from(new Set([
+          u.steamid ? String(u.steamid) : null,
+          u.discord_id ? String(u.discord_id) : null,
+          u.discord_id ? `discord_${u.discord_id}` : null,
+          u.id ? String(u.id) : null
+        ].filter(Boolean))) as string[];
+
+        let calcPoints = 0;
+        candidateIds.forEach(id => {
+          if (userPointsMap[id]) calcPoints += userPointsMap[id];
+        });
+
+        const finalPts = calcPoints > 0 ? calcPoints : (u.points || 0);
+
         return {
           ...u,
-          points: calcPoints,
+          points: finalPts,
           steam_avatar: finalAvatar
         };
       });
@@ -2831,6 +2859,63 @@ async function createServer() {
       finalAvatar = profile.discord_avatar;
     }
     
+    // Compute active event points for profile
+    let activeEventPts = 0;
+    try {
+      let { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!activeEvent) {
+        const { data: recentEvent } = await supabase
+          .from('events')
+          .select('id')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeEvent = recentEvent;
+      }
+
+      const candidateIds = Array.from(new Set([
+        profile.steamid ? String(profile.steamid) : null,
+        profile.discord_id ? String(profile.discord_id) : null,
+        profile.discord_id ? `discord_${profile.discord_id}` : null,
+        profile.id ? String(profile.id) : null
+      ].filter(Boolean))) as string[];
+
+      if (candidateIds.length > 0) {
+        const filterParts = candidateIds.flatMap(id => [`user_id.eq.${id}`, `steamid.eq.${id}`]);
+        let subQ = supabase.from('submissions').select('points, calculated_score, status, game_name').or(filterParts.join(','));
+        if (activeEvent) {
+          subQ = subQ.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
+        }
+        const { data: profileSubs } = await subQ;
+        (profileSubs || []).forEach((s: any) => {
+          if (s.status === 'verified' || s.status === 'approved' || (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0))) {
+            if (s.user_id === 'system_notification' || String(s.user_id).startsWith('team_pts_') || s.game_name === 'Event Update') return;
+            activeEventPts += Math.round(Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0);
+          }
+        });
+
+        const adjFilterParts = candidateIds.map(id => `user_id.eq.${id}`);
+        let adjQ = supabase.from('team_adjustments').select('points').or(adjFilterParts.join(','));
+        if (activeEvent) {
+          adjQ = adjQ.or(`event_id.eq.${activeEvent.id},event_id.is.null`);
+        }
+        const { data: profileAdjs } = await adjQ;
+        (profileAdjs || []).forEach((a: any) => {
+          if (!a.user_id || String(a.user_id).startsWith('team_pts_')) return;
+          activeEventPts += Math.round(Number(a.points) || 0);
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to compute profile points:', err);
+    }
+
+    const calculatedUserPoints = activeEventPts > 0 ? activeEventPts : (profile.points || 0);
+
     // Transform to frontend format
     const transformedUser = {
       uid: profile.steamid,
@@ -2843,7 +2928,7 @@ async function createServer() {
       active_avatar: profile.active_avatar || 'steam',
       team: profile.team,
       status: profile.status,
-      points: profile.points,
+      points: calculatedUserPoints,
       role: profile.role,
       isAdmin: profile.role === 'admin' || profile.role === 'admins',
       createdAt: profile.created_at,

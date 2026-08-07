@@ -157,6 +157,21 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   };
 
   const fetchUsers = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/leaderboard/users');
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setUsers(data);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch /api/leaderboard/users, attempting direct query fallback:', err);
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -177,20 +192,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         setLoading(false);
         return;
       } catch (err) {
-        console.warn('Direct Supabase fetch for users failed, trying API fallback:', err);
+        console.warn('Direct Supabase fetch for users failed:', err);
       }
     }
 
-    fetch('/api/leaderboard/users')
-      .then(res => res.json())
-      .then(data => {
-        setUsers(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch leaderboard users:', err);
-        setLoading(false);
-      });
+    setLoading(false);
   }, []);
 
   const fetchAdjustments = React.useCallback(async () => {
