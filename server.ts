@@ -2470,12 +2470,9 @@ async function createServer() {
       const { eventId } = req.query;
       let targetEventId = eventId ? String(eventId) : null;
 
-      // Fetch active event info
-      const { data: activeEvent } = await supabase
-        .from('events')
-        .select('id')
-        .eq('is_active', true)
-        .maybeSingle();
+      // Fetch active event info safely
+      const { data: allEvents } = await supabase.from('events').select('id, is_active');
+      const activeEvent = (allEvents || []).find((e: any) => Boolean(e.is_active) || String(e.is_active) === 'true');
 
       if (!targetEventId || targetEventId === 'null' || targetEventId === 'undefined') {
         if (!activeEvent) return res.json([]);
@@ -2487,7 +2484,7 @@ async function createServer() {
       // 2. Query submissions for target event
       let subQuery = supabase
         .from('submissions')
-        .select('game_id, game_name, game_image, steam_appid, user_id, user_name, user_avatar, event_id, status');
+        .select('game_id, game_name, game_image, steam_appid, user_id, user_name, user_avatar, event_id, status, points, calculated_score');
 
       if (targetEventId === 'all') {
         // No event_id filter
@@ -2502,9 +2499,15 @@ async function createServer() {
       if (error) throw error;
       if (!submissions || submissions.length === 0) return res.json([]);
 
-      // Filter out non-game entries
+      // Filter out non-game entries AND filter for approved/verified submissions
+      const isApproved = (s: any) => 
+        s.status === 'verified' || 
+        s.status === 'approved' || 
+        (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
+
       const validSubmissions = submissions.filter((s: any) => {
         if (!s.game_name) return false;
+        if (!isApproved(s)) return false;
         const lower = s.game_name.toLowerCase();
         if (
           lower === 'event update' || 

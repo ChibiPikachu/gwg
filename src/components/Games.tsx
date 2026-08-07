@@ -22,23 +22,29 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   const [isSearchingIgdb, setIsSearchingIgdb] = React.useState(false);
   const itemsPerPage = 40;
 
+  const isEventActive = (e: any) => Boolean(e?.is_active) || String(e?.is_active) === 'true' || e?.is_active === 1;
+
   // Fetch events list first
   React.useEffect(() => {
+    const handleEvents = (data: any[]) => {
+      const eventList = Array.isArray(data) ? data : [];
+      setEvents(eventList);
+      const active = eventList.find(isEventActive);
+      if (active) {
+        setSelectedEventId(active.id);
+      } else if (eventList.length > 0) {
+        setSelectedEventId(eventList[0].id);
+      }
+    };
+
     if (isSupabaseConfigured && supabase) {
       supabase
         .from('events')
         .select('*')
         .order('start_date', { ascending: false })
         .then(({ data, error }) => {
-          if (!error && data && Array.isArray(data)) {
-            setEvents(data);
-            const active = data.find(e => e.is_active);
-            if (active) {
-              setSelectedEventId(active.id);
-            } else if (data.length > 0) {
-              setSelectedEventId(data[0].id);
-            }
-            return;
+          if (!error && data && Array.isArray(data) && data.length > 0) {
+            handleEvents(data);
           }
         })
         .catch(err => console.warn('Supabase fetch events failed:', err));
@@ -52,13 +58,8 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
         return [];
       })
       .then(data => {
-        const eventList = Array.isArray(data) ? data : [];
-        setEvents(eventList);
-        const active = eventList.find(e => e.is_active);
-        if (active) {
-          setSelectedEventId(active.id);
-        } else if (eventList.length > 0) {
-          setSelectedEventId(eventList[0].id);
+        if (Array.isArray(data) && data.length > 0) {
+          handleEvents(data);
         }
       })
       .catch(err => console.warn('Failed to fetch events:', err));
@@ -133,8 +134,8 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   );
 
   const filteredEvents = React.useMemo(() => {
-    if (filterBy === 'active') return events.filter(e => e.is_active);
-    return events.filter(e => !e.is_active);
+    if (filterBy === 'active') return events.filter(isEventActive);
+    return events.filter(e => !isEventActive(e));
   }, [events, filterBy]);
 
   return (
@@ -175,8 +176,10 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
             <button
               onClick={() => {
                 setFilterBy('active');
-                const active = events.find(e => e.is_active);
-                if (active) setSelectedEventId(active.id);
+                const activeEvents = events.filter(isEventActive);
+                if (activeEvents.length > 0 && !activeEvents.some(e => e.id === selectedEventId)) {
+                  setSelectedEventId(activeEvents[0].id);
+                }
               }}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
@@ -188,8 +191,10 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
             <button
               onClick={() => {
                 setFilterBy('archived');
-                const archived = events.filter(e => !e.is_active);
-                if (archived.length > 0) setSelectedEventId(archived[0].id);
+                const archivedEvents = events.filter(e => !isEventActive(e));
+                if (archivedEvents.length > 0 && !archivedEvents.some(e => e.id === selectedEventId)) {
+                  setSelectedEventId(archivedEvents[0].id);
+                }
               }}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
@@ -248,21 +253,27 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
         </div>
       </div>
 
-      {/* Event Selector for Archived */}
-      {filterBy === 'archived' && filteredEvents.length > 0 && (
-        <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+      {/* Event Selector pills */}
+      {filteredEvents.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <span className="text-xs font-bold opacity-50 mr-1">
+            {filterBy === 'active' ? 'Active Event:' : 'Archived Events:'}
+          </span>
           {filteredEvents.map(e => (
             <button
               key={e.id}
               onClick={() => setSelectedEventId(e.id)}
               className={cn(
-                "px-4 py-2 rounded-xl text-xs font-medium border transition-all",
+                "px-3.5 py-1.5 rounded-xl text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer",
                 selectedEventId === e.id 
-                  ? cn(theme.border, "bg-white/5", theme.text)
+                  ? cn(theme.border, "bg-white/10 shadow-sm font-bold", theme.text)
                   : "border-black/5 dark:border-white/5 opacity-50 hover:opacity-100 dark:bg-white/5"
               )}
             >
-              {e.title}
+              <span>{e.title || e.name || 'Event'}</span>
+              {isEventActive(e) && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+              )}
             </button>
           ))}
         </div>
