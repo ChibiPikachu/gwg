@@ -289,7 +289,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             const { data: profiles } = await supabase
               .from('profiles')
               .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, role, id, discord_id')
-              .or(idList.map(id => `steamid.eq.${id},id.eq.${id},discord_id.eq.${id}`).join(','));
+              .or(idList.map(id => buildProfileOrFilter(id)).join(','));
 
             (profiles || []).forEach((p: any) => {
               const keys = [p.steamid, p.id, p.discord_id, p.discord_id ? `discord_${p.discord_id}` : null].filter(Boolean);

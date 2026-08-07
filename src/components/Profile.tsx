@@ -175,7 +175,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          const filterParts = candidateIds.flatMap(id => [`user_id.eq.${id}`, `steamid.eq.${id}`]);
+          const filterParts = candidateIds.map(id => `user_id.eq.${id}`);
           if (filterParts.length > 0) {
             const { data, error } = await supabase
               .from('submissions')

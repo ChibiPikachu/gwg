@@ -346,6 +346,21 @@ function getSupabase() {
   return supabaseClient;
 }
 
+function isUuid(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+}
+
+function buildProfileOrFilter(key: string): string {
+  if (!key) return 'steamid.eq.none';
+  const cleanDiscordId = key.startsWith('discord_') ? key.replace('discord_', '') : key;
+  const prefixedDiscordId = `discord_${cleanDiscordId}`;
+  if (isUuid(key)) {
+    return `id.eq.${key},steamid.eq.${key},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+  }
+  return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+}
+
 import util from 'util';
 import { execFile } from 'child_process';
 const execFilePromise = util.promisify(execFile);
@@ -3156,7 +3171,7 @@ async function createServer() {
         const { data: profile } = await supabase
           .from('profiles')
           .select('steamid, owned_games')
-          .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
+          .or(buildProfileOrFilter(String(userId)))
           .maybeSingle();
         if (profile?.steamid) {
           steamId = profile.steamid;
@@ -3312,7 +3327,7 @@ async function createServer() {
         const { data: pData } = await supabase
           .from('profiles')
           .select('id, steamid, discord_id')
-          .or(`steamid.eq.${primaryId},id.eq.${primaryId},discord_id.eq.${primaryId}`);
+          .or(buildProfileOrFilter(primaryId));
         (pData || []).forEach((p: any) => {
           if (p.id) candidateIds.add(String(p.id));
           if (p.steamid) candidateIds.add(String(p.steamid));
@@ -3324,7 +3339,7 @@ async function createServer() {
       }
 
       const idArray = Array.from(candidateIds);
-      const filterParts = idArray.flatMap(id => [`user_id.eq.${id}`, `steamid.eq.${id}`]);
+      const filterParts = idArray.map(id => `user_id.eq.${id}`);
 
       const { data, error } = await supabase
         .from('submissions')
@@ -5113,7 +5128,7 @@ async function createServer() {
         const { data: userProfiles, error: profileErr } = await supabase
           .from('profiles')
           .select('*')
-          .or(targetUserIds.map((id: string) => `steamid.eq.${id},id.eq.${id},discord_id.eq.${id}`).join(','));
+          .or(targetUserIds.map((id: string) => buildProfileOrFilter(id)).join(','));
 
         if (profileErr || !userProfiles || userProfiles.length === 0) {
           return res.status(404).json({ error: 'No user profiles found for the selected members' });
@@ -5273,7 +5288,7 @@ async function createServer() {
         const { data: profile } = await supabase
           .from('profiles')
           .select('steamid, owned_games')
-          .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
+          .or(buildProfileOrFilter(String(userId)))
           .maybeSingle();
         if (profile?.steamid) {
           steamId = profile.steamid;
