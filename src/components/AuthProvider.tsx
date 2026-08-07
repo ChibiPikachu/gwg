@@ -388,24 +388,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           const isAdmin = userProfile.role === 'admin' || userProfile.role === 'admins' || userProfile.role === 'owner' || userProfile.is_admin === true;
+          const realSteamId = userProfile.steamid && !String(userProfile.steamid).startsWith('discord_') ? userProfile.steamid : null;
+          const hasRealSteam = Boolean(realSteamId);
+          const effectiveSteamId = realSteamId || userProfile.id || session.user.id;
 
           const formattedUser = {
-            uid: String(userProfile.steamid || userProfile.id || session.user.id),
-            steamId: String(userProfile.steamid || userProfile.id || session.user.id),
+            uid: String(effectiveSteamId),
+            steamId: String(effectiveSteamId),
             steamName: userProfile.steam_name || userProfile.discord_name || session.user.user_metadata?.full_name || 'Gamer',
             steamAvatar: userProfile.steam_avatar || userProfile.discord_avatar || session.user.user_metadata?.avatar_url || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
             team: userProfile.team || 'none',
             isAdmin: Boolean(isAdmin),
             role: userProfile.role || 'member',
             status: userProfile.status || 'Ready for Event',
-            points: userProfile.points || 0,
+            points: typeof userProfile.points === 'number' ? userProfile.points : 0,
             discordId: userProfile.discord_id || session.user.id,
             discordName: userProfile.discord_name,
             discordAvatar: userProfile.discord_avatar,
             createdAt: userProfile.created_at,
             eventTeams: userProfile.eventTeams || {},
-            needs_registration: userProfile.needs_registration || false
+            needs_registration: !hasRealSteam && userProfile.needs_registration !== false
           };
+
+          if (typeof window !== 'undefined' && window.location.hash) {
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+          }
 
           setUser(formattedUser as any);
           localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
@@ -524,6 +531,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             eventTeams: dbProfile.eventTeams || {},
             needs_registration: !hasRealSteam && dbProfile.needs_registration !== false
           };
+          if (typeof window !== 'undefined' && window.location.hash) {
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+          }
           setUser(formattedUser as any);
           localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));
         }

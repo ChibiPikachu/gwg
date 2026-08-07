@@ -3293,18 +3293,44 @@ async function createServer() {
     const { userId: targetUserId } = req.query;
     
     // Default to current user if no userId provided
-    const steamId = targetUserId ? String(targetUserId) : String(currentUser.steamid || currentUser.id || currentUser.steam_id || currentUser.discord_id || '');
+    const primaryId = targetUserId ? String(targetUserId) : String(currentUser.steamid || currentUser.id || currentUser.steam_id || currentUser.discord_id || '');
     
     if (!supabase) return res.json([]);
 
     try {
-      let query = supabase.from('submissions').select('*');
-      if (targetUserId) {
-        query = query.eq('user_id', steamId);
-      } else if (steamId) {
-        query = query.or(`user_id.eq.${steamId},user_id.eq.system_notification`);
+      // Gather all associated candidate user IDs from profiles table
+      let candidateIds = new Set<string>([primaryId]);
+      if (currentUser.id) candidateIds.add(String(currentUser.id));
+      if (currentUser.steamid) candidateIds.add(String(currentUser.steamid));
+      if (currentUser.steam_id) candidateIds.add(String(currentUser.steam_id));
+      if (currentUser.discord_id) {
+        candidateIds.add(String(currentUser.discord_id));
+        candidateIds.add(`discord_${currentUser.discord_id}`);
       }
-      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (primaryId) {
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('id, steamid, discord_id')
+          .or(`steamid.eq.${primaryId},id.eq.${primaryId},discord_id.eq.${primaryId}`);
+        (pData || []).forEach((p: any) => {
+          if (p.id) candidateIds.add(String(p.id));
+          if (p.steamid) candidateIds.add(String(p.steamid));
+          if (p.discord_id) {
+            candidateIds.add(String(p.discord_id));
+            candidateIds.add(`discord_${p.discord_id}`);
+          }
+        });
+      }
+
+      const idArray = Array.from(candidateIds);
+      const filterParts = idArray.flatMap(id => [`user_id.eq.${id}`, `steamid.eq.${id}`]);
+
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .or(filterParts.join(','))
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       res.json(data || []);

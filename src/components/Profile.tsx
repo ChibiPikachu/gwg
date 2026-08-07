@@ -418,7 +418,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   };
 
   const currentEvent = React.useMemo(() => {
-    return (events || []).find((e: any) => e.is_active || e.isActive) || sortedEvents[0] || null;
+    return (events || []).find((e: any) => Boolean(e.is_active) || Boolean(e.isActive) || String(e.is_active) === 'true') || sortedEvents[0] || null;
   }, [events, sortedEvents]);
 
   const activeEvent = currentEvent;
