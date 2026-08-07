@@ -206,7 +206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       let query = supabase.from('submissions').select('*').order('created_at', { ascending: false });
       if (userId) {
-        query = query.eq('user_id', userId);
+        query = query.or(`user_id.eq.${userId},steamid.eq.${userId}`);
       }
 
       const { data, error } = await query;

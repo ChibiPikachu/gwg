@@ -15,6 +15,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [userAdjustments, setUserAdjustments] = useState<any[]>([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(true);
   const [events, setEvents] = useState<any[]>([]);
   const [showSurvivorTooltip, setShowSurvivorTooltip] = useState(false);
@@ -156,19 +157,35 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
       if (isSupabaseConfigured && supabase) {
         try {
+          const filterParts = candidateIds.flatMap(id => [`user_id.eq.${id}`, `steamid.eq.${id}`]);
           const { data, error } = await supabase
             .from('submissions')
             .select('*')
-            .in('user_id', candidateIds);
+            .or(filterParts.join(','));
 
           if (!error && Array.isArray(data)) {
             setSubmissions(data);
-            setLoadingSubmissions(false);
-            return;
           }
         } catch (e) {
           console.warn('Supabase fetch user submissions error in profile:', e);
         }
+
+        try {
+          const adjFilterParts = candidateIds.map(id => `user_id.eq.${id}`);
+          const { data: adjData } = await supabase
+            .from('team_adjustments')
+            .select('*')
+            .or(adjFilterParts.join(','));
+
+          if (Array.isArray(adjData)) {
+            setUserAdjustments(adjData);
+          }
+        } catch (e) {
+          console.warn('Supabase fetch team_adjustments error in profile:', e);
+        }
+
+        setLoadingSubmissions(false);
+        return;
       }
 
       try {
@@ -375,9 +392,79 @@ export default function Profile({ steamId }: { steamId?: string }) {
     }
   };
 
-  const activeEvent = Array.isArray(events) ? events.find((e: any) => e.is_active) : null;
+  const currentEvent = React.useMemo(() => {
+    return (events || []).find((e: any) => e.is_active || e.isActive) || sortedEvents[0] || null;
+  }, [events, sortedEvents]);
+
+  const activeEvent = currentEvent;
   const hideScores = !!activeEvent?.hide_scores;
   const hideUserScores = hideScores && !isOwnProfile;
+
+  const displayedEvent = React.useMemo(() => {
+    if (selectedEventId !== 'all') {
+      const found = (events || []).find((e: any) => e.id === selectedEventId);
+      if (found) return found;
+    }
+    return currentEvent;
+  }, [selectedEventId, events, currentEvent]);
+
+  const displayedPoints = React.useMemo(() => {
+    if (!targetUser) return 0;
+
+    const candidateOwnerIds = isOwnProfile
+      ? Array.from(new Set([
+          currentUser?.steamId,
+          currentUser?.uid,
+          currentUser?.discordId,
+          currentUser?.discordId ? `discord_${currentUser.discordId}` : null
+        ].filter(Boolean))) as string[]
+      : Array.from(new Set([
+          steamId,
+          targetUser?.steamId,
+          targetUser?.discordId,
+          targetUser?.discordId ? `discord_${targetUser.discordId}` : null
+        ].filter(Boolean))) as string[];
+
+    const targetEvt = displayedEvent;
+
+    const eventSubmissions = (submissions || []).filter((s: any) => {
+      const isOwner = candidateOwnerIds.length === 0 ||
+        candidateOwnerIds.includes(s.user_id) ||
+        candidateOwnerIds.includes(s.steamid);
+      if (!isOwner) return false;
+
+      const matchesEvent = targetEvt
+        ? (s.event_id ? s.event_id === targetEvt.id : true)
+        : true;
+
+      const isVerified = s.status === 'verified' || s.status === 'approved' || (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
+
+      return matchesEvent && isVerified;
+    });
+
+    const sumFromSubmissions = eventSubmissions.reduce((acc: number, s: any) => {
+      const pts = Number(s.points !== undefined && s.points !== null ? s.points : (s.calculated_score || s.score || 0)) || 0;
+      return acc + pts;
+    }, 0);
+
+    const eventAdjustments = (userAdjustments || []).filter((a: any) => {
+      const adjUserId = String(a.user_id || a.userId || '');
+      if (adjUserId.startsWith('team_pts_')) return false;
+      const matchesOwner = candidateOwnerIds.includes(adjUserId);
+      const matchesEvent = targetEvt ? (a.event_id ? a.event_id === targetEvt.id : true) : true;
+      return matchesOwner && matchesEvent;
+    });
+
+    const sumFromAdjustments = eventAdjustments.reduce((acc: number, a: any) => {
+      return acc + (Number(a.points || a.calculated_score || 0));
+    }, 0);
+
+    const calculatedTotal = sumFromSubmissions + sumFromAdjustments;
+
+    return calculatedTotal > 0
+      ? calculatedTotal
+      : (targetUser.points && targetUser.points > 0 ? targetUser.points : 0);
+  }, [displayedEvent, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
@@ -612,8 +699,12 @@ export default function Profile({ steamId }: { steamId?: string }) {
          <div className="p-8 dark:bg-[#111111] bg-white rounded-2xl border border-black/5 dark:border-white/5 flex flex-col items-center gap-4 text-center shadow-xl">
             <Trophy size={32} className={colors.primary} />
             <div>
-               <span className="text-4xl font-mono font-bold block dark:text-white text-slate-800">{hideUserScores ? '—' : targetUser.points}</span>
-               <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Points Earned</span>
+               <span className="text-4xl font-mono font-bold block dark:text-white text-slate-800">
+                 {hideUserScores ? '—' : displayedPoints.toLocaleString()}
+               </span>
+               <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">
+                 Points Earned {displayedEvent ? `(Event #${displayedEvent.event_number || 1})` : ''}
+               </span>
             </div>
          </div>
 
