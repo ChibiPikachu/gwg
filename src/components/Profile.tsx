@@ -64,7 +64,14 @@ export default function Profile({ steamId }: { steamId?: string }) {
   };
 
   const sortedEvents = React.useMemo(() => {
-    return (events || []).slice().sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
+    return (events || []).slice().sort((a, b) => {
+      const numA = Number(a.event_number || a.number || 0);
+      const numB = Number(b.event_number || b.number || 0);
+      if (numA !== numB) return numB - numA;
+      const timeA = new Date(a.start_date || a.created_at || 0).getTime();
+      const timeB = new Date(b.start_date || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
   }, [events]);
 
   const userGameSubmissions = React.useMemo(() => {
@@ -103,31 +110,38 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   React.useEffect(() => {
     const loadEvents = async () => {
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('events')
-            .select('*')
-            .order('start_date', { ascending: false });
-
-          if (!error && Array.isArray(data)) {
-            setEvents(data);
-            return;
-          }
-        } catch (e) {
-          console.warn('Supabase fetch events error in profile:', e);
-        }
-      }
-
       try {
         const res = await fetch('/api/events');
         const contentType = res.headers.get('content-type');
         if (res.ok && contentType && contentType.includes('application/json')) {
           const data = await res.json();
-          setEvents(Array.isArray(data) ? data : []);
+          if (Array.isArray(data) && data.length > 0) {
+            setEvents(data);
+            return;
+          }
         }
       } catch (err) {
-        console.warn('Failed to fetch events in profile:', err);
+        console.warn('Failed to fetch /api/events in profile:', err);
+      }
+
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: true });
+
+          if (!error && Array.isArray(data)) {
+            const formatted = data.map((evt: any, idx: number) => ({
+              ...evt,
+              event_number: evt.event_number || evt.number || (idx + 1)
+            }));
+            setEvents(formatted);
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase fetch events error in profile:', e);
+        }
       }
     };
 
@@ -439,11 +453,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
       targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
     ].filter(Boolean))) as string[];
 
+    const isAllEvents = selectedEventId === 'all';
     const targetEvt = displayedEvent;
-
-    if (!targetEvt) {
-      return typeof targetUser.points === 'number' ? targetUser.points : 0;
-    }
 
     const eventSubmissions = (submissions || []).filter((s: any) => {
       const isOwner = candidateOwnerIds.length === 0 ||
@@ -451,13 +462,17 @@ export default function Profile({ steamId }: { steamId?: string }) {
         candidateOwnerIds.includes(String(s.steamid));
       if (!isOwner) return false;
 
+      const isVerified = s.status === 'verified' || s.status === 'approved' || (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
+      if (!isVerified) return false;
+
+      if (isAllEvents) return true;
+      if (!targetEvt) return true;
+
       const matchesEvent = s.event_id 
-        ? s.event_id === targetEvt.id 
+        ? (s.event_id === targetEvt.id || String(s.event_id) === String(targetEvt.id))
         : (s.event_number ? Number(s.event_number) === Number(targetEvt.event_number) : Boolean(targetEvt.is_active));
 
-      const isVerified = s.status === 'verified' || s.status === 'approved' || (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
-
-      return matchesEvent && isVerified;
+      return matchesEvent;
     });
 
     const sumFromSubmissions = eventSubmissions.reduce((acc: number, s: any) => {
@@ -469,10 +484,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
       const adjUserId = String(a.user_id || a.userId || '');
       if (adjUserId.startsWith('team_pts_')) return false;
       const matchesOwner = candidateOwnerIds.includes(adjUserId);
+      if (!matchesOwner) return false;
+
+      if (isAllEvents) return true;
+      if (!targetEvt) return true;
+
       const matchesEvent = a.event_id 
-        ? a.event_id === targetEvt.id 
+        ? (a.event_id === targetEvt.id || String(a.event_id) === String(targetEvt.id))
         : (a.event_number ? Number(a.event_number) === Number(targetEvt.event_number) : Boolean(targetEvt.is_active));
-      return matchesOwner && matchesEvent;
+      return matchesEvent;
     });
 
     const sumFromAdjustments = eventAdjustments.reduce((acc: number, a: any) => {
@@ -486,7 +506,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
     }
 
     return calculatedTotal;
-  }, [displayedEvent, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser]);
+  }, [displayedEvent, selectedEventId, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">

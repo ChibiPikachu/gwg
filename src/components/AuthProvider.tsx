@@ -277,6 +277,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? rawSteamName 
         : (userProfile.discord_name || userProfile.display_name || fetchedSteamName || `Steam Gamer (${steamIdParam.slice(-4)})`);
 
+      const hasRealSteamInProfile = userProfile.steamid && !String(userProfile.steamid).startsWith('discord_');
+      const needsRegFlag = Boolean(userProfile.needs_registration) || (!hasRealSteamInProfile && userProfile.needs_registration !== false);
+
       const formattedUser = {
         uid: String(userProfile.steamid || steamIdParam),
         steamId: String(userProfile.steamid || steamIdParam),
@@ -292,7 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         discordAvatar: userProfile.discord_avatar,
         createdAt: userProfile.created_at,
         eventTeams: userProfile.eventTeams || {},
-        needs_registration: userProfile.needs_registration || false
+        needs_registration: needsRegFlag
       };
 
       setUser(formattedUser as any);
