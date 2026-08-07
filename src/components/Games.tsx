@@ -1,11 +1,10 @@
 import React from 'react';
-import { Gamepad2, Users, ExternalLink, Trophy, SortAsc, Users2, Filter, ChevronLeft, ChevronRight, Archive, CheckCircle2, Search, X, LayoutGrid, List } from 'lucide-react';
+import { Gamepad2, Users, ExternalLink, Trophy, SortAsc, Users2, Search, X, LayoutGrid, List, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type SortOption = 'az' | 'members';
-type FilterOption = 'active' | 'archived';
 
 export default function Games({ onViewProfile }: { onViewProfile?: (id: string) => void }) {
   const { theme } = useAuth();
@@ -13,11 +12,10 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   const [events, setEvents] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sortBy, setSortBy] = React.useState<SortOption>('az');
-  const [filterBy, setFilterBy] = React.useState<FilterOption>('active');
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [currentPage, setCurrentPage] = React.useState(1);
-  const [viewMode, setViewMode] = React.useState<'list' | 'grid'>('grid'); // Defaulting to grid or list as needed, let's default to list
+  const [viewMode, setViewMode] = React.useState<'list' | 'grid'>('grid');
   const [igdbSearchResults, setIgdbSearchResults] = React.useState<any[]>([]);
   const [isSearchingIgdb, setIsSearchingIgdb] = React.useState(false);
   const itemsPerPage = 40;
@@ -133,11 +131,6 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
     currentPage * itemsPerPage
   );
 
-  const filteredEvents = React.useMemo(() => {
-    if (filterBy === 'active') return events.filter(isEventActive);
-    return events.filter(e => !isEventActive(e));
-  }, [events, filterBy]);
-
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto flex flex-col gap-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -169,40 +162,6 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                 <X size={14} />
               </button>
             )}
-          </div>
-
-          {/* Filter by Event Status */}
-          <div className="flex bg-black/10 dark:bg-white/5 p-1 rounded-xl border border-black/5 dark:border-white/5">
-            <button
-              onClick={() => {
-                setFilterBy('active');
-                const activeEvents = events.filter(isEventActive);
-                if (activeEvents.length > 0 && !activeEvents.some(e => e.id === selectedEventId)) {
-                  setSelectedEventId(activeEvents[0].id);
-                }
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
-                filterBy === 'active' ? cn(theme.bg, "text-white shadow-lg") : "opacity-40 hover:opacity-100"
-              )}
-            >
-              <CheckCircle2 size={14} /> Active
-            </button>
-            <button
-              onClick={() => {
-                setFilterBy('archived');
-                const archivedEvents = events.filter(e => !isEventActive(e));
-                if (archivedEvents.length > 0 && !archivedEvents.some(e => e.id === selectedEventId)) {
-                  setSelectedEventId(archivedEvents[0].id);
-                }
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
-                filterBy === 'archived' ? cn(theme.bg, "text-white shadow-lg") : "opacity-40 hover:opacity-100"
-              )}
-            >
-              <Archive size={14} /> Archived
-            </button>
           </div>
 
           {/* Sort Options */}
@@ -253,10 +212,10 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
         </div>
       </div>
 
-      {/* Event Selector pills */}
-      <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+      {/* Unified Event Selector pills (Image 1 & Image 2 combined) */}
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold opacity-50 mr-1">
-          {filterBy === 'active' ? 'Active Event:' : 'Archived Events:'}
+          Events:
         </span>
         <button
           onClick={() => setSelectedEventId('all')}
@@ -269,7 +228,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
         >
           <span>All Events</span>
         </button>
-        {filteredEvents.map(e => (
+        {events.map(e => (
           <button
             key={e.id}
             onClick={() => setSelectedEventId(e.id)}
@@ -282,7 +241,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
           >
             <span>{e.title || e.name || 'Event'}</span>
             {isEventActive(e) && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
             )}
           </button>
         ))}
@@ -290,7 +249,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
       {/* Global IGDB Search Results via Vercel Function */}
       {searchQuery.trim() !== '' && (
-        <div className="flex flex-col gap-4 p-5 rounded-2xl bg-black/10 dark:bg-white/5 border border-black/5 dark:border-white/5 animate-in fade-in duration-300">
+        <div className="flex flex-col gap-4 p-5 rounded-2xl bg-black/10 dark:bg-white/5 border border-black/5 dark:border-white/5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Search size={16} className={theme.text} />
@@ -298,7 +257,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                 IGDB Database Results for "{searchQuery}"
               </h2>
             </div>
-            {isSearchingIgdb && <span className="text-xs opacity-50 animate-pulse font-medium">Searching IGDB...</span>}
+            {isSearchingIgdb && <span className="text-xs opacity-50 font-medium">Searching IGDB...</span>}
           </div>
 
           {!isSearchingIgdb && igdbSearchResults.length === 0 ? (
@@ -340,7 +299,6 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12 gap-3">
-          <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin opacity-50" />
           <p className="text-xs font-semibold opacity-50">Loading approved games...</p>
         </div>
       ) : filteredAndSortedGames.length === 0 ? (
@@ -360,7 +318,6 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
             {events.find(isEventActive) && selectedEventId !== events.find(isEventActive)?.id && (
               <button
                 onClick={() => {
-                  setFilterBy('active');
                   const active = events.find(isEventActive);
                   if (active) setSelectedEventId(active.id);
                 }}
@@ -382,7 +339,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
       ) : (
         <div className="flex flex-col gap-6">
           {viewMode === 'list' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {paginatedGames.map((game) => (
                 <div 
                   key={game.game_id} 
@@ -416,7 +373,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                       </div>
                       <div className="flex items-center gap-2 text-xs opacity-50">
                         <Trophy size={12} />
-                        <span>{filterBy === 'active' ? 'Active' : 'Archived'} Event Entry</span>
+                        <span>Event Entry</span>
                       </div>
                     </div>
 
@@ -451,7 +408,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-in fade-in duration-300">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
               {paginatedGames.map((game) => (
                 <div 
                   key={game.game_id}
@@ -567,3 +524,4 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
     </div>
   );
 }
+

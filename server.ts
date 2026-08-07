@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 
 import { createClient } from '@supabase/supabase-js';
 import screenshotHandler from './api/screenshots.js';
+import leaderboardsHandler from './api/leaderboards.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2461,6 +2462,8 @@ async function createServer() {
       res.status(500).json({ error: err.message });
     }
   });
+
+  app.all('/api/leaderboards', (req, res) => leaderboardsHandler(req as any, res as any));
 
   app.get('/api/leaderboard/games', async (req, res) => {
     const supabase = getSupabase();
