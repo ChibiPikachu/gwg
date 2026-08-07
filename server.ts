@@ -2502,8 +2502,7 @@ async function createServer() {
       // Filter out non-game entries AND filter for approved/verified submissions
       const isApproved = (s: any) => 
         s.status === 'verified' || 
-        s.status === 'approved' || 
-        (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
+        s.status === 'approved';
 
       const validSubmissions = submissions.filter((s: any) => {
         if (!s.game_name) return false;
