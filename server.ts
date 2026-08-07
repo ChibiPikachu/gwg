@@ -2801,13 +2801,15 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const { steamid } = req.params;
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, points, role, created_at')
-      .eq('steamid', steamid)
-      .single();
+    let query = supabase.from('profiles').select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, points, role, created_at, id');
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(steamid)) {
+      query = query.or(`id.eq.${steamid},steamid.eq.${steamid},discord_id.eq.${steamid}`);
+    } else {
+      query = query.or(`steamid.eq.${steamid},discord_id.eq.${steamid}`);
+    }
+    const { data: profile, error } = await query.maybeSingle();
 
-    if (error) return res.status(404).json({ error: 'User not found' });
+    if (error || !profile) return res.status(404).json({ error: 'User not found' });
 
     let eventTeams: Record<string, string> = {};
     try {

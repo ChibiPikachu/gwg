@@ -7,8 +7,11 @@ import { Team, TEAM_COLORS } from '@/types';
 
 export default function Profile({ steamId }: { steamId?: string }) {
   const { user: currentUser, theme, syncWithDiscord, loginWithSteam, loginWithDiscord, updateProfile } = useAuth();
-  const [targetUser, setTargetUser] = useState<any>(null);
-  const [loading, setLoading] = useState(!!steamId);
+
+  const isOwnProfile = !steamId || steamId === currentUser?.uid || steamId === currentUser?.steamId;
+
+  const [targetUser, setTargetUser] = useState<any>(isOwnProfile ? currentUser : null);
+  const [loading, setLoading] = useState<boolean>(!isOwnProfile ? true : !currentUser);
   const [isEditing, setIsEditing] = useState(false);
   const [status, setStatus] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -32,10 +35,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [screenshotNotifs, setScreenshotNotifs] = useState<any[]>([]);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
 
-  const isOwnProfile = !steamId || steamId === currentUser?.uid;
-
   const hasDiscord = !!targetUser?.discordId;
-  const hasRealSteam = targetUser?.steamId && !targetUser.steamId.startsWith('discord_');
+  const hasRealSteam = targetUser?.steamId && !String(targetUser.steamId).startsWith('discord_');
   const hasBoth = hasDiscord && hasRealSteam;
 
   const handleAvatarPreferenceChange = async (preference: 'steam' | 'discord') => {
@@ -63,7 +64,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
   };
 
   const sortedEvents = React.useMemo(() => {
-    return [...events].sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
+    return (events || []).slice().sort((a, b) => (b.event_number || 0) - (a.event_number || 0));
   }, [events]);
 
   const userGameSubmissions = React.useMemo(() => {
@@ -255,8 +256,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   React.useEffect(() => {
     if (isOwnProfile) {
-      setTargetUser(currentUser);
-      setLoading(false);
+      if (currentUser) {
+        setTargetUser(currentUser);
+        setLoading(false);
+      }
     } else {
       setLoading(true);
       const fetchUserProfile = async () => {
@@ -368,13 +371,14 @@ export default function Profile({ steamId }: { steamId?: string }) {
     setIsEditing(false);
   };
 
-  const colors = TEAM_COLORS[targetUser.team || 'none'] || TEAM_COLORS['blue'];
-  const logoColor = targetUser.team === 'blue' ? 'bg-blue-accent' : 
-                    targetUser.team === 'green' ? 'bg-green-accent' : 
-                    targetUser.team === 'purple' ? 'bg-purple-accent' : 
-                    targetUser.team === 'red' ? 'bg-red-accent' : 'bg-white/10';
+  const colors = TEAM_COLORS[(targetUser?.team || 'none') as Team] || TEAM_COLORS['none'] || TEAM_COLORS['blue'];
+  const logoColor = targetUser?.team === 'blue' ? 'bg-blue-accent' : 
+                    targetUser?.team === 'green' ? 'bg-green-accent' : 
+                    targetUser?.team === 'purple' ? 'bg-purple-accent' : 
+                    targetUser?.team === 'red' ? 'bg-red-accent' : 'bg-white/10';
 
   const hasSurvivedMigration = (() => {
+    if (!targetUser) return false;
     const timestamp = targetUser.createdAt || targetUser.created_at;
     if (!timestamp) return true; // Legacy user logged in before May 30, 2026.
     const date = new Date(timestamp);
@@ -735,7 +739,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Steam_icon_logo.svg" className="w-5 h-5 shrink-0 filter invert opacity-80" alt="Steam" />
                   <div className="text-left min-w-0">
                     <div className="text-xs font-bold leading-none">Steam Account</div>
-                    {targetUser.steamId && !targetUser.steamId.startsWith('discord_') ? (
+                    {targetUser?.steamId && !String(targetUser.steamId).startsWith('discord_') ? (
                       <div className="text-[10px] opacity-50 truncate max-w-[120px] leading-none mt-1">
                         {targetUser.steamName || 'Linked'}
                       </div>
@@ -745,7 +749,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   </div>
                 </div>
                 
-                {targetUser.steamId && !targetUser.steamId.startsWith('discord_') ? (
+                {targetUser?.steamId && !String(targetUser.steamId).startsWith('discord_') ? (
                   <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 shrink-0">
                     <CheckCircle2 size={14} /> Linked
                   </span>
@@ -898,7 +902,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
       {/* Submissions Section */}
       <section className="flex flex-col gap-6">
         <div className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-lg bg-white/5", colors.text)}>
+          <div className={cn("p-2 rounded-lg bg-white/5", colors.primary)}>
             <History size={20} />
           </div>
           <h2 className="text-2xl font-bold dark:text-white text-slate-800">Submitted Games</h2>
