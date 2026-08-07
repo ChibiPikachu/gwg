@@ -158,13 +158,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
       if (isSupabaseConfigured && supabase) {
         try {
           const filterParts = candidateIds.flatMap(id => [`user_id.eq.${id}`, `steamid.eq.${id}`]);
-          const { data, error } = await supabase
-            .from('submissions')
-            .select('*')
-            .or(filterParts.join(','));
+          if (filterParts.length > 0) {
+            const { data, error } = await supabase
+              .from('submissions')
+              .select('*')
+              .or(filterParts.join(','));
 
-          if (!error && Array.isArray(data)) {
-            setSubmissions(data);
+            if (!error && Array.isArray(data)) {
+              setSubmissions(data);
+            }
           }
         } catch (e) {
           console.warn('Supabase fetch user submissions error in profile:', e);
@@ -172,13 +174,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
         try {
           const adjFilterParts = candidateIds.map(id => `user_id.eq.${id}`);
-          const { data: adjData } = await supabase
-            .from('team_adjustments')
-            .select('*')
-            .or(adjFilterParts.join(','));
+          if (adjFilterParts.length > 0) {
+            const { data: adjData } = await supabase
+              .from('team_adjustments')
+              .select('*')
+              .or(adjFilterParts.join(','));
 
-          if (Array.isArray(adjData)) {
-            setUserAdjustments(adjData);
+            if (Array.isArray(adjData)) {
+              setUserAdjustments(adjData);
+            }
           }
         } catch (e) {
           console.warn('Supabase fetch team_adjustments error in profile:', e);
