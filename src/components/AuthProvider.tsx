@@ -318,10 +318,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (dbProfile) {
           const isAdmin = dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || dbProfile.is_admin === true || dbProfile.isAdmin === true;
+          const realSteamId = dbProfile.steamid && !String(dbProfile.steamid).startsWith('discord_') ? dbProfile.steamid : null;
+          const effectiveSteamId = realSteamId || dbProfile.id || targetUserId;
+          const hasRealSteam = Boolean(realSteamId);
 
           const updatedUser = {
-            uid: String(dbProfile.steamid || dbProfile.id || targetUserId),
-            steamId: String(dbProfile.steamid || dbProfile.id || targetUserId),
+            uid: String(effectiveSteamId),
+            steamId: String(effectiveSteamId),
             steamName: dbProfile.steam_name || dbProfile.display_name || dbProfile.discord_name || cachedParsed?.steamName || 'Gamer',
             steamAvatar: (dbProfile.active_avatar === 'discord' && dbProfile.discord_avatar)
               ? dbProfile.discord_avatar
@@ -336,7 +339,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             discordAvatar: dbProfile.discord_avatar || cachedParsed?.discordAvatar,
             createdAt: dbProfile.created_at || cachedParsed?.createdAt,
             eventTeams: dbProfile.eventTeams || cachedParsed?.eventTeams || {},
-            needs_registration: dbProfile.needs_registration || false
+            needs_registration: !hasRealSteam && dbProfile.needs_registration !== false
           };
 
           setUser(updatedUser as any);
@@ -495,9 +498,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (dbProfile) {
           const isAdmin = dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || dbProfile.is_admin === true || dbProfile.isAdmin === true;
+          const realSteamId = dbProfile.steamid && !String(dbProfile.steamid).startsWith('discord_') ? dbProfile.steamid : null;
+          const effectiveSteamId = realSteamId || dbProfile.id || userId;
+          const hasRealSteam = Boolean(realSteamId);
+
           const formattedUser = {
-            uid: String(dbProfile.steamid || dbProfile.id || userId),
-            steamId: String(dbProfile.steamid || dbProfile.id || userId),
+            uid: String(effectiveSteamId),
+            steamId: String(effectiveSteamId),
             steamName: dbProfile.steam_name || dbProfile.display_name || dbProfile.discord_name || authUserMeta?.full_name || 'Gamer',
             steamAvatar: (dbProfile.active_avatar === 'discord' && dbProfile.discord_avatar)
               ? dbProfile.discord_avatar
@@ -512,7 +519,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             discordAvatar: dbProfile.discord_avatar || authUserMeta?.avatar_url,
             createdAt: dbProfile.created_at,
             eventTeams: dbProfile.eventTeams || {},
-            needs_registration: dbProfile.needs_registration || false
+            needs_registration: !hasRealSteam && dbProfile.needs_registration !== false
           };
           setUser(formattedUser as any);
           localStorage.setItem('gamer_auth_user', JSON.stringify(formattedUser));

@@ -435,15 +435,19 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
     const targetEvt = displayedEvent;
 
+    if (!targetEvt) {
+      return typeof targetUser.points === 'number' ? targetUser.points : 0;
+    }
+
     const eventSubmissions = (submissions || []).filter((s: any) => {
       const isOwner = candidateOwnerIds.length === 0 ||
-        candidateOwnerIds.includes(s.user_id) ||
-        candidateOwnerIds.includes(s.steamid);
+        candidateOwnerIds.includes(String(s.user_id)) ||
+        candidateOwnerIds.includes(String(s.steamid));
       if (!isOwner) return false;
 
-      const matchesEvent = targetEvt
-        ? (s.event_id ? s.event_id === targetEvt.id : true)
-        : true;
+      const matchesEvent = s.event_id 
+        ? s.event_id === targetEvt.id 
+        : (s.event_number ? Number(s.event_number) === Number(targetEvt.event_number) : Boolean(targetEvt.is_active));
 
       const isVerified = s.status === 'verified' || s.status === 'approved' || (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
 
@@ -459,7 +463,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
       const adjUserId = String(a.user_id || a.userId || '');
       if (adjUserId.startsWith('team_pts_')) return false;
       const matchesOwner = candidateOwnerIds.includes(adjUserId);
-      const matchesEvent = targetEvt ? (a.event_id ? a.event_id === targetEvt.id : true) : true;
+      const matchesEvent = a.event_id 
+        ? a.event_id === targetEvt.id 
+        : (a.event_number ? Number(a.event_number) === Number(targetEvt.event_number) : Boolean(targetEvt.is_active));
       return matchesOwner && matchesEvent;
     });
 
@@ -469,9 +475,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
     const calculatedTotal = sumFromSubmissions + sumFromAdjustments;
 
-    return calculatedTotal > 0
-      ? calculatedTotal
-      : (targetUser.points && targetUser.points > 0 ? targetUser.points : 0);
+    return calculatedTotal;
   }, [displayedEvent, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser]);
 
   return (
@@ -711,7 +715,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                  {hideUserScores ? '—' : displayedPoints.toLocaleString()}
                </span>
                <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">
-                 Points Earned {displayedEvent ? `(Event #${displayedEvent.event_number || 1})` : ''}
+                 Points Earned {displayedEvent ? (displayedEvent.is_active || displayedEvent.isActive ? `(Active Event #${displayedEvent.event_number || 1})` : `(Event #${displayedEvent.event_number || 1})`) : '(Active Event)'}
                </span>
             </div>
          </div>
