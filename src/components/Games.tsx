@@ -111,18 +111,18 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   }, [searchQuery]);
 
   const filteredAndSortedGames = React.useMemo(() => {
-    let result = [...games];
+    let result = Array.isArray(games) ? [...games] : [];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(g => 
-        (g.game_name && g.game_name.toLowerCase().includes(q)) ||
-        (g.users && g.users.some((user: any) => user.steam_name && user.steam_name.toLowerCase().includes(q)))
+        (g?.game_name && String(g.game_name).toLowerCase().includes(q)) ||
+        (Array.isArray(g?.users) && g.users.some((user: any) => user?.steam_name && String(user.steam_name).toLowerCase().includes(q)))
       );
     }
     if (sortBy === 'az') {
-      result.sort((a, b) => a.game_name.localeCompare(b.game_name));
+      result.sort((a, b) => (a?.game_name || '').localeCompare(b?.game_name || ''));
     } else if (sortBy === 'members') {
-      result.sort((a, b) => b.users.length - a.users.length);
+      result.sort((a, b) => ((b?.users?.length) || 0) - ((a?.users?.length) || 0));
     }
     return result;
   }, [games, sortBy, searchQuery]);
@@ -254,30 +254,39 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
       </div>
 
       {/* Event Selector pills */}
-      {filteredEvents.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-          <span className="text-xs font-bold opacity-50 mr-1">
-            {filterBy === 'active' ? 'Active Event:' : 'Archived Events:'}
-          </span>
-          {filteredEvents.map(e => (
-            <button
-              key={e.id}
-              onClick={() => setSelectedEventId(e.id)}
-              className={cn(
-                "px-3.5 py-1.5 rounded-xl text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer",
-                selectedEventId === e.id 
-                  ? cn(theme.border, "bg-white/10 shadow-sm font-bold", theme.text)
-                  : "border-black/5 dark:border-white/5 opacity-50 hover:opacity-100 dark:bg-white/5"
-              )}
-            >
-              <span>{e.title || e.name || 'Event'}</span>
-              {isEventActive(e) && (
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+        <span className="text-xs font-bold opacity-50 mr-1">
+          {filterBy === 'active' ? 'Active Event:' : 'Archived Events:'}
+        </span>
+        <button
+          onClick={() => setSelectedEventId('all')}
+          className={cn(
+            "px-3.5 py-1.5 rounded-xl text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer",
+            selectedEventId === 'all'
+              ? cn(theme.border, "bg-white/10 shadow-sm font-bold", theme.text)
+              : "border-black/5 dark:border-white/5 opacity-50 hover:opacity-100 dark:bg-white/5"
+          )}
+        >
+          <span>All Events</span>
+        </button>
+        {filteredEvents.map(e => (
+          <button
+            key={e.id}
+            onClick={() => setSelectedEventId(e.id)}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer",
+              selectedEventId === e.id 
+                ? cn(theme.border, "bg-white/10 shadow-sm font-bold", theme.text)
+                : "border-black/5 dark:border-white/5 opacity-50 hover:opacity-100 dark:bg-white/5"
+            )}
+          >
+            <span>{e.title || e.name || 'Event'}</span>
+            {isEventActive(e) && (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+            )}
+          </button>
+        ))}
+      </div>
 
       {/* Global IGDB Search Results via Vercel Function */}
       {searchQuery.trim() !== '' && (
@@ -330,12 +339,45 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
       )}
 
       {loading ? (
-        <div className="flex justify-center p-12">
-          
+        <div className="flex flex-col items-center justify-center p-12 gap-3">
+          <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin opacity-50" />
+          <p className="text-xs font-semibold opacity-50">Loading approved games...</p>
         </div>
       ) : filteredAndSortedGames.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 opacity-30 italic">
-          {searchQuery ? `No games found matching "${searchQuery}".` : "No games found for this event selection."}
+        <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center gap-4">
+          <p className="text-sm opacity-60 font-medium">
+            {searchQuery ? `No approved games found matching "${searchQuery}".` : "No approved games found for this event selection."}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {selectedEventId !== 'all' && (
+              <button
+                onClick={() => setSelectedEventId('all')}
+                className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all border", theme.border, theme.text, "hover:bg-white/5")}
+              >
+                View All Events Games
+              </button>
+            )}
+            {events.find(isEventActive) && selectedEventId !== events.find(isEventActive)?.id && (
+              <button
+                onClick={() => {
+                  setFilterBy('active');
+                  const active = events.find(isEventActive);
+                  if (active) setSelectedEventId(active.id);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-600 text-white hover:bg-emerald-500"
+              >
+                Switch to Active Event
+              </button>
+            )}
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition-all bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20"
+              >
+                Clear Search
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-6">
