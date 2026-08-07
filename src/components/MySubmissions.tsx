@@ -307,7 +307,7 @@ export default function MySubmissions() {
           setSubmissions(data);
           setLoading(false);
 
-          // Batch fetch HLTB data for these submissions
+          // Batch fetch HLTB data for these submissions (if available)
           const uniqueTitles = Array.from(new Set(data.map((s: any) => s.game_name)));
           if (uniqueTitles.length > 0) {
             fetch('/api/hltb-batch', {
@@ -326,7 +326,7 @@ export default function MySubmissions() {
                 setHltbData(prev => ({ ...prev, ...hltb }));
               }
             })
-            .catch(err => console.warn('HLTB batch fetch failed:', err));
+            .catch(() => {});
           }
           return;
         }
@@ -345,7 +345,7 @@ export default function MySubmissions() {
         const subArray = Array.isArray(data) ? data : [];
         setSubmissions(subArray);
 
-        // Batch fetch HLTB data for these submissions
+        // Batch fetch HLTB data for these submissions (if available)
         const uniqueTitles = Array.from(new Set(subArray.map((s: any) => s.game_name)));
         if (uniqueTitles.length > 0) {
           fetch('/api/hltb-batch', {
@@ -364,7 +364,7 @@ export default function MySubmissions() {
               setHltbData(prev => ({ ...prev, ...hltb }));
             }
           })
-          .catch(err => console.warn('HLTB batch fetch failed:', err));
+          .catch(() => {});
         }
       }
     } catch (err) {

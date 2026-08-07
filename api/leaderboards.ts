@@ -34,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data: activeEvent } = await supabase
         .from('events')
         .select('*')
-        .eq('active', true)
+        .eq('is_active', true)
         .maybeSingle();
 
       event = activeEvent || null;
@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Fetch submissions for event
-    let subQuery = supabase.from('submissions').select('*').eq('status', 'approved');
+    let subQuery = supabase.from('submissions').select('*').or('status.eq.verified,status.eq.approved');
     if (eventId) {
       subQuery = subQuery.eq('event_id', eventId);
     }
