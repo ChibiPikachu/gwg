@@ -442,6 +442,54 @@ function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltbM
   }
 }
 
+function computeSubmissionPoints(sub: any): number {
+  if (!sub) return 0;
+
+  // Manual/system entries
+  if (sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_name === 'Team Award' || sub.platform === 'System') {
+    return Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+  }
+
+  // Hours
+  const hours = Number(sub.hours_during || 0);
+  const hoursBefore = Number(sub.hours_before || 0);
+  const adjustedHours = Math.max(0, hours - hoursBefore);
+
+  // Multiplier
+  let calcMultiplier = Number(sub.multiplier || 0);
+  if (!calcMultiplier || calcMultiplier <= 0) {
+    if (adjustedHours < 8) calcMultiplier = 1.0;
+    else if (adjustedHours < 15) calcMultiplier = 2.0;
+    else if (adjustedHours < 25) calcMultiplier = 3.0;
+    else calcMultiplier = 4.0;
+  }
+
+  const meta = parseNotesMeta(sub.notes || '');
+  const isBeatenPrev = sub.beaten_previous === 'yes';
+  const effectiveStatus = (sub.completion_status === 'beaten' && isBeatenPrev) ? 'unfinished' : (sub.completion_status || 'unfinished');
+
+  if (meta.hasNoAchievements) {
+    const initialLvl = meta.level !== undefined ? meta.level : 2;
+    return calculateNonAchievementPoints(initialLvl, adjustedHours, 0, 0, effectiveStatus);
+  }
+
+  const achievements = Number(sub.achievements_during || 0);
+  let bonus = 0;
+  if (effectiveStatus === 'completed') {
+    bonus = 30;
+  } else if (effectiveStatus === 'beaten') {
+    bonus = 15;
+  }
+
+  let calcPoints = Math.round(achievements * calcMultiplier) + bonus;
+
+  if (calcPoints === 0 && (Number(sub.calculated_score) > 0 || Number(sub.points) > 0)) {
+    calcPoints = Number(sub.calculated_score || sub.points || 0);
+  }
+
+  return Math.max(0, calcPoints);
+}
+
 // Helper to extract authenticated user from Passport session, headers, query, or body
 async function getAuthUser(req: any, supabase?: any) {
   // 1. Passport session
@@ -3964,12 +4012,13 @@ async function createServer() {
 
     const currentUser = (req as any).user;
     const adminSteamId = String(currentUser?.id || currentUser?.steamid || currentUser?.steam_id || 'admin');
-    const { submissionIds, eventId } = req.body;
+    const { submissionIds, ids: legacyIds, eventId } = req.body;
+    const targetIds = submissionIds || legacyIds;
 
     try {
       let query = supabase.from('submissions').select('*').eq('status', 'pending');
-      if (Array.isArray(submissionIds) && submissionIds.length > 0) {
-        query = query.in('id', submissionIds);
+      if (Array.isArray(targetIds) && targetIds.length > 0) {
+        query = query.in('id', targetIds);
       } else if (eventId) {
         query = query.eq('event_id', eventId);
       }
@@ -3986,18 +4035,41 @@ async function createServer() {
 
       // Update all pending submissions to verified
       for (const sub of pendingSubs) {
-        const pointsAwarded = Number(sub.calculated_score || sub.points || 0);
-        await supabase.from('submissions').update({
+        let pointsAwarded = Number(sub.points !== undefined && sub.points !== null && Number(sub.points) > 0 ? sub.points : (sub.calculated_score || 0));
+        if (pointsAwarded <= 0) {
+          pointsAwarded = computeSubmissionPoints(sub);
+        }
+
+        const updateData: any = {
           status: 'verified',
           points: pointsAwarded,
+          calculated_score: pointsAwarded,
           rejection_reason: null,
           verifier_id: adminSteamId
-        }).eq('id', sub.id);
+        };
+
+        let { error: updateSubError } = await supabase.from('submissions').update(updateData).eq('id', sub.id);
+
+        if (updateSubError && (updateSubError.message?.includes('verifier_id') || updateSubError.code === 'PGRST204')) {
+          delete updateData.verifier_id;
+          const retry = await supabase.from('submissions').update(updateData).eq('id', sub.id);
+          updateSubError = retry.error;
+        }
+
+        if (updateSubError) {
+          console.error(`[Mass Accept Error] Failed to update submission ${sub.id}:`, updateSubError);
+        }
       }
 
       // Re-sync user points for all affected users
       for (const uid of userIdsToSync) {
-        if (uid) await syncUserPoints(supabase, uid as string);
+        if (uid) {
+          try {
+            await syncUserPoints(supabase, uid as string);
+          } catch (syncErr) {
+            console.warn(`[Mass Accept Sync Warning] User ${uid}:`, syncErr);
+          }
+        }
       }
 
       console.log(`[Admin] Mass accepted ${idsToAccept.length} submissions for ${userIdsToSync.length} users.`);

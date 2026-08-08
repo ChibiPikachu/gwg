@@ -96,24 +96,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 2. Mass Accept: POST /api/admin/submissions/mass-accept
     if (path.includes('mass-accept')) {
-      const { data: pendingSubs } = await supabase
-        .from('submissions')
-        .select('*')
-        .eq('status', 'pending');
+      const { submissionIds, ids: legacyIds, eventId } = req.body || {};
+      const targetIds = submissionIds || legacyIds;
+
+      let query = supabase.from('submissions').select('*').eq('status', 'pending');
+      if (Array.isArray(targetIds) && targetIds.length > 0) {
+        query = query.in('id', targetIds);
+      } else if (eventId) {
+        query = query.eq('event_id', eventId);
+      }
+
+      const { data: pendingSubs } = await query;
 
       if (!pendingSubs || pendingSubs.length === 0) {
         return res.status(200).json({ success: true, count: 0, message: 'No pending submissions found' });
       }
 
       const ids = pendingSubs.map(s => s.id);
-      await supabase
-        .from('submissions')
-        .update({ status: 'verified' })
-        .in('id', ids);
+      for (const sub of pendingSubs) {
+        let pts = Number(sub.points !== undefined && sub.points !== null && Number(sub.points) > 0 ? sub.points : (sub.calculated_score || 0));
+        if (pts <= 0) {
+          const achs = Number(sub.achievements_during || 0);
+          const mult = Number(sub.multiplier || 1.0);
+          const statusBonus = sub.completion_status === 'completed' ? 30 : (sub.completion_status === 'beaten' ? 15 : 0);
+          pts = Math.max(0, Math.round(achs * mult) + statusBonus);
+          if (pts === 0 && Number(sub.calculated_score) > 0) pts = Number(sub.calculated_score);
+        }
+
+        await supabase
+          .from('submissions')
+          .update({
+            status: 'verified',
+            points: pts,
+            calculated_score: pts,
+            rejection_reason: null
+          })
+          .eq('id', sub.id);
+      }
 
       const userIds = Array.from(new Set(pendingSubs.map(s => s.user_id)));
       for (const uId of userIds) {
-        await syncUserPoints(uId);
+        if (uId) await syncUserPoints(uId);
       }
 
       return res.status(200).json({ success: true, count: ids.length });

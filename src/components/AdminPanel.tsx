@@ -1048,7 +1048,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        alert(`Successfully mass accepted ${data.count} submission(s)!`);
+        const countAccepted = data.count !== undefined && data.count !== null ? data.count : finalIds.length;
+        alert(`Successfully mass accepted ${countAccepted} submission(s)!`);
         setSelectedSubIds([]);
         fetchSubmissions();
         fetchUsers();
