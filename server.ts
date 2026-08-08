@@ -3745,7 +3745,8 @@ async function createServer() {
           points: serverPoints,
           notes: notes || '',
           status: 'pending', // Reset to pending for admin re-review
-          rejection_reason: null // Clear old rejection
+          rejection_reason: null, // Clear old rejection
+          verifier_id: null
         })
         .eq('id', id)
         .select()

@@ -246,6 +246,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           calculated_score: body.calculatedScore || body.points || 0,
           notes: body.notes,
           steam_appid: body.steam_appid,
+          status: 'pending',
+          rejection_reason: null,
+          verifier_id: null
         })
         .eq('id', id)
         .select();
