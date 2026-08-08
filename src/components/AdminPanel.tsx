@@ -832,6 +832,62 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
+  const getSubmissionPreviewInfo = (sub: any) => {
+    if (!sub) return { points: 0, multiplier: 1.0 };
+
+    // Manual/System adjustments
+    if (sub.game_name === 'Screenshot Points' || sub.game_name === 'Bingo Points' || sub.game_name === 'Team Award' || sub.platform === 'System') {
+      const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+      return { points: pts, multiplier: 1.0 };
+    }
+
+    // Calculate adjusted play hours and multiplier
+    const hours = Number(sub.hours_during || 0);
+    const hoursBefore = Number(sub.hours_before || 0);
+    const adjustedHours = Math.max(0, hours - hoursBefore);
+
+    let calcMultiplier = Number(sub.multiplier || 0);
+    if (!calcMultiplier || calcMultiplier <= 0) {
+      if (adjustedHours < 8) calcMultiplier = 1.0;
+      else if (adjustedHours < 15) calcMultiplier = 2.0;
+      else if (adjustedHours < 25) calcMultiplier = 3.0;
+      else calcMultiplier = 4.0;
+    }
+
+    // If verified and has explicit points > 0, return verified points
+    if (sub.status === 'verified' && sub.points !== undefined && sub.points !== null && Number(sub.points) > 0) {
+      return { points: Number(sub.points), multiplier: calcMultiplier };
+    }
+
+    // Parse notes metadata for no-achievement games
+    const meta = parseNotesMeta(sub.notes || '');
+    const isBeatenPrev = sub.beaten_previous === 'yes';
+    const effectiveStatus = (sub.completion_status === 'beaten' && isBeatenPrev) ? 'unfinished' : (sub.completion_status || 'unfinished');
+
+    if (meta.hasNoAchievements) {
+      const initialLvl = meta.level !== undefined ? meta.level : 2;
+      const pts = calculateNonAchievementPoints(initialLvl, adjustedHours, effectiveStatus);
+      return { points: pts, multiplier: calcMultiplier };
+    }
+
+    const achievements = Number(sub.achievements_during || 0);
+    let bonus = 0;
+    if (effectiveStatus === 'completed') {
+      bonus = 30;
+    } else if (effectiveStatus === 'beaten') {
+      bonus = 15;
+    }
+
+    let calcPoints = Math.round(achievements * calcMultiplier) + bonus;
+
+    // Fallback if calcPoints is 0 but calculated_score exists
+    if (calcPoints === 0 && (Number(sub.calculated_score) > 0 || Number(sub.points) > 0)) {
+      calcPoints = Number(sub.calculated_score || sub.points || 0);
+    }
+
+    return { points: calcPoints, multiplier: calcMultiplier };
+  };
+
   const calculateReviewPoints = (achievementsVal: string, multiplierVal: number, levelVal: number, sub: any) => {
     if (sub?.game_name === 'Screenshot Points' || sub?.game_name === 'Bingo Points' || sub?.game_name === 'Team Award' || sub?.platform === 'System') {
       return String(sub?.points || 0);
@@ -1969,6 +2025,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             ) : (
               filteredSubmissions.map(sub => {
                 const subTeam = getSubmissionUserTeam(sub);
+                const previewInfo = getSubmissionPreviewInfo(sub);
                 // Custom Outer Glow Mapping
                 let outerGlowClass = "shadow-[0_0_20px_-5px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_-5px_rgba(255,255,255,0.05)] hover:dark:shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)] border-black/5 dark:border-white/5";
                 
@@ -2111,7 +2168,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
-                            <span className={cn("text-sm md:text-lg font-bold", theme.text)}>{sub.calculated_score || 0}</span>
+                            <span className={cn("text-sm md:text-lg font-bold", theme.text)}>{previewInfo.points}</span>
                           </div>
                         </div>
                       </div>
@@ -2176,13 +2233,15 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <div className="text-left sm:text-center w-full sm:w-auto">
                           <span className="text-[8px] text-slate-500 dark:text-blue-300 uppercase tracking-widest block leading-none">Multiplier</span>
                           <span className="text-[11px] md:text-xs font-black text-blue-400 mt-1 block">
-                            {parseNotesMeta(sub.notes).hasNoAchievements ? "Non-Ach Bracket" : `${sub.multiplier || 1.0}x`}
+                            {parseNotesMeta(sub.notes).hasNoAchievements ? "Non-Ach Bracket" : `${previewInfo.multiplier}x`}
                           </span>
                         </div>
                         <div className="h-px w-full dark:bg-white/10 bg-black/10 my-1.5 hidden sm:block" />
                         <div className="text-right sm:text-center w-full sm:w-auto mt-0 sm:mt-1">
-                          <span className="text-[8px] text-slate-500 dark:text-blue-300 uppercase tracking-widest block leading-none font-sans">Awarded</span>
-                          <span className={cn("text-base md:text-lg font-black mt-0.5 block", theme.text)}>{sub.calculated_score || 0} pts</span>
+                          <span className="text-[8px] text-slate-500 dark:text-blue-300 uppercase tracking-widest block leading-none font-sans">
+                            {sub.status === 'verified' ? 'Awarded Points' : 'Preview Points'}
+                          </span>
+                          <span className={cn("text-base md:text-lg font-black mt-0.5 block", theme.text)}>{previewInfo.points} pts</span>
                         </div>
                       </div>
                     </div>

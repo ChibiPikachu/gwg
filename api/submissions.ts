@@ -39,6 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             beaten_previous: body.beatenPrevious || body.beaten_previous,
             platform: body.platform,
             points: body.calculatedScore || body.points,
+            calculated_score: body.calculatedScore || body.points || 0,
             notes: body.notes,
             steam_appid: body.steam_appid,
             status: 'pending'
@@ -242,6 +243,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           beaten_previous: body.beatenPrevious || body.beaten_previous,
           platform: body.platform,
           points: body.calculatedScore || body.points,
+          calculated_score: body.calculatedScore || body.points || 0,
           notes: body.notes,
           steam_appid: body.steam_appid,
         })
