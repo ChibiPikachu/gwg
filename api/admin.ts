@@ -5,6 +5,21 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL ||
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+function isUuid(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+}
+
+function buildProfileOrFilter(key: string): string {
+  if (!key) return 'steamid.eq.none';
+  const cleanDiscordId = key.startsWith('discord_') ? key.replace('discord_', '') : key;
+  const prefixedDiscordId = `discord_${cleanDiscordId}`;
+  if (isUuid(key)) {
+    return `id.eq.${key},steamid.eq.${key},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+  }
+  return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+}
+
 async function syncUserPoints(userId: string) {
   try {
     const { data: subs } = await supabase
@@ -309,7 +324,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 await supabase
                   .from('profiles')
                   .update({ points: newTotal })
-                  .or(`steamid.eq.${uid},discord_id.eq.${uid},id.eq.${uid}`);
+                  .or(buildProfileOrFilter(uid));
               } catch (syncErr) {
                 console.warn('Sync profiles points failed in api/admin.ts:', syncErr);
               }

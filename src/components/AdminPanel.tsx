@@ -225,9 +225,15 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     setBulkSaving(true);
     setBulkSuccessMsg(null);
     try {
+      const userIdHeader = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/force-event-scores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userIdHeader,
+          'x-steam-id': currentUser?.steamId || '',
+          'x-discord-id': currentUser?.discordId || ''
+        },
         body: JSON.stringify({
           eventId: bulkEditEventId,
           userScores: bulkUserScores,

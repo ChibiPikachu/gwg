@@ -1950,12 +1950,16 @@ async function createServer() {
 
     const userId = String(currentUser.id || currentUser.steam_id || currentUser.steamid || currentUser.discord_id || '');
     
-    // Check by id, steamid, and discord_id as fallback
-    const { data: profile } = await supabase
+    // Check by id, steamid, and discord_id safely using buildProfileOrFilter
+    const { data: profile, error: profErr } = await supabase
       .from('profiles')
       .select('role')
-      .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId.replace('discord_', '')}`)
+      .or(buildProfileOrFilter(userId))
       .maybeSingle();
+
+    if (profErr) {
+      console.error('[Admin Auth] Supabase error verifying admin role:', profErr);
+    }
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
       console.log(`[Admin Auth] Denied: User ${userId} has role "${profile?.role || 'none'}"`);

@@ -5,6 +5,21 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL ||
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+function isUuid(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+}
+
+function buildProfileOrFilter(key: string): string {
+  if (!key) return 'steamid.eq.none';
+  const cleanDiscordId = key.startsWith('discord_') ? key.replace('discord_', '') : key;
+  const prefixedDiscordId = `discord_${cleanDiscordId}`;
+  if (isUuid(key)) {
+    return `id.eq.${key},steamid.eq.${key},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+  }
+  return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Extract ID if provided in query or URL parameter
   const rawId = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
@@ -75,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const { data: profile } = await supabase
             .from('profiles')
             .select('steamid')
-            .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId}`)
+            .or(buildProfileOrFilter(userId))
             .maybeSingle();
           if (profile?.steamid) {
             steamId = profile.steamid;

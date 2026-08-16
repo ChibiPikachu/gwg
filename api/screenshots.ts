@@ -8,6 +8,21 @@ const supabase = (supabaseUrl && supabaseServiceKey)
   ? createClient(supabaseUrl, supabaseServiceKey)
   : null;
 
+function isUuid(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+}
+
+function buildProfileOrFilter(key: string): string {
+  if (!key) return 'steamid.eq.none';
+  const cleanDiscordId = key.startsWith('discord_') ? key.replace('discord_', '') : key;
+  const prefixedDiscordId = `discord_${cleanDiscordId}`;
+  if (isUuid(key)) {
+    return `id.eq.${key},steamid.eq.${key},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+  }
+  return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+}
+
 // In-memory fallback for local dev when Supabase is not connected
 let memoryEvent: any = {
   id: 'evt_screenshot_01',
@@ -174,7 +189,7 @@ export default async function handler(req: Request, res: Response) {
             await supabase
               .from('profiles')
               .update({ points: newTotal })
-              .or(`steamid.eq.${userId},discord_id.eq.${userId},id.eq.${userId}`);
+              .or(buildProfileOrFilter(userId));
           }
 
           return res.status(200).json({ success: true, submission: inserted });
