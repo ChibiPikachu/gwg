@@ -1920,39 +1920,48 @@ async function createServer() {
 
   // Admin APIs
   const adminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+    const supabase = getSupabase();
+    let currentUser = (req as any).user;
+    if (!currentUser && supabase) {
+      currentUser = await getAuthUser(req, supabase);
+      if (currentUser) (req as any).user = currentUser;
+    }
+
+    if (!currentUser) {
+      if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
+        currentUser = (req as any).user;
+      }
+    }
+
+    if (!currentUser) {
       console.log('[Admin Auth] Denied: Not authenticated');
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    const currentUser = (req as any).user;
-    
-    // Quick check if already marked as admin in session
+
+    // Quick check if already marked as admin in session/user
     if (currentUser.isAdmin || currentUser.role === 'admin' || currentUser.role === 'admins') {
-      console.log(`[Admin Auth] Granted via Session: User ${currentUser.displayName}`);
       return next();
     }
 
-    const supabase = getSupabase();
     if (!supabase) {
       console.error('[Admin Auth] Error: Supabase unavailable');
       return res.status(500).json({ error: 'Database unavailable' });
     }
 
-    const userId = String(currentUser.id || currentUser.steam_id || currentUser.steamid);
+    const userId = String(currentUser.id || currentUser.steam_id || currentUser.steamid || currentUser.discord_id || '');
     
-    // Check by both steamid and discord_id as fallback
+    // Check by id, steamid, and discord_id as fallback
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
-      .or(`steamid.eq.${userId},discord_id.eq.${userId}`)
+      .or(`id.eq.${userId},steamid.eq.${userId},discord_id.eq.${userId.replace('discord_', '')}`)
       .maybeSingle();
 
     if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-      console.log(`[Admin Auth] Denied: User ${userId} (${currentUser.displayName}) has role "${profile?.role || 'none'}"`);
+      console.log(`[Admin Auth] Denied: User ${userId} has role "${profile?.role || 'none'}"`);
       return res.status(403).json({ error: 'Forbidden' });
     }
     
-    console.log(`[Admin Auth] Granted via DB: User ${userId} (${currentUser.displayName})`);
     next();
   };
 
@@ -2203,12 +2212,21 @@ async function createServer() {
       });
 
       const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
-      for (const [sid, pts] of Object.entries(liveUserScores)) {
-        const currentPts = Number(userScores[sid]) || 0;
-        const livePts = Number(pts) || 0;
-        userScores[sid] = Math.max(currentPts, livePts);
-        const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
-        if (team !== 'none') userTeams[sid] = team;
+      if (existingSaved?.forcedByAdmin && !forceResync) {
+        // Keep forced user scores intact
+        for (const [sid, pts] of Object.entries(existingSaved.userScores || {})) {
+          userScores[sid] = Number(pts) || 0;
+          const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
+          if (team !== 'none') userTeams[sid] = team;
+        }
+      } else {
+        for (const [sid, pts] of Object.entries(liveUserScores)) {
+          const currentPts = Number(userScores[sid]) || 0;
+          const livePts = Number(pts) || 0;
+          userScores[sid] = Math.max(currentPts, livePts);
+          const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
+          if (team !== 'none') userTeams[sid] = team;
+        }
       }
 
       // Ensure any users from uets or profiles with points are preserved
@@ -2219,7 +2237,7 @@ async function createServer() {
       });
 
       (profiles || []).forEach((p: any) => {
-        if (p.steamid && p.points && !userScores[p.steamid]) {
+        if (p.steamid && p.points && !userScores[p.steamid] && (!existingSaved?.forcedByAdmin || forceResync)) {
           const userTeam = uetMap.get(p.steamid) || userTeams[p.steamid] || p.team;
           if (userTeam && userTeam !== 'none' && teamMembers[userTeam]?.has(p.steamid)) {
             userScores[p.steamid] = Number(p.points) || 0;
@@ -2259,6 +2277,8 @@ async function createServer() {
         userScores,
         userTeams,
         teamAdjustments,
+        forcedByAdmin: existingSaved?.forcedByAdmin && !forceResync ? true : undefined,
+        forcedAt: existingSaved?.forcedByAdmin && !forceResync ? existingSaved.forcedAt : undefined,
         updatedAt: new Date().toISOString()
       };
 
@@ -2752,7 +2772,11 @@ async function createServer() {
       // Combine with savedScores if present
       if (savedScores?.userScores) {
         for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
-          userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, Number(savedPts) || 0);
+          if (savedScores.forcedByAdmin) {
+            userEventPoints[sid] = Number(savedPts) || 0;
+          } else {
+            userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, Number(savedPts) || 0);
+          }
         }
       }
 
@@ -2780,13 +2804,22 @@ async function createServer() {
         }
       });
 
+      // Ensure all profiles assigned to a team are in teamMembers
+      (profiles || []).forEach((p: any) => {
+        const team = uetMap.get(p.steamid) || savedScores?.userTeams?.[p.steamid] || p.team;
+        if (team && team !== 'none' && teamMembers[team]) {
+          teamMembers[team].add(p.steamid);
+        }
+      });
+
       // 7. Build User Standings
       const usersList: any[] = [];
       const allUserIdsInEvent = new Set([
         ...Object.keys(userEventPoints),
         ...(uets || []).map((u: any) => u.steamid),
         ...Object.keys(savedScores?.userTeams || {}),
-        ...Object.keys(savedScores?.userScores || {})
+        ...Object.keys(savedScores?.userScores || {}),
+        ...(profiles || []).filter((p: any) => p.team && p.team !== 'none').map((p: any) => p.steamid)
       ]);
 
       allUserIdsInEvent.forEach((steamid) => {
@@ -2827,9 +2860,11 @@ async function createServer() {
           userPointsSum += (userEventPoints[sid] || 0);
         });
         const liveTotal = userPointsSum + (teamAdjustments[t] || 0);
-        const totalTeamPoints = isCurrentOrActive
-          ? Math.max(liveTotal, Number(savedScores?.teamTotals?.[t]) || 0)
-          : (savedScores?.teamTotals?.[t] !== undefined ? Number(savedScores.teamTotals[t]) : liveTotal);
+        const totalTeamPoints = (savedScores?.forcedByAdmin && savedScores?.teamTotals?.[t] !== undefined)
+          ? Number(savedScores.teamTotals[t])
+          : (isCurrentOrActive
+              ? Math.max(liveTotal, Number(savedScores?.teamTotals?.[t]) || 0)
+              : (savedScores?.teamTotals?.[t] !== undefined ? Number(savedScores.teamTotals[t]) : liveTotal));
         return {
           team: t,
           points: totalTeamPoints,

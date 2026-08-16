@@ -25,28 +25,23 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
   // Fetch events list first
   React.useEffect(() => {
     const handleEvents = (data: any[]) => {
-      const eventList = Array.isArray(data) ? data : [];
+      const rawList = Array.isArray(data) ? data : [];
+      const uniqueMap = new Map();
+      rawList.forEach((e: any) => {
+        if (e?.id && !uniqueMap.has(e.id)) {
+          uniqueMap.set(e.id, e);
+        }
+      });
+      const eventList = Array.from(uniqueMap.values());
+      eventList.sort((a: any, b: any) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
       setEvents(eventList);
       const active = eventList.find(isEventActive);
       if (active) {
         setSelectedEventId(active.id);
       } else if (eventList.length > 0) {
-        setSelectedEventId(eventList[0].id);
+        setSelectedEventId(eventList[eventList.length - 1].id);
       }
     };
-
-    if (isSupabaseConfigured && supabase) {
-      supabase
-        .from('events')
-        .select('*')
-        .order('start_date', { ascending: false })
-        .then(({ data, error }) => {
-          if (!error && data && Array.isArray(data) && data.length > 0) {
-            handleEvents(data);
-          }
-        })
-        .catch(err => console.warn('Supabase fetch events failed:', err));
-    }
 
     fetch('/api/events')
       .then(async res => {
@@ -58,9 +53,28 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           handleEvents(data);
+        } else if (isSupabaseConfigured && supabase) {
+          supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: true })
+            .then(({ data: sbData, error }) => {
+              if (!error && sbData) handleEvents(sbData);
+            });
         }
       })
-      .catch(err => console.warn('Failed to fetch events:', err));
+      .catch(err => {
+        console.warn('Failed to fetch events:', err);
+        if (isSupabaseConfigured && supabase) {
+          supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: true })
+            .then(({ data: sbData, error }) => {
+              if (!error && sbData) handleEvents(sbData);
+            });
+        }
+      });
   }, []);
 
   // Fetch games when selectedEventId changes

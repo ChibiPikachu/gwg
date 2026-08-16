@@ -54,6 +54,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .single();
 
       if (error) throw error;
+
+      if (finalActive && data?.id) {
+        await supabase.from('events').update({ is_active: false }).neq('id', data.id);
+      }
+
       return res.status(200).json(data);
     }
 
@@ -85,6 +90,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .maybeSingle();
 
       if (error) throw error;
+
+      if (updateData.is_active && id) {
+        await supabase.from('events').update({ is_active: false }).neq('id', id);
+      }
+
       return res.status(200).json(data || { success: true });
     }
 

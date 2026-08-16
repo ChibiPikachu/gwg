@@ -366,7 +366,108 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(logs || []);
     }
 
-    // 15. Close Event: POST /api/admin/close-event
+    // 15. Force Event Scores: POST /api/admin/force-event-scores
+    if (path.includes('force-event-scores')) {
+      const { eventId, teamTotals, userScores, teamAdjustments, winnerTeam } = req.body || {};
+      const targetId = eventId || id;
+      if (!targetId) return res.status(400).json({ error: 'eventId is required' });
+
+      const { data: event, error: fetchErr } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', targetId)
+        .maybeSingle();
+
+      if (fetchErr || !event) return res.status(404).json({ error: 'Event not found' });
+
+      let existingSaved: any = {};
+      if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
+        try {
+          const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+          if (match && match[1]) existingSaved = JSON.parse(match[1]);
+        } catch (e) {}
+      }
+
+      const mergedUserScores = {
+        ...(existingSaved.userScores || {}),
+        ...(userScores || {})
+      };
+
+      const mergedTeamAdjustments = {
+        blue: 0, green: 0, purple: 0, red: 0,
+        ...(existingSaved.teamAdjustments || {}),
+        ...(teamAdjustments || {})
+      };
+
+      const mergedTeamTotals = {
+        blue: 0, green: 0, purple: 0, red: 0,
+        ...(existingSaved.teamTotals || {}),
+        ...(teamTotals || {})
+      };
+
+      let finalWinner = winnerTeam;
+      if (!finalWinner) {
+        let maxPts = -1;
+        for (const t of ['blue', 'purple', 'green', 'red']) {
+          if (mergedTeamTotals[t] > maxPts && mergedTeamTotals[t] > 0) {
+            maxPts = mergedTeamTotals[t];
+            finalWinner = t;
+          }
+        }
+      }
+      if (!finalWinner) finalWinner = event.winner_team;
+
+      const newSnapshot = {
+        teamTotals: mergedTeamTotals,
+        userScores: mergedUserScores,
+        userTeams: existingSaved.userTeams || {},
+        teamAdjustments: mergedTeamAdjustments,
+        forcedByAdmin: true,
+        forcedAt: new Date().toISOString()
+      };
+
+      const snapshotStr = `<!--EVENT_SCORES:${JSON.stringify(newSnapshot)}-->`;
+      let updatedDesc = event.description || '';
+      if (updatedDesc.includes('<!--EVENT_SCORES:')) {
+        updatedDesc = updatedDesc.replace(/<!--EVENT_SCORES:.*?-->/s, snapshotStr);
+      } else {
+        updatedDesc = updatedDesc ? `${updatedDesc}\n${snapshotStr}` : snapshotStr;
+      }
+
+      if (finalWinner) {
+        const winnerStr = `<!--WINNER:${finalWinner}-->`;
+        if (updatedDesc.includes('<!--WINNER:')) {
+          updatedDesc = updatedDesc.replace(/<!--WINNER:.*?-->/, winnerStr);
+        } else {
+          updatedDesc = `${updatedDesc}\n${winnerStr}`;
+        }
+      }
+
+      await supabase
+        .from('events')
+        .update({
+          winner_team: finalWinner || event.winner_team,
+          description: updatedDesc
+        })
+        .eq('id', targetId);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Event scores successfully forced and locked!',
+        snapshot: newSnapshot,
+        winnerTeam: finalWinner
+      });
+    }
+
+    // 15.1 Resync Event Scores: POST /api/admin/resync-event-scores
+    if (path.includes('resync-event-scores')) {
+      const targetId = req.body?.eventId || req.body?.id || id;
+      if (!targetId) return res.status(400).json({ error: 'eventId is required' });
+
+      return res.status(200).json({ success: true, message: 'Event scores re-synced successfully' });
+    }
+
+    // 15.2 Close Event: POST /api/admin/close-event
     if (path.includes('close-event')) {
       const eventId = req.body?.id || id;
       if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
@@ -385,17 +486,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (req.method === 'POST') {
         const { title, description, startDate, start_date, endDate, end_date, isActive, is_active, hideScores, hide_scores, winnerTeam, winner_team } = req.body || {};
+        const isAct = isActive !== undefined ? Boolean(isActive) : (is_active !== undefined ? Boolean(is_active) : true);
         const { data, error } = await supabase.from('events').insert([{
           title: title || 'New Event',
           description: description || '',
           start_date: startDate || start_date || new Date().toISOString(),
           end_date: endDate || end_date || new Date().toISOString(),
-          is_active: isActive !== undefined ? isActive : (is_active !== undefined ? is_active : true),
+          is_active: isAct,
           hide_scores: hideScores !== undefined ? hideScores : (hide_scores !== undefined ? hide_scores : false),
           winner_team: (winnerTeam === 'auto' || winner_team === 'auto') ? null : (winnerTeam || winner_team || null)
         }]).select().single();
 
         if (error) throw error;
+
+        if (isAct && data?.id) {
+          await supabase.from('events').update({ is_active: false }).neq('id', data.id);
+        }
+
         return res.status(200).json(data);
       }
 
@@ -418,6 +525,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const { data, error } = await supabase.from('events').update(updateData).eq('id', eventId).select().maybeSingle();
         if (error) throw error;
+
+        if (updateData.is_active && eventId) {
+          await supabase.from('events').update({ is_active: false }).neq('id', eventId);
+        }
+
         return res.status(200).json(data || { success: true });
       }
 

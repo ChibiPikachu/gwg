@@ -54,9 +54,15 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     setResyncingEventId(eventId);
     setResyncSuccessMsg(null);
     try {
+      const userIdHeader = user?.steamId || user?.uid || user?.id || user?.discordId || '';
       const res = await fetch('/api/admin/resync-event-scores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userIdHeader,
+          'x-steam-id': user?.steamId || '',
+          'x-discord-id': user?.discordId || ''
+        },
         body: JSON.stringify({ eventId })
       });
       const data = await res.json();
@@ -75,7 +81,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           return [];
         })
         .then(evts => {
-          if (Array.isArray(evts)) setEvents(evts);
+          if (Array.isArray(evts)) {
+            const uniqueMap = new Map();
+            evts.forEach(e => { if (e?.id && !uniqueMap.has(e.id)) uniqueMap.set(e.id, e); });
+            setEvents(Array.from(uniqueMap.values()));
+          }
         })
         .catch(() => {});
 
@@ -108,13 +118,29 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         setForceTeamTotals(totals);
 
         const uScores: Record<string, number> = {};
-        const members: any[] = [];
+        const membersMap = new Map();
         (data.topUsers || []).forEach((u: any) => {
           uScores[u.steamid] = u.points || 0;
-          members.push(u);
+          membersMap.set(u.steamid, u);
         });
+
+        // Also merge any other users to allow scoring all roster members
+        (users || []).forEach((u: any) => {
+          const sid = u.steamid || u.steamId;
+          if (sid && !membersMap.has(sid)) {
+            membersMap.set(sid, {
+              steamid: sid,
+              steam_name: u.steam_name || u.steamName || 'Member',
+              steam_avatar: u.steam_avatar || u.steamAvatar || '',
+              team: u.team || 'none',
+              points: 0
+            });
+            if (uScores[sid] === undefined) uScores[sid] = 0;
+          }
+        });
+
         setForceUserScores(uScores);
-        setForceMemberDetails(members);
+        setForceMemberDetails(Array.from(membersMap.values()));
       }
     } catch (err) {
       console.error('Failed to prefill force scores modal:', err);
@@ -125,9 +151,15 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     if (!forceModalEventId) return;
     setIsSavingForcedScores(true);
     try {
+      const userIdHeader = user?.steamId || user?.uid || user?.id || user?.discordId || '';
       const res = await fetch('/api/admin/force-event-scores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userIdHeader,
+          'x-steam-id': user?.steamId || '',
+          'x-discord-id': user?.discordId || ''
+        },
         body: JSON.stringify({
           eventId: forceModalEventId,
           teamTotals: forceTeamTotals,
