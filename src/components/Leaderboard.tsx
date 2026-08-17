@@ -42,8 +42,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const [forceScoresModalOpen, setForceScoresModalOpen] = React.useState(false);
   const [forceModalEventId, setForceModalEventId] = React.useState<string | null>(null);
   const [forceModalEventTitle, setForceModalEventTitle] = React.useState<string>('');
-  const [forceTeamTotals, setForceTeamTotals] = React.useState<Record<string, number>>({ blue: 0, green: 0, purple: 0, red: 0 });
-  const [forceUserScores, setForceUserScores] = React.useState<Record<string, number>>({});
+  const [forceTeamTotals, setForceTeamTotals] = React.useState<Record<string, string | number>>({ blue: '0', green: '0', purple: '0', red: '0' });
+  const [forceUserScores, setForceUserScores] = React.useState<Record<string, string | number>>({});
+  const [forceWinnerTeam, setForceWinnerTeam] = React.useState<string>('auto');
   const [forceMemberDetails, setForceMemberDetails] = React.useState<any[]>([]);
   const [forceMemberSearch, setForceMemberSearch] = React.useState('');
   const [isSavingForcedScores, setIsSavingForcedScores] = React.useState(false);
@@ -128,18 +129,21 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       const res = await fetch(`/api/leaderboard/event/${eventId}`);
       const data = await res.json();
       if (res.ok) {
-        const totals: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
-        (data.standings || []).forEach((s: any) => {
-          if (s.team) totals[s.team] = s.points || 0;
-        });
+        const totals: Record<string, string | number> = { blue: '0', green: '0', purple: '0', red: '0' };
+        if (data.standings && Array.isArray(data.standings)) {
+          data.standings.forEach((s: any) => {
+            if (s.team) totals[s.team] = String(s.points || 0);
+          });
+        }
         setForceTeamTotals(totals);
+        setForceWinnerTeam(data.event?.winner_team || 'auto');
 
-        const uScores: Record<string, number> = {};
+        const uScores: Record<string, string | number> = {};
         const membersMap = new Map();
         (data.topUsers || []).forEach((u: any) => {
           const sid = String(u.steamid || u.steamId || u.discord_id || u.discordId || u.id || '');
           if (sid) {
-            uScores[sid] = Number(u.points) || 0;
+            uScores[sid] = String(u.points || 0);
             const avatar = (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || '');
             membersMap.set(sid, {
               ...u,
@@ -161,7 +165,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               team: u.team || 'none',
               points: 0
             });
-            if (uScores[sid] === undefined) uScores[sid] = 0;
+            if (uScores[sid] === undefined) uScores[sid] = '0';
           }
         });
 
@@ -177,6 +181,20 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     if (!forceModalEventId) return;
     setIsSavingForcedScores(true);
     try {
+      const cleanedTeamTotals: Record<string, number> = {
+        blue: Number(forceTeamTotals.blue) || 0,
+        green: Number(forceTeamTotals.green) || 0,
+        purple: Number(forceTeamTotals.purple) || 0,
+        red: Number(forceTeamTotals.red) || 0
+      };
+
+      const cleanedUserScores: Record<string, number> = {};
+      Object.entries(forceUserScores).forEach(([k, v]) => {
+        if (v !== '' && v !== null && v !== undefined) {
+          cleanedUserScores[k] = Number(v) || 0;
+        }
+      });
+
       const userIdHeader = user?.steamId || user?.uid || user?.id || user?.discordId || '';
       const res = await fetch('/api/admin/force-event-scores', {
         method: 'POST',
@@ -188,8 +206,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         },
         body: JSON.stringify({
           eventId: forceModalEventId,
-          teamTotals: forceTeamTotals,
-          userScores: forceUserScores
+          teamTotals: cleanedTeamTotals,
+          userScores: cleanedUserScores,
+          winnerTeam: forceWinnerTeam === 'auto' ? undefined : forceWinnerTeam
         })
       });
       const data = await res.json();
@@ -1429,7 +1448,24 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
               {/* Team Totals Override */}
               <div className="space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Team Totals Override</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Team Totals Override</h4>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">Champion:</span>
+                    <select
+                      value={forceWinnerTeam}
+                      onChange={(e) => setForceWinnerTeam(e.target.value)}
+                      className="bg-black/60 border border-white/10 text-white text-xs rounded-xl px-2.5 py-1 focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="auto">Auto (Highest Score)</option>
+                      <option value="blue">Team Blue 🔵</option>
+                      <option value="purple">Team Purple 🟣</option>
+                      <option value="green">Team Green 🟢</option>
+                      <option value="red">Team Red 🔴</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {(['blue', 'purple', 'green', 'red'] as const).map(team => (
                     <div key={team} className="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-1.5">
@@ -1437,9 +1473,17 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         {team} Team
                       </span>
                       <input
-                        type="number"
-                        value={forceTeamTotals[team] ?? 0}
-                        onChange={(e) => setForceTeamTotals(prev => ({ ...prev, [team]: parseInt(e.target.value) || 0 }))}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={forceTeamTotals[team] !== undefined && forceTeamTotals[team] !== null ? String(forceTeamTotals[team]) : ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^\d+$/.test(val)) {
+                            setForceTeamTotals(prev => ({ ...prev, [team]: val }));
+                          }
+                        }}
+                        placeholder="0"
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 font-mono text-sm font-bold text-white focus:outline-none focus:border-purple-500"
                       />
                     </div>
@@ -1450,13 +1494,16 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               {/* Member Scores Override */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Member Score Overrides</h4>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Member Score Overrides (Optional)</h4>
+                    <p className="text-[10px] text-white/40">Only necessary if you want individual member scores to show in the roster breakdown.</p>
+                  </div>
                   <input
                     type="text"
                     placeholder="Filter member..."
                     value={forceMemberSearch}
                     onChange={(e) => setForceMemberSearch(e.target.value)}
-                    className="px-3 py-1 text-xs bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-slate-500 w-44"
+                    className="px-3 py-1 text-xs bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-slate-500 w-44 shrink-0"
                   />
                 </div>
 
@@ -1479,9 +1526,17 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-[10px] uppercase text-white/40 font-bold">Pts:</span>
                           <input
-                            type="number"
-                            value={forceUserScores[m.steamid] ?? 0}
-                            onChange={(e) => setForceUserScores(prev => ({ ...prev, [m.steamid]: parseInt(e.target.value) || 0 }))}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={forceUserScores[m.steamid] !== undefined && forceUserScores[m.steamid] !== null ? String(forceUserScores[m.steamid]) : ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '' || /^\d+$/.test(val)) {
+                                setForceUserScores(prev => ({ ...prev, [m.steamid]: val }));
+                              }
+                            }}
+                            placeholder="0"
                             className="w-24 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 font-mono text-xs font-bold text-slate-400 focus:outline-none focus:border-slate-500 text-right"
                           />
                         </div>

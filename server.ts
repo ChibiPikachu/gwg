@@ -2041,6 +2041,27 @@ async function createServer() {
         const match = event.description.match(/<!--WINNER:(.*?)-->/);
         if (match && match[1]) {
           winnerTeam = match[1];
+        } else {
+          const matchScores = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+          if (matchScores && matchScores[1]) {
+            try {
+              const parsed = JSON.parse(matchScores[1]);
+              if (parsed.winnerTeam) {
+                winnerTeam = parsed.winnerTeam;
+              } else if (parsed.teamTotals) {
+                let maxPts = -1;
+                let topTeam: string | null = null;
+                for (const [t, pts] of Object.entries(parsed.teamTotals)) {
+                  const num = Number(pts) || 0;
+                  if (num > maxPts && num > 0) {
+                    maxPts = num;
+                    topTeam = t;
+                  }
+                }
+                if (topTeam) winnerTeam = topTeam;
+              }
+            } catch (e) {}
+          }
         }
       }
 
@@ -2269,9 +2290,12 @@ async function createServer() {
 
       const newSnapshot = {
         teamTotals,
-        userScores,
+        userScores: (existingSaved?.forcedByAdmin && existingSaved?.userScores && !forceResync)
+          ? { ...userScores, ...existingSaved.userScores }
+          : userScores,
         userTeams,
         teamAdjustments,
+        winnerTeam: winnerTeam || existingSaved?.winnerTeam || event.winner_team,
         forcedByAdmin: existingSaved?.forcedByAdmin && !forceResync ? true : undefined,
         forcedAt: existingSaved?.forcedByAdmin && !forceResync ? existingSaved.forcedAt : undefined,
         updatedAt: new Date().toISOString()
