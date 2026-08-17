@@ -49,6 +49,21 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   const [isSavingForcedScores, setIsSavingForcedScores] = React.useState(false);
   const [adminPopupMsg, setAdminPopupMsg] = React.useState<{ title: string; message: string } | null>(null);
 
+  const getEventSnapshot = (evt: any) => {
+    if (!evt) return null;
+    if (evt.snapshot && typeof evt.snapshot === 'object') return evt.snapshot;
+    if (!evt.description) return null;
+    const match = evt.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+    if (match && match[1]) {
+      try {
+        return JSON.parse(match[1]);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
   const handleResyncEventScores = async (eventId: string, title?: string) => {
     if (!eventId) return;
     setResyncingEventId(eventId);
@@ -68,10 +83,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to re-sync event scores');
 
-      if (activeTab === 'previous' && selectedPreviousEventId === eventId) {
-        fetchPreviousEventLeaderboard(eventId);
-      }
+      fetchPreviousEventLeaderboard(eventId);
       fetchUsers();
+      fetchAdjustments();
 
       fetch('/api/events')
         .then(async r => {
@@ -84,7 +98,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           if (Array.isArray(evts)) {
             const uniqueMap = new Map();
             evts.forEach(e => { if (e?.id && !uniqueMap.has(e.id)) uniqueMap.set(e.id, e); });
-            setEvents(Array.from(uniqueMap.values()));
+            const allEvts = Array.from(uniqueMap.values());
+            setEvents(allEvts);
+            const active = allEvts.find((e: any) => e.is_active);
+            if (active) setActiveEvent(active);
           }
         })
         .catch(() => {});
@@ -120,22 +137,31 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         const uScores: Record<string, number> = {};
         const membersMap = new Map();
         (data.topUsers || []).forEach((u: any) => {
-          uScores[u.steamid] = u.points || 0;
-          membersMap.set(u.steamid, u);
+          const sid = String(u.steamid || u.steamId || u.discord_id || u.discordId || u.id || '');
+          if (sid) {
+            uScores[sid] = u.points || 0;
+            const avatar = (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || '');
+            membersMap.set(sid, {
+              ...u,
+              steamid: sid,
+              steam_avatar: avatar
+            });
+          }
         });
 
         // Also merge any other users to allow scoring all roster members
         (users || []).forEach((u: any) => {
-          const sid = u.steamid || u.steamId;
+          const sid = String(u.steamid || u.steamId || u.discord_id || u.discordId || u.uid || u.id || '');
           if (sid && !membersMap.has(sid)) {
+            const avatar = (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || '');
             membersMap.set(sid, {
               steamid: sid,
-              steam_name: u.steam_name || u.steamName || 'Member',
-              steam_avatar: u.steam_avatar || u.steamAvatar || '',
+              steam_name: u.steam_name || u.steamName || u.discord_name || 'Member',
+              steam_avatar: avatar,
               team: u.team || 'none',
-              points: 0
+              points: u.points || 0
             });
-            if (uScores[sid] === undefined) uScores[sid] = 0;
+            if (uScores[sid] === undefined) uScores[sid] = u.points || 0;
           }
         });
 
@@ -171,10 +197,29 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
       setForceScoresModalOpen(false);
       
-      if (activeTab === 'previous' && selectedPreviousEventId === forceModalEventId) {
-        fetchPreviousEventLeaderboard(forceModalEventId);
-      }
+      fetchPreviousEventLeaderboard(forceModalEventId);
       fetchUsers();
+      fetchAdjustments();
+
+      // Refetch events so activeEvent description & snapshots are updated in state
+      fetch('/api/events')
+        .then(async r => {
+          if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
+            return r.json();
+          }
+          return [];
+        })
+        .then(evts => {
+          if (Array.isArray(evts)) {
+            const uniqueMap = new Map();
+            evts.forEach(e => { if (e?.id && !uniqueMap.has(e.id)) uniqueMap.set(e.id, e); });
+            const allEvts = Array.from(uniqueMap.values());
+            setEvents(allEvts);
+            const active = allEvts.find((e: any) => e.is_active);
+            if (active) setActiveEvent(active);
+          }
+        })
+        .catch(() => {});
 
       setAdminPopupMsg({
         title: 'Scores Forced Successfully',
@@ -352,6 +397,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
   const hideScores = !!activeEvent?.hide_scores;
 
+  const activeEventSnapshot = React.useMemo(() => {
+    return getEventSnapshot(activeEvent);
+  }, [activeEvent]);
+
   const safeUsers = React.useMemo(() => {
     if (!Array.isArray(users)) return [];
 
@@ -359,6 +408,19 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       const uSteamId = String(u.steamid || u.steamId || '');
       const uDiscordId = String(u.discord_id || u.discordId || '');
       const uUid = String(u.uid || u.id || '');
+
+      // Check if user has an explicit forced score in active event snapshot
+      if (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.userScores) {
+        const candidateIds = [uSteamId, uDiscordId, `discord_${uDiscordId}`, uUid].filter(Boolean);
+        for (const cid of candidateIds) {
+          if (activeEventSnapshot.userScores[cid] !== undefined) {
+            return {
+              ...u,
+              points: Number(activeEventSnapshot.userScores[cid]) || 0
+            };
+          }
+        }
+      }
 
       const userAdjs = (adjustments || []).filter(a => {
         const adjUserId = String(a.user_id || a.userId || '');
@@ -383,7 +445,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       }
       return (Number(b.points) || 0) - (Number(a.points) || 0);
     });
-  }, [users, adjustments, hideScores]);
+  }, [users, adjustments, hideScores, activeEventSnapshot]);
 
   const filteredUsers = React.useMemo(() => {
     return safeUsers.map((u, originalRankIndex) => ({ ...u, originalRank: originalRankIndex + 1 })).filter(u => {
@@ -431,10 +493,38 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   };
 
   const standings = [
-    { team: 'blue', points: safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('blue'), members: safeUsers.filter(u => u.team === 'blue').length, rank: 1 },
-    { team: 'purple', points: safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('purple'), members: safeUsers.filter(u => u.team === 'purple').length, rank: 2 },
-    { team: 'green', points: safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('green'), members: safeUsers.filter(u => u.team === 'green').length, rank: 3 },
-    { team: 'red', points: safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('red'), members: safeUsers.filter(u => u.team === 'red').length, rank: 4 },
+    {
+      team: 'blue',
+      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.blue !== undefined)
+        ? Number(activeEventSnapshot.teamTotals.blue)
+        : safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('blue'),
+      members: safeUsers.filter(u => u.team === 'blue').length,
+      rank: 1
+    },
+    {
+      team: 'purple',
+      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.purple !== undefined)
+        ? Number(activeEventSnapshot.teamTotals.purple)
+        : safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('purple'),
+      members: safeUsers.filter(u => u.team === 'purple').length,
+      rank: 2
+    },
+    {
+      team: 'green',
+      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.green !== undefined)
+        ? Number(activeEventSnapshot.teamTotals.green)
+        : safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('green'),
+      members: safeUsers.filter(u => u.team === 'green').length,
+      rank: 3
+    },
+    {
+      team: 'red',
+      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.red !== undefined)
+        ? Number(activeEventSnapshot.teamTotals.red)
+        : safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('red'),
+      members: safeUsers.filter(u => u.team === 'red').length,
+      rank: 4
+    },
   ].sort((a, b) => hideScores ? a.team.localeCompare(b.team) : b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
   const previousEvents = events.filter((e: any) => !e.is_active);
@@ -1366,7 +1456,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     .map(m => (
                       <div key={m.steamid} className="p-3 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <img src={m.steam_avatar || m.active_avatar || 'https://avatars.githubusercontent.com/u/0'} className="w-8 h-8 rounded-full object-cover border border-white/10 shrink-0" referrerPolicy="no-referrer" />
+                          <img 
+                            src={(m.steam_avatar && m.steam_avatar.startsWith('http')) ? m.steam_avatar : ((m.discord_avatar && m.discord_avatar.startsWith('http')) ? m.discord_avatar : 'https://avatars.githubusercontent.com/u/0')} 
+                            className="w-8 h-8 rounded-full object-cover border border-white/10 shrink-0" 
+                            referrerPolicy="no-referrer" 
+                          />
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-white truncate">{m.steam_name || m.discord_name || 'Member'}</p>
                             <p className="text-[10px] text-white/40 font-mono">Team: {m.team || 'none'}</p>
