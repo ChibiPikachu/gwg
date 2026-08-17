@@ -2653,6 +2653,7 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const { eventId } = req.params;
+    console.log(`\n[Leaderboard API] === Fetching event leaderboard for eventId: "${eventId}" ===`);
 
     try {
       // 1. Fetch event metadata
@@ -2663,8 +2664,11 @@ async function createServer() {
         .maybeSingle();
 
       if (eventErr || !event) {
+        console.warn(`[Leaderboard API] Event not found or query error for eventId: "${eventId}"`, eventErr);
         return res.status(404).json({ error: 'Event not found' });
       }
+
+      console.log(`[Leaderboard API] Event found: "${event.title || event.name}" (ID: ${event.id}, is_active: ${event.is_active})`);
 
       // 1.5 Parse saved score snapshot if available
       let savedScores: any = null;
@@ -2673,20 +2677,31 @@ async function createServer() {
           const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
           if (match && match[1]) {
             savedScores = JSON.parse(match[1]);
+            console.log(`[Leaderboard API] Parsed saved score snapshot. forcedByAdmin: ${Boolean(savedScores?.forcedByAdmin)}, forcedAt: ${savedScores?.forcedAt || 'N/A'}`);
+            if (savedScores?.forcedByAdmin) {
+              console.log(`[Leaderboard API] Forced team totals:`, savedScores?.teamTotals);
+              console.log(`[Leaderboard API] Forced user scores count: ${Object.keys(savedScores?.userScores || {}).length}`);
+            }
           }
         } catch (e) {
-          console.warn('Failed to parse saved EVENT_SCORES:', e);
+          console.warn('[Leaderboard API] Failed to parse saved EVENT_SCORES:', e);
         }
+      } else {
+        console.log(`[Leaderboard API] No saved score snapshot in event description.`);
       }
 
       // If event is not active and missing snapshot, generate & save snapshot now
       if (!event.is_active && !savedScores) {
+        console.log(`[Leaderboard API] Event is inactive and lacks snapshot. Auto-generating snapshot...`);
         await ensureEventScoresSaved(supabase, eventId);
         const { data: reFetchedEv } = await supabase.from('events').select('description').eq('id', eventId).maybeSingle();
         if (reFetchedEv?.description && reFetchedEv.description.includes('<!--EVENT_SCORES:')) {
           try {
             const match = reFetchedEv.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
-            if (match && match[1]) savedScores = JSON.parse(match[1]);
+            if (match && match[1]) {
+              savedScores = JSON.parse(match[1]);
+              console.log(`[Leaderboard API] Generated and loaded initial snapshot:`, savedScores?.teamTotals);
+            }
           } catch (e) {}
         }
       }
@@ -2713,6 +2728,7 @@ async function createServer() {
 
       const { data: eventSubs, error: subErr } = await subQuery;
       if (subErr) throw subErr;
+      console.log(`[Leaderboard API] Verified submissions retrieved: ${eventSubs?.length || 0}`);
 
       // 3. Fetch user_event_teams for this event
       const { data: uets } = await supabase
@@ -2771,6 +2787,7 @@ async function createServer() {
 
       // Combine with savedScores if present
       if (savedScores?.forcedByAdmin && savedScores?.userScores) {
+        console.log(`[Leaderboard API] Applying authoritative forced user scores (count: ${Object.keys(savedScores.userScores).length})...`);
         // When forced by admin, the forced userScores dictionary is authoritative
         Object.keys(userEventPoints).forEach(k => {
           userEventPoints[k] = 0;
@@ -2944,6 +2961,11 @@ async function createServer() {
       teamStandings.sort((a, b) => b.points - a.points);
       teamStandings.forEach((s, idx) => { s.rank = idx + 1; });
 
+      console.log(`[Leaderboard API] Standings calculated successfully for "${event.title || event.name}":`);
+      console.log(`[Leaderboard API] Team Standings:`, teamStandings.map(t => `${t.team}: ${t.points} pts (${t.members} members)`).join(' | '));
+      const topSample = allUsers.slice(0, 5).map(u => `${u.steam_name} (${u.team}): ${u.points} pts`).join(', ');
+      console.log(`[Leaderboard API] User Standings (Top 5 of ${allUsers.length}):`, topSample || 'None');
+
       res.json({
         event: {
           id: event.id,
@@ -2960,7 +2982,7 @@ async function createServer() {
         adjustments: adjustmentLogs
       });
     } catch (err: any) {
-      console.error('Failed to fetch event leaderboard:', err);
+      console.error('[Leaderboard API] Failed to fetch event leaderboard:', err);
       res.status(500).json({ error: 'Internal server error', details: err.message });
     }
   });
@@ -2971,6 +2993,7 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const { eventId } = req.body;
+    console.log(`\n[Admin API] === Request to re-sync event scores for eventId: "${eventId}" ===`);
     if (!eventId) return res.status(400).json({ error: 'eventId is required' });
 
     try {
@@ -2984,12 +3007,14 @@ async function createServer() {
         .maybeSingle();
 
       if (error || !updatedEvent) {
+        console.warn(`[Admin API] Event not found during resync for eventId: "${eventId}"`);
         return res.status(404).json({ error: 'Event not found' });
       }
 
+      console.log(`[Admin API] Successfully re-synced scores for "${updatedEvent.title || updatedEvent.name}"`);
       res.json({ success: true, event: updatedEvent });
     } catch (err: any) {
-      console.error('Failed to resync event scores:', err);
+      console.error('[Admin API] Failed to resync event scores:', err);
       res.status(500).json({ error: 'Failed to resync event scores', details: err.message });
     }
   });
@@ -3000,6 +3025,9 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const { eventId, teamTotals, userScores, teamAdjustments, winnerTeam } = req.body;
+    console.log(`\n[Admin API] === Request to FORCE event scores for eventId: "${eventId}" ===`);
+    console.log(`[Admin API] Payload: teamTotals=`, teamTotals, `userScores count=${Object.keys(userScores || {}).length}, winnerTeam=${winnerTeam}`);
+
     if (!eventId) return res.status(400).json({ error: 'eventId is required' });
 
     try {
@@ -3098,6 +3126,9 @@ async function createServer() {
         })
         .eq('id', eventId);
 
+      console.log(`[Admin API] Successfully wrote forced snapshot to database for event "${event.title || event.name}" (ID: ${eventId}).`);
+      console.log(`[Admin API] Final Forced Standings:`, mergedTeamTotals, `Winner: ${finalWinner}`);
+
       res.json({
         success: true,
         message: 'Event scores successfully forced and locked!',
@@ -3105,7 +3136,7 @@ async function createServer() {
         winnerTeam: finalWinner
       });
     } catch (err: any) {
-      console.error('Failed to force event scores:', err);
+      console.error('[Admin API] Failed to force event scores:', err);
       res.status(500).json({ error: 'Failed to force event scores', details: err.message });
     }
   });
