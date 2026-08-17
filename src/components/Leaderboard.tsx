@@ -119,24 +119,109 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
   };
 
+  const buildPreviousEventDataFromSnapshot = React.useCallback((evt: any, allProfiles: any[] = users) => {
+    if (!evt) return null;
+    const snapshot = getEventSnapshot(evt);
+    const teamTotals: Record<string, number> = {
+      blue: Number(snapshot?.teamTotals?.blue ?? 0),
+      green: Number(snapshot?.teamTotals?.green ?? 0),
+      purple: Number(snapshot?.teamTotals?.purple ?? 0),
+      red: Number(snapshot?.teamTotals?.red ?? 0)
+    };
+
+    let winnerTeam: string | null = evt.winner_team || snapshot?.winnerTeam || null;
+    if (!winnerTeam) {
+      let maxPts = -1;
+      for (const [t, pts] of Object.entries(teamTotals)) {
+        if (pts > maxPts && pts > 0) {
+          maxPts = pts;
+          winnerTeam = t;
+        }
+      }
+    }
+
+    const teamStandings = (['blue', 'purple', 'green', 'red'] as const).map(team => {
+      const memberCount = allProfiles.filter(p => (snapshot?.userTeams?.[p.steamid] || p.team) === team).length;
+      return {
+        team,
+        points: teamTotals[team] || 0,
+        members: memberCount,
+        rank: 1
+      };
+    }).sort((a, b) => b.points - a.points).map((s, idx) => ({ ...s, rank: idx + 1 }));
+
+    const topUsers = allProfiles.map((p, idx) => {
+      const userTeam = snapshot?.userTeams?.[p.steamid] || p.team || 'none';
+      const userPoints = Number(snapshot?.userScores?.[p.steamid] ?? 0);
+      return {
+        steamid: p.steamid,
+        steam_name: p.steam_name || p.discord_name || 'Member',
+        steam_avatar: p.steam_avatar || p.discord_avatar || '',
+        discord_name: p.discord_name || null,
+        team: userTeam,
+        points: userPoints,
+        rank: idx + 1
+      };
+    }).sort((a, b) => b.points - a.points).map((u, idx) => ({ ...u, rank: idx + 1 }));
+
+    return {
+      event: {
+        id: evt.id,
+        title: evt.title,
+        is_active: evt.is_active,
+        winner_team: winnerTeam,
+        start_date: evt.start_date,
+        end_date: evt.end_date,
+        description: evt.description
+      },
+      standings: teamStandings,
+      topUsers,
+      totalParticipants: topUsers.length,
+      adjustments: []
+    };
+  }, [users]);
+
   const openForceScoresModal = async (eventId: string, title: string) => {
     setForceModalEventId(eventId);
     setForceModalEventTitle(title);
     setForceScoresModalOpen(true);
     setForceMemberSearch('');
+
+    const targetEvt = events.find((e: any) => e.id === eventId);
+    const existingSnapshot = getEventSnapshot(targetEvt);
+
+    // Initial prefill from existing snapshot if present
+    if (existingSnapshot?.teamTotals) {
+      const initTotals: Record<string, string | number> = {
+        blue: String(existingSnapshot.teamTotals.blue ?? 0),
+        green: String(existingSnapshot.teamTotals.green ?? 0),
+        purple: String(existingSnapshot.teamTotals.purple ?? 0),
+        red: String(existingSnapshot.teamTotals.red ?? 0)
+      };
+      setForceTeamTotals(initTotals);
+    } else {
+      setForceTeamTotals({ blue: '0', green: '0', purple: '0', red: '0' });
+    }
+
+    setForceWinnerTeam(targetEvt?.winner_team || existingSnapshot?.winnerTeam || 'auto');
     
     try {
       const res = await fetch(`/api/leaderboard/event/${eventId}`);
-      const data = await res.json();
       if (res.ok) {
+        const data = await res.json();
         const totals: Record<string, string | number> = { blue: '0', green: '0', purple: '0', red: '0' };
         if (data.standings && Array.isArray(data.standings)) {
           data.standings.forEach((s: any) => {
             if (s.team) totals[s.team] = String(s.points || 0);
           });
         }
-        setForceTeamTotals(totals);
-        setForceWinnerTeam(data.event?.winner_team || 'auto');
+        // Only override if standings has actual values or snapshot didn't exist
+        if (Object.values(totals).some(v => Number(v) > 0) || !existingSnapshot?.teamTotals) {
+          setForceTeamTotals(totals);
+        }
+        if (data.event?.winner_team) {
+          setForceWinnerTeam(data.event.winner_team);
+        }
 
         const uScores: Record<string, string | number> = {};
         const membersMap = new Map();
@@ -153,7 +238,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           }
         });
 
-        // Merge any other roster users to allow scoring all members WITHOUT autofilling active event points
+        // Merge any other roster users
         (users || []).forEach((u: any) => {
           const sid = String(u.steamid || u.steamId || u.discord_id || u.discordId || u.uid || u.id || '');
           if (sid && !membersMap.has(sid)) {
@@ -173,7 +258,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         setForceMemberDetails(Array.from(membersMap.values()));
       }
     } catch (err) {
-      console.error('Failed to prefill force scores modal:', err);
+      console.error('Failed to prefill force scores modal from API:', err);
     }
   };
 
@@ -195,6 +280,60 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         }
       });
 
+      let calculatedWinner = forceWinnerTeam === 'auto' ? undefined : forceWinnerTeam;
+      if (!calculatedWinner) {
+        let maxP = -1;
+        for (const [t, p] of Object.entries(cleanedTeamTotals)) {
+          if (p > maxP && p > 0) {
+            maxP = p;
+            calculatedWinner = t;
+          }
+        }
+      }
+
+      // Direct client-side Supabase write if available for instant durability
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data: currentEv } = await supabase
+            .from('events')
+            .select('*')
+            .eq('id', forceModalEventId)
+            .maybeSingle();
+
+          if (currentEv) {
+            let existingDesc = currentEv.description || '';
+            const newSnapshot = {
+              teamTotals: cleanedTeamTotals,
+              userScores: cleanedUserScores,
+              forcedByAdmin: true,
+              forcedAt: new Date().toISOString(),
+              winnerTeam: calculatedWinner || currentEv.winner_team
+            };
+            const snapshotStr = `<!--EVENT_SCORES:${JSON.stringify(newSnapshot)}-->`;
+            let updatedDesc = existingDesc.includes('<!--EVENT_SCORES:')
+              ? existingDesc.replace(/<!--EVENT_SCORES:.*?-->/s, snapshotStr)
+              : (existingDesc ? `${existingDesc}\n${snapshotStr}` : snapshotStr);
+
+            if (calculatedWinner) {
+              const winnerStr = `<!--WINNER:${calculatedWinner}-->`;
+              updatedDesc = updatedDesc.includes('<!--WINNER:')
+                ? updatedDesc.replace(/<!--WINNER:.*?-->/, winnerStr)
+                : `${updatedDesc}\n${winnerStr}`;
+            }
+
+            await supabase
+              .from('events')
+              .update({
+                description: updatedDesc,
+                winner_team: calculatedWinner || currentEv.winner_team
+              })
+              .eq('id', forceModalEventId);
+          }
+        } catch (clientErr) {
+          console.warn('Client Supabase direct update exception in force scores:', clientErr);
+        }
+      }
+
       const userIdHeader = user?.steamId || user?.uid || user?.id || user?.discordId || '';
       const res = await fetch('/api/admin/force-event-scores', {
         method: 'POST',
@@ -208,19 +347,54 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           eventId: forceModalEventId,
           teamTotals: cleanedTeamTotals,
           userScores: cleanedUserScores,
-          winnerTeam: forceWinnerTeam === 'auto' ? undefined : forceWinnerTeam
+          winnerTeam: calculatedWinner
         })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to force scores');
+
+      let updatedSnapshotObj: any = null;
+      if (res.ok) {
+        const data = await res.json();
+        updatedSnapshotObj = data.snapshot;
+      }
 
       setForceScoresModalOpen(false);
+
+      // Create synthetic updated event object for immediate UI responsiveness
+      const targetEvtIndex = events.findIndex((e: any) => e.id === forceModalEventId);
+      if (targetEvtIndex !== -1) {
+        const updatedEvts = [...events];
+        const oldEvt = updatedEvts[targetEvtIndex];
+        const newSnap = updatedSnapshotObj || {
+          teamTotals: cleanedTeamTotals,
+          userScores: cleanedUserScores,
+          forcedByAdmin: true,
+          winnerTeam: calculatedWinner || oldEvt.winner_team
+        };
+        const updatedEvt = {
+          ...oldEvt,
+          winner_team: calculatedWinner || oldEvt.winner_team,
+          snapshot: newSnap,
+          description: oldEvt.description
+            ? (oldEvt.description.includes('<!--EVENT_SCORES:')
+                ? oldEvt.description.replace(/<!--EVENT_SCORES:.*?-->/s, `<!--EVENT_SCORES:${JSON.stringify(newSnap)}-->`)
+                : `${oldEvt.description}\n<!--EVENT_SCORES:${JSON.stringify(newSnap)}-->`)
+            : `<!--EVENT_SCORES:${JSON.stringify(newSnap)}-->`
+        };
+        updatedEvts[targetEvtIndex] = updatedEvt;
+        setEvents(updatedEvts);
+
+        // Update active view immediately
+        const localData = buildPreviousEventDataFromSnapshot(updatedEvt);
+        if (localData) {
+          setPreviousEventData(localData);
+        }
+      }
       
       fetchPreviousEventLeaderboard(forceModalEventId);
       fetchUsers();
       fetchAdjustments();
 
-      // Refetch events so activeEvent description & snapshots are updated in state
+      // Refetch events from backend to ensure consistent state
       fetch('/api/events')
         .then(async r => {
           if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
@@ -238,7 +412,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             if (active) setActiveEvent(active);
             const targetEvt = allEvts.find((e: any) => e.id === forceModalEventId);
             if (targetEvt && !targetEvt.is_active) {
-              fetchPreviousEventLeaderboard(targetEvt.id);
+              fetchPreviousEventLeaderboard(targetEvt.id, allEvts);
             }
           }
         })
@@ -310,19 +484,34 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       });
   }, []);
 
-  const fetchPreviousEventLeaderboard = React.useCallback((eventId: string) => {
+  const fetchPreviousEventLeaderboard = React.useCallback(async (eventId: string, currentEventsList?: any[]) => {
     setLoadingPrevious(true);
-    fetch(`/api/leaderboard/event/${eventId}`)
-      .then(res => res.json())
-      .then(data => {
-        setPreviousEventData(data);
-        setLoadingPrevious(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch previous event leaderboard:', err);
-        setLoadingPrevious(false);
-      });
-  }, []);
+    const evtsList = currentEventsList || events;
+    const targetEvt = evtsList.find((e: any) => e.id === eventId);
+
+    try {
+      const res = await fetch(`/api/leaderboard/event/${eventId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const hasScores = data.standings && data.standings.some((s: any) => Number(s.points) > 0);
+        if (hasScores || !targetEvt) {
+          setPreviousEventData(data);
+          setLoadingPrevious(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('API fetch for previous event leaderboard failed:', err);
+    }
+
+    if (targetEvt) {
+      const localData = buildPreviousEventDataFromSnapshot(targetEvt);
+      if (localData) {
+        setPreviousEventData(localData);
+      }
+    }
+    setLoadingPrevious(false);
+  }, [events, buildPreviousEventDataFromSnapshot]);
 
   React.useEffect(() => {
     fetchUsers();

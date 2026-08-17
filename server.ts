@@ -325,7 +325,7 @@ async function snapshotEventTeams(supabase: any, eventId: string) {
 function getSupabase() {
   if (!supabaseClient) {
     const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY;
     
     if (!url || !key) {
       console.warn('Supabase credentials missing. Session persistence and profile sync will fail.');
@@ -3142,13 +3142,18 @@ async function createServer() {
         }
       }
 
-      await supabase
+      const { error: updateErr } = await supabase
         .from('events')
         .update({
           winner_team: finalWinner || event.winner_team,
           description: updatedDesc
         })
         .eq('id', eventId);
+
+      if (updateErr) {
+        console.error('[Admin API] Database update error in force-event-scores:', updateErr);
+        throw updateErr;
+      }
 
       console.log(`[Admin API] Successfully wrote forced snapshot to database for event "${event.title || event.name}" (ID: ${eventId}).`);
       console.log(`[Admin API] Final Forced Standings:`, mergedTeamTotals, `Winner: ${finalWinner}`);
