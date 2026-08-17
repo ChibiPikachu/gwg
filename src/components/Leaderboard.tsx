@@ -119,8 +119,15 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
   };
 
-  const buildPreviousEventDataFromSnapshot = React.useCallback((evt: any, allProfiles: any[] = users) => {
+  // Refs to decouple callbacks from rapid state updates and prevent re-render loops
+  const eventsRef = React.useRef<any[]>([]);
+  const usersRef = React.useRef<any[]>([]);
+  eventsRef.current = events;
+  usersRef.current = users;
+
+  const buildPreviousEventDataFromSnapshot = React.useCallback((evt: any, allProfiles?: any[]) => {
     if (!evt) return null;
+    const profiles = allProfiles || usersRef.current || [];
     const snapshot = getEventSnapshot(evt);
     const teamTotals: Record<string, number> = {
       blue: Number(snapshot?.teamTotals?.blue ?? 0),
@@ -141,7 +148,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
 
     const teamStandings = (['blue', 'purple', 'green', 'red'] as const).map(team => {
-      const memberCount = allProfiles.filter(p => (snapshot?.userTeams?.[p.steamid] || p.team) === team).length;
+      const memberCount = profiles.filter(p => (snapshot?.userTeams?.[p.steamid] || p.team) === team).length;
       return {
         team,
         points: teamTotals[team] || 0,
@@ -150,7 +157,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       };
     }).sort((a, b) => b.points - a.points).map((s, idx) => ({ ...s, rank: idx + 1 }));
 
-    const topUsers = allProfiles.map((p, idx) => {
+    const topUsers = profiles.map((p, idx) => {
       const userTeam = snapshot?.userTeams?.[p.steamid] || p.team || 'none';
       const userPoints = Number(snapshot?.userScores?.[p.steamid] ?? 0);
       return {
@@ -179,7 +186,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       totalParticipants: topUsers.length,
       adjustments: []
     };
-  }, [users]);
+  }, []);
 
   const openForceScoresModal = async (eventId: string, title: string) => {
     setForceModalEventId(eventId);
@@ -485,8 +492,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   }, []);
 
   const fetchPreviousEventLeaderboard = React.useCallback(async (eventId: string, currentEventsList?: any[]) => {
+    if (!eventId) return;
     setLoadingPrevious(true);
-    const evtsList = currentEventsList || events;
+    const evtsList = currentEventsList || eventsRef.current;
     const targetEvt = evtsList.find((e: any) => e.id === eventId);
 
     try {
@@ -505,13 +513,13 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
 
     if (targetEvt) {
-      const localData = buildPreviousEventDataFromSnapshot(targetEvt);
+      const localData = buildPreviousEventDataFromSnapshot(targetEvt, usersRef.current);
       if (localData) {
         setPreviousEventData(localData);
       }
     }
     setLoadingPrevious(false);
-  }, [events, buildPreviousEventDataFromSnapshot]);
+  }, [buildPreviousEventDataFromSnapshot]);
 
   React.useEffect(() => {
     fetchUsers();
@@ -535,7 +543,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             if (pastEvts.length > 0) {
               const lastPast = pastEvts[pastEvts.length - 1];
               setSelectedPreviousEventId(lastPast.id);
-              fetchPreviousEventLeaderboard(lastPast.id);
+              fetchPreviousEventLeaderboard(lastPast.id, data);
             }
             setLoadingEvent(false);
             return;
@@ -563,7 +571,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           if (pastEvts.length > 0) {
             const lastPast = pastEvts[pastEvts.length - 1];
             setSelectedPreviousEventId(lastPast.id);
-            fetchPreviousEventLeaderboard(lastPast.id);
+            fetchPreviousEventLeaderboard(lastPast.id, allEvts);
           }
 
           setLoadingEvent(false);
@@ -605,7 +613,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       supabase.removeChannel(channel);
       supabase.removeChannel(subChannel);
     };
-  }, [fetchUsers, fetchAdjustments, fetchPreviousEventLeaderboard]);
+  }, []); // Run once on component mount
 
   const hideScores = !!activeEvent?.hide_scores;
 
