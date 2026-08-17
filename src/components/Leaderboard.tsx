@@ -139,7 +139,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         (data.topUsers || []).forEach((u: any) => {
           const sid = String(u.steamid || u.steamId || u.discord_id || u.discordId || u.id || '');
           if (sid) {
-            uScores[sid] = u.points || 0;
+            uScores[sid] = Number(u.points) || 0;
             const avatar = (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || '');
             membersMap.set(sid, {
               ...u,
@@ -149,7 +149,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           }
         });
 
-        // Also merge any other users to allow scoring all roster members
+        // Merge any other roster users to allow scoring all members WITHOUT autofilling active event points
         (users || []).forEach((u: any) => {
           const sid = String(u.steamid || u.steamId || u.discord_id || u.discordId || u.uid || u.id || '');
           if (sid && !membersMap.has(sid)) {
@@ -159,9 +159,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               steam_name: u.steam_name || u.steamName || u.discord_name || 'Member',
               steam_avatar: avatar,
               team: u.team || 'none',
-              points: u.points || 0
+              points: 0
             });
-            if (uScores[sid] === undefined) uScores[sid] = u.points || 0;
+            if (uScores[sid] === undefined) uScores[sid] = 0;
           }
         });
 
@@ -217,6 +217,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             setEvents(allEvts);
             const active = allEvts.find((e: any) => e.is_active);
             if (active) setActiveEvent(active);
+            const targetEvt = allEvts.find((e: any) => e.id === forceModalEventId);
+            if (targetEvt && !targetEvt.is_active) {
+              fetchPreviousEventLeaderboard(targetEvt.id);
+            }
           }
         })
         .catch(() => {});

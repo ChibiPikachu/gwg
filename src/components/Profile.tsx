@@ -536,6 +536,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
             return Number(snapshot.userScores[clean]) || 0;
           }
         }
+        if (snapshot.forcedByAdmin) {
+          return 0;
+        }
       }
     }
 

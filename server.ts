@@ -2233,19 +2233,10 @@ async function createServer() {
         }
       }
 
-      // Ensure any users from uets or profiles with points are preserved
+      // Ensure any users from uets or profiles with teams are preserved
       (uets || []).forEach((u: any) => {
         if (u.steamid && u.team && u.team !== 'none') {
           userTeams[u.steamid] = u.team;
-        }
-      });
-
-      (profiles || []).forEach((p: any) => {
-        if (p.steamid && p.points && !userScores[p.steamid] && (!existingSaved?.forcedByAdmin || forceResync)) {
-          const userTeam = uetMap.get(p.steamid) || userTeams[p.steamid] || p.team;
-          if (userTeam && userTeam !== 'none' && teamMembers[userTeam]?.has(p.steamid)) {
-            userScores[p.steamid] = Number(p.points) || 0;
-          }
         }
       });
 
@@ -2774,13 +2765,17 @@ async function createServer() {
       });
 
       // Combine with savedScores if present
-      if (savedScores?.userScores) {
+      if (savedScores?.forcedByAdmin && savedScores?.userScores) {
+        // When forced by admin, the forced userScores dictionary is authoritative
+        Object.keys(userEventPoints).forEach(k => {
+          userEventPoints[k] = 0;
+        });
         for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
-          if (savedScores.forcedByAdmin) {
-            userEventPoints[sid] = Number(savedPts) || 0;
-          } else {
-            userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, Number(savedPts) || 0);
-          }
+          userEventPoints[sid] = Number(savedPts) || 0;
+        }
+      } else if (savedScores?.userScores) {
+        for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
+          userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, Number(savedPts) || 0);
         }
       }
 
@@ -2955,10 +2950,15 @@ async function createServer() {
         } catch (e) {}
       }
 
-      const mergedUserScores = {
-        ...(existingSaved.userScores || {}),
-        ...(userScores || {})
-      };
+      // Explicit user score overrides
+      const mergedUserScores: Record<string, number> = {};
+      if (userScores && typeof userScores === 'object') {
+        for (const [k, v] of Object.entries(userScores)) {
+          mergedUserScores[k] = Number(v) || 0;
+        }
+      } else if (existingSaved.userScores) {
+        Object.assign(mergedUserScores, existingSaved.userScores);
+      }
 
       const mergedTeamAdjustments = {
         blue: 0, green: 0, purple: 0, red: 0,
@@ -2966,11 +2966,21 @@ async function createServer() {
         ...(teamAdjustments || {})
       };
 
-      const mergedTeamTotals = {
-        blue: 0, green: 0, purple: 0, red: 0,
-        ...(existingSaved.teamTotals || {}),
-        ...(teamTotals || {})
+      const mergedTeamTotals: Record<string, number> = {
+        blue: Number(teamTotals?.blue ?? existingSaved?.teamTotals?.blue ?? 0),
+        green: Number(teamTotals?.green ?? existingSaved?.teamTotals?.green ?? 0),
+        purple: Number(teamTotals?.purple ?? existingSaved?.teamTotals?.purple ?? 0),
+        red: Number(teamTotals?.red ?? existingSaved?.teamTotals?.red ?? 0)
       };
+
+      // Ensure user teams mapping is preserved
+      const { data: allProfiles } = await supabase.from('profiles').select('steamid, team');
+      const userTeamsMap: Record<string, string> = { ...(existingSaved.userTeams || {}) };
+      (allProfiles || []).forEach((p: any) => {
+        if (p.steamid && p.team && p.team !== 'none' && !userTeamsMap[p.steamid]) {
+          userTeamsMap[p.steamid] = p.team;
+        }
+      });
 
       // Calculate winning team if not explicitly provided
       let finalWinner = winnerTeam;
@@ -2988,7 +2998,7 @@ async function createServer() {
       const newSnapshot = {
         teamTotals: mergedTeamTotals,
         userScores: mergedUserScores,
-        userTeams: existingSaved.userTeams || {},
+        userTeams: userTeamsMap,
         teamAdjustments: mergedTeamAdjustments,
         forcedByAdmin: true,
         forcedAt: new Date().toISOString()
