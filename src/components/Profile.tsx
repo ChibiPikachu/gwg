@@ -5,6 +5,73 @@ import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, C
 import { cn } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
 
+export const parseEventNumber = (evt: any, fallbackIdx?: number): number => {
+  if (!evt) return fallbackIdx !== undefined ? fallbackIdx + 1 : 1;
+  if (evt.event_number !== undefined && evt.event_number !== null && !isNaN(Number(evt.event_number))) {
+    return Number(evt.event_number);
+  }
+  if (evt.number !== undefined && evt.number !== null && !isNaN(Number(evt.number))) {
+    return Number(evt.number);
+  }
+  const match = String(evt.title || evt.name || '').match(/#(\d+)/i);
+  if (match && match[1]) {
+    return parseInt(match[1], 10);
+  }
+  return fallbackIdx !== undefined ? fallbackIdx + 1 : 1;
+};
+
+const getEventSnapshot = (evt: any) => {
+  if (!evt) return null;
+  if (evt.snapshot && typeof evt.snapshot === 'object') return evt.snapshot;
+  if (!evt.description) return null;
+  const match = evt.description.match(/<!--EVENT_SCORES:(.*?)-->/);
+  if (match && match[1]) {
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const getUserTeamForEvent = (evt: any, user: any): string => {
+  if (!evt || !user) return 'none';
+  // 1. Direct eventTeams mapping on user
+  if (user.eventTeams && user.eventTeams[evt.id]) {
+    return user.eventTeams[evt.id];
+  }
+  // 2. Parsed snapshot from event description
+  const snapshot = getEventSnapshot(evt);
+  if (snapshot?.userTeams) {
+    const candidateIds = [user.steamId, user.uid, user.steamid, user.id, user.discordId, user.discord_id].filter(Boolean);
+    for (const cid of candidateIds) {
+      if (snapshot.userTeams[cid]) return snapshot.userTeams[cid];
+      if (snapshot.userTeams[`discord_${cid}`]) return snapshot.userTeams[`discord_${cid}`];
+      const clean = String(cid).replace('discord_', '');
+      if (snapshot.userTeams[clean]) return snapshot.userTeams[clean];
+    }
+  }
+  // 3. For active event or fallback
+  if (evt.is_active || evt.isActive) {
+    return user.team || 'none';
+  }
+  return user.team || 'none';
+};
+
+const getWinnerTeamForEvent = (evt: any): string | null => {
+  if (!evt) return null;
+  if (evt.winner_team) return evt.winner_team;
+  if (evt.winnerTeam) return evt.winnerTeam;
+  if (evt.description) {
+    const match = evt.description.match(/<!--WINNER:(.*?)-->/);
+    if (match && match[1]) return match[1];
+  }
+  const snapshot = getEventSnapshot(evt);
+  if (snapshot?.winnerTeam) return snapshot.winnerTeam;
+  return null;
+};
+
 export default function Profile({ steamId }: { steamId?: string }) {
   const { user: currentUser, theme, syncWithDiscord, loginWithSteam, loginWithDiscord, updateProfile } = useAuth();
 
@@ -65,8 +132,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   const sortedEvents = React.useMemo(() => {
     return (events || []).slice().sort((a, b) => {
-      const numA = Number(a.event_number || a.number || 0);
-      const numB = Number(b.event_number || b.number || 0);
+      const numA = parseEventNumber(a);
+      const numB = parseEventNumber(b);
       if (numA !== numB) return numB - numA;
       const timeA = new Date(a.start_date || a.created_at || 0).getTime();
       const timeB = new Date(b.start_date || b.created_at || 0).getTime();
@@ -134,7 +201,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
           if (!error && Array.isArray(data)) {
             const formatted = data.map((evt: any, idx: number) => ({
               ...evt,
-              event_number: evt.event_number || evt.number || (idx + 1)
+              event_number: parseEventNumber(evt, idx)
             }));
             setEvents(formatted);
             return;
@@ -456,6 +523,22 @@ export default function Profile({ steamId }: { steamId?: string }) {
     const isAllEvents = selectedEventId === 'all';
     const targetEvt = displayedEvent;
 
+    // Check if targetEvt is a past/ended event with locked snapshot scores
+    if (!isAllEvents && targetEvt && !targetEvt.is_active && !targetEvt.isActive) {
+      const snapshot = getEventSnapshot(targetEvt);
+      if (snapshot?.userScores) {
+        for (const cid of candidateOwnerIds) {
+          if (snapshot.userScores[cid] !== undefined) {
+            return Number(snapshot.userScores[cid]) || 0;
+          }
+          const clean = String(cid).replace('discord_', '');
+          if (snapshot.userScores[clean] !== undefined) {
+            return Number(snapshot.userScores[clean]) || 0;
+          }
+        }
+      }
+    }
+
     const eventSubmissions = (submissions || []).filter((s: any) => {
       const isOwner = candidateOwnerIds.length === 0 ||
         candidateOwnerIds.includes(String(s.user_id)) ||
@@ -468,9 +551,12 @@ export default function Profile({ steamId }: { steamId?: string }) {
       if (isAllEvents) return true;
       if (!targetEvt) return true;
 
+      const targetEvtNum = parseEventNumber(targetEvt);
+      const subEvtNum = s.event_number ? Number(s.event_number) : (s.event_id ? parseEventNumber(events.find((e: any) => e.id === s.event_id)) : null);
+
       const matchesEvent = s.event_id 
-        ? (s.event_id === targetEvt.id || String(s.event_id) === String(targetEvt.id))
-        : (s.event_number ? Number(s.event_number) === Number(targetEvt.event_number) : Boolean(targetEvt.is_active));
+        ? (s.event_id === targetEvt.id || String(s.event_id) === String(targetEvt.id) || (subEvtNum && subEvtNum === targetEvtNum))
+        : (s.event_number ? Number(s.event_number) === targetEvtNum : Boolean(targetEvt.is_active));
 
       return matchesEvent;
     });
@@ -489,9 +575,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
       if (isAllEvents) return true;
       if (!targetEvt) return true;
 
+      const targetEvtNum = parseEventNumber(targetEvt);
       const matchesEvent = a.event_id 
         ? (a.event_id === targetEvt.id || String(a.event_id) === String(targetEvt.id))
-        : (a.event_number ? Number(a.event_number) === Number(targetEvt.event_number) : Boolean(targetEvt.is_active));
+        : (a.event_number ? Number(a.event_number) === targetEvtNum : Boolean(targetEvt.is_active));
       return matchesEvent;
     });
 
@@ -501,12 +588,38 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
     const calculatedTotal = sumFromSubmissions + sumFromAdjustments;
 
-    if (calculatedTotal === 0 && typeof targetUser.points === 'number' && targetUser.points > 0) {
+    if (isAllEvents) {
+      // In all events view, sum active submissions/adjustments plus historical event snapshots
+      let snapshotPointsTotal = 0;
+      const pastEvents = (events || []).filter((e: any) => !e.is_active && !e.isActive);
+      for (const pastEvt of pastEvents) {
+        const snap = getEventSnapshot(pastEvt);
+        if (snap?.userScores) {
+          for (const cid of candidateOwnerIds) {
+            if (snap.userScores[cid] !== undefined) {
+              snapshotPointsTotal += Number(snap.userScores[cid]) || 0;
+              break;
+            }
+            const clean = String(cid).replace('discord_', '');
+            if (snap.userScores[clean] !== undefined) {
+              snapshotPointsTotal += Number(snap.userScores[clean]) || 0;
+              break;
+            }
+          }
+        }
+      }
+
+      if (calculatedTotal > 0 || snapshotPointsTotal > 0) {
+        return Math.max(calculatedTotal, calculatedTotal + snapshotPointsTotal);
+      }
+    }
+
+    if (calculatedTotal === 0 && (!targetEvt || targetEvt.is_active || targetEvt.isActive) && typeof targetUser.points === 'number' && targetUser.points > 0) {
       return targetUser.points;
     }
 
     return calculatedTotal;
-  }, [displayedEvent, selectedEventId, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser]);
+  }, [displayedEvent, selectedEventId, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser, events]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
@@ -553,11 +666,11 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
               {/* Accolades & Badges */}
               {(hasSurvivedMigration || (events.length > 0 && events.some(e => {
-                if (e.is_active || !e.winner_team) return false;
-                const userTeamForEvent = e.event_number === 3 
-                  ? targetUser?.eventTeams?.[e.id] 
-                  : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
-                return userTeamForEvent === e.winner_team;
+                if (e.is_active || e.isActive) return false;
+                const winner = getWinnerTeamForEvent(e);
+                if (!winner || winner === 'none') return false;
+                const userTeam = getUserTeamForEvent(e, targetUser);
+                return userTeam === winner;
               }))) && (
                 <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2 mb-1 animate-in fade-in duration-300">
                   {hasSurvivedMigration && (
@@ -587,16 +700,16 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
                   {events
                     .filter(e => {
-                      if (e.is_active || !e.winner_team) return false;
-                      const userTeamForEvent = e.event_number === 3 
-                        ? targetUser?.eventTeams?.[e.id] 
-                        : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
-                      return userTeamForEvent === e.winner_team;
+                      if (e.is_active || e.isActive) return false;
+                      const winner = getWinnerTeamForEvent(e);
+                      if (!winner || winner === 'none') return false;
+                      const userTeam = getUserTeamForEvent(e, targetUser);
+                      return userTeam === winner;
                     })
                     .map(e => {
-                      const userTeamForEvent = e.event_number === 3 
-                        ? targetUser?.eventTeams?.[e.id] 
-                        : (targetUser?.eventTeams?.[e.id] || targetUser?.team);
+                      const winner = getWinnerTeamForEvent(e);
+                      const userTeam = getUserTeamForEvent(e, targetUser);
+                      const evtNum = parseEventNumber(e);
                       return (
                         <div
                           key={e.id}
@@ -607,31 +720,31 @@ export default function Profile({ steamId }: { steamId?: string }) {
                           <span
                             className={cn(
                               "flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider select-none cursor-help transition-all duration-150 hover:scale-[1.02]",
-                              getTeamBadgeClasses(e.winner_team)
+                              getTeamBadgeClasses(winner)
                             )}
                           >
                             <Trophy size={11} className={cn(
-                              e.winner_team === 'blue' ? "text-sky-400" :
-                              e.winner_team === 'green' ? "text-green-400" :
-                              e.winner_team === 'purple' ? "text-purple-400" :
-                              e.winner_team === 'red' ? "text-red-400" : "text-purple-400"
+                              winner === 'blue' ? "text-sky-400" :
+                              winner === 'green' ? "text-green-400" :
+                              winner === 'purple' ? "text-purple-400" :
+                              winner === 'red' ? "text-red-400" : "text-purple-400"
                             )} />
-                            <span>Event #{e.event_number} Winner</span>
+                            <span>Event #{evtNum} Winner</span>
                           </span>
                           
                           {hoveredBadgeEventId === e.id && (
                             <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-[9999] bg-zinc-950 border border-white/10 text-white p-3 rounded-xl shadow-2xl min-w-[240px] max-w-[280px] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-150">
                               <div className={cn(
                                 "text-xs font-black uppercase tracking-widest mb-1 select-none",
-                                e.winner_team === 'blue' ? "text-sky-400" :
-                                e.winner_team === 'green' ? "text-green-400" :
-                                e.winner_team === 'purple' ? "text-purple-400" :
-                                e.winner_team === 'red' ? "text-red-400" : "text-purple-400"
+                                winner === 'blue' ? "text-sky-400" :
+                                winner === 'green' ? "text-green-400" :
+                                winner === 'purple' ? "text-purple-400" :
+                                winner === 'red' ? "text-red-400" : "text-purple-400"
                               )}>
-                                Event #{e.event_number} Details
+                                Event #{evtNum} Details
                               </div>
                               <div className="text-sm font-bold text-white leading-tight mb-1 select-none">
-                                {e.title || `Event #${e.event_number}`}
+                                {e.title || `Event #${evtNum}`}
                               </div>
                               {e.description && (
                                 <p className="text-[11px] text-zinc-300 leading-normal line-clamp-3 select-none italic font-medium">
@@ -642,15 +755,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
                                 <span>Winner Team:</span>
                                 <span className={cn(
                                   "uppercase tracking-wider font-extrabold",
-                                  e.winner_team === 'blue' ? "text-sky-400" :
-                                  e.winner_team === 'green' ? "text-green-400" :
-                                  e.winner_team === 'purple' ? "text-purple-400" :
-                                  e.winner_team === 'red' ? "text-red-400" : "text-purple-400"
-                                )}>{e.winner_team}</span>
+                                  winner === 'blue' ? "text-sky-400" :
+                                  winner === 'green' ? "text-green-400" :
+                                  winner === 'purple' ? "text-purple-400" :
+                                  winner === 'red' ? "text-red-400" : "text-purple-400"
+                                )}>{winner}</span>
                               </div>
                               <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold select-none mt-0.5">
                                 <span>User's Team:</span>
-                                <span className="uppercase tracking-wider text-emerald-400">{userTeamForEvent || 'none'}</span>
+                                <span className="uppercase tracking-wider text-emerald-400">{userTeam || 'none'}</span>
                               </div>
                             </div>
                           )}
@@ -745,7 +858,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                  {hideUserScores ? '—' : displayedPoints.toLocaleString()}
                </span>
                <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">
-                 Points Earned {displayedEvent ? (displayedEvent.is_active || displayedEvent.isActive ? `(Active Event #${displayedEvent.event_number || 1})` : `(Event #${displayedEvent.event_number || 1})`) : '(Active Event)'}
+                 Points Earned {selectedEventId === 'all' ? '(All Events)' : displayedEvent ? (displayedEvent.is_active || displayedEvent.isActive ? `(Active Event #${parseEventNumber(displayedEvent)})` : `(Event #${parseEventNumber(displayedEvent)})`) : '(Active Event)'}
                </span>
             </div>
          </div>
@@ -1007,7 +1120,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                           : "text-slate-400"
                       )} />
                     )}
-                    <span>Event #{evt.event_number || 1}</span>
+                    <span>Event #{parseEventNumber(evt)}</span>
                     <span className={cn(
                       "px-1.5 py-0.5 rounded-full text-[10px] font-black leading-none",
                       isActiveTab
@@ -1126,7 +1239,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
                             {selectedEventId === 'all' && subEvent && (
                               <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 font-extrabold tracking-wider text-[9px] uppercase">
-                                Event #{subEvent.event_number}
+                                Event #{parseEventNumber(subEvent)}
                               </span>
                             )}
 
