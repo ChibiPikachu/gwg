@@ -2728,11 +2728,16 @@ async function createServer() {
       // 4. Fetch profiles
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, status, role');
+        .select('id, steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, role');
 
       const profileMap = new Map<string, any>();
       (profiles || []).forEach((p: any) => {
         if (p.steamid) profileMap.set(p.steamid, p);
+        if (p.discord_id) {
+          profileMap.set(p.discord_id, p);
+          profileMap.set(`discord_${p.discord_id}`, p);
+        }
+        if (p.id) profileMap.set(p.id, p);
       });
 
       // 5. Calculate user event points & team adjustments
@@ -2771,11 +2776,27 @@ async function createServer() {
           userEventPoints[k] = 0;
         });
         for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
-          userEventPoints[sid] = Number(savedPts) || 0;
+          const numPts = Number(savedPts) || 0;
+          userEventPoints[sid] = numPts;
+          const prof = profileMap.get(sid);
+          if (prof) {
+            if (prof.steamid) userEventPoints[prof.steamid] = numPts;
+            if (prof.discord_id) userEventPoints[prof.discord_id] = numPts;
+            if (prof.discord_id) userEventPoints[`discord_${prof.discord_id}`] = numPts;
+            if (prof.id) userEventPoints[prof.id] = numPts;
+          }
         }
       } else if (savedScores?.userScores) {
         for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
-          userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, Number(savedPts) || 0);
+          const numPts = Number(savedPts) || 0;
+          userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, numPts);
+          const prof = profileMap.get(sid);
+          if (prof) {
+            if (prof.steamid) userEventPoints[prof.steamid] = Math.max(userEventPoints[prof.steamid] || 0, numPts);
+            if (prof.discord_id) userEventPoints[prof.discord_id] = Math.max(userEventPoints[prof.discord_id] || 0, numPts);
+            if (prof.discord_id) userEventPoints[`discord_${prof.discord_id}`] = Math.max(userEventPoints[`discord_${prof.discord_id}`] || 0, numPts);
+            if (prof.id) userEventPoints[prof.id] = Math.max(userEventPoints[prof.id] || 0, numPts);
+          }
         }
       }
 
@@ -2807,33 +2828,60 @@ async function createServer() {
       (profiles || []).forEach((p: any) => {
         const team = uetMap.get(p.steamid) || savedScores?.userTeams?.[p.steamid] || p.team;
         if (team && team !== 'none' && teamMembers[team]) {
-          teamMembers[team].add(p.steamid);
+          teamMembers[team].add(p.steamid || p.discord_id || p.id);
         }
       });
 
       // 7. Build User Standings
       const usersList: any[] = [];
+      const processedProfiles = new Set<string>();
       const allUserIdsInEvent = new Set([
         ...Object.keys(userEventPoints),
         ...(uets || []).map((u: any) => u.steamid),
         ...Object.keys(savedScores?.userTeams || {}),
         ...Object.keys(savedScores?.userScores || {}),
-        ...(profiles || []).filter((p: any) => p.team && p.team !== 'none').map((p: any) => p.steamid)
+        ...(profiles || []).filter((p: any) => p.team && p.team !== 'none').map((p: any) => p.steamid || p.discord_id || p.id)
       ]);
 
-      allUserIdsInEvent.forEach((steamid) => {
-        const prof = profileMap.get(steamid);
-        const userTeam = uetMap.get(steamid) || savedScores?.userTeams?.[steamid] || prof?.team || 'none';
-        const points = userEventPoints[steamid] || 0;
+      allUserIdsInEvent.forEach((userIdKey) => {
+        const prof = profileMap.get(userIdKey);
+        const primaryId = prof?.steamid || prof?.discord_id || prof?.id || userIdKey;
+        if (processedProfiles.has(primaryId)) return;
+        processedProfiles.add(primaryId);
+
+        const candidateKeys = [
+          userIdKey,
+          prof?.steamid,
+          prof?.discord_id,
+          prof?.discord_id ? `discord_${prof.discord_id}` : null,
+          prof?.id
+        ].filter(Boolean) as string[];
+
+        let points = 0;
+        for (const k of candidateKeys) {
+          if (userEventPoints[k] !== undefined && userEventPoints[k] !== null) {
+            points = Number(userEventPoints[k]) || 0;
+            if (points > 0) break;
+          }
+        }
+
+        const userTeam = uetMap.get(primaryId) || 
+                         savedScores?.userTeams?.[primaryId] || 
+                         (prof?.steamid && savedScores?.userTeams?.[prof.steamid]) || 
+                         (prof?.discord_id && savedScores?.userTeams?.[prof.discord_id]) || 
+                         prof?.team || 'none';
+
         let finalAvatar = prof?.steam_avatar || '';
         if (prof?.active_avatar === 'discord' && prof?.discord_avatar) {
+          finalAvatar = prof.discord_avatar;
+        } else if (!finalAvatar && prof?.discord_avatar) {
           finalAvatar = prof.discord_avatar;
         }
 
         if (prof || points > 0) {
           usersList.push({
-            steamid,
-            steam_name: prof?.steam_name || 'User',
+            steamid: primaryId,
+            steam_name: prof?.steam_name || prof?.discord_name || 'User',
             steam_avatar: finalAvatar,
             discord_name: prof?.discord_name || null,
             team: userTeam,
@@ -2855,8 +2903,29 @@ async function createServer() {
       // 8. Calculate Team Standings
       const teamStandings = ['blue', 'purple', 'green', 'red'].map((t) => {
         let userPointsSum = 0;
+        const countedUsers = new Set<string>();
         teamMembers[t].forEach((sid) => {
-          userPointsSum += (userEventPoints[sid] || 0);
+          const prof = profileMap.get(sid);
+          const primaryId = prof?.steamid || prof?.discord_id || prof?.id || sid;
+          if (countedUsers.has(primaryId)) return;
+          countedUsers.add(primaryId);
+
+          const candidateKeys = [
+            sid,
+            prof?.steamid,
+            prof?.discord_id,
+            prof?.discord_id ? `discord_${prof.discord_id}` : null,
+            prof?.id
+          ].filter(Boolean) as string[];
+
+          let pts = 0;
+          for (const k of candidateKeys) {
+            if (userEventPoints[k] !== undefined) {
+              pts = Number(userEventPoints[k]) || 0;
+              if (pts > 0) break;
+            }
+          }
+          userPointsSum += pts;
         });
         const liveTotal = userPointsSum + (teamAdjustments[t] || 0);
         const totalTeamPoints = (savedScores?.forcedByAdmin && savedScores?.teamTotals?.[t] !== undefined)
@@ -2867,7 +2936,7 @@ async function createServer() {
         return {
           team: t,
           points: totalTeamPoints,
-          members: teamMembers[t].size,
+          members: countedUsers.size,
           rank: 1
         };
       });

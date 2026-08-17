@@ -1,7 +1,7 @@
 import React from 'react';
 import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter, RotateCw, RefreshCw, CheckCircle } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, parseEventNumber } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { parseNotesMeta } from '@/components/AdminPanel';
@@ -323,7 +323,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             const active = data.find((e: any) => e.is_active);
             setActiveEvent(active);
 
-            const pastEvts = data.filter((e: any) => !e.is_active);
+            const pastEvts = [...data.filter((e: any) => !e.is_active)].sort((a: any, b: any) => parseEventNumber(a) - parseEventNumber(b));
             if (pastEvts.length > 0) {
               const lastPast = pastEvts[pastEvts.length - 1];
               setSelectedPreviousEventId(lastPast.id);
@@ -351,7 +351,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           const active = allEvts.find((e: any) => e.is_active);
           setActiveEvent(active);
 
-          const pastEvts = allEvts.filter((e: any) => !e.is_active);
+          const pastEvts = [...allEvts.filter((e: any) => !e.is_active)].sort((a: any, b: any) => parseEventNumber(a) - parseEventNumber(b));
           if (pastEvts.length > 0) {
             const lastPast = pastEvts[pastEvts.length - 1];
             setSelectedPreviousEventId(lastPast.id);
@@ -531,7 +531,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     },
   ].sort((a, b) => hideScores ? a.team.localeCompare(b.team) : b.points - a.points).map((s, i) => ({ ...s, rank: i + 1 }));
 
-  const previousEvents = events.filter((e: any) => !e.is_active);
+  const previousEvents = React.useMemo(() => {
+    const past = (events || []).filter((e: any) => !e.is_active);
+    return [...past].sort((a, b) => parseEventNumber(a) - parseEventNumber(b));
+  }, [events]);
 
   if (loading || loadingEvent) {
     return (
@@ -574,10 +577,13 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           <button
             onClick={() => {
               setActiveTab('previous');
-              if (previousEvents.length > 0 && !selectedPreviousEventId) {
-                const firstPast = previousEvents[previousEvents.length - 1];
-                setSelectedPreviousEventId(firstPast.id);
-                fetchPreviousEventLeaderboard(firstPast.id);
+              if (previousEvents.length > 0) {
+                const currentSelectedExists = previousEvents.some((e: any) => e.id === selectedPreviousEventId);
+                if (!currentSelectedExists || !selectedPreviousEventId) {
+                  const latestPast = previousEvents[previousEvents.length - 1];
+                  setSelectedPreviousEventId(latestPast.id);
+                  fetchPreviousEventLeaderboard(latestPast.id);
+                }
               }
             }}
             className={cn(
@@ -972,7 +978,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-rounded border-b dark:border-white/5 border-black/5">
                 {previousEvents.map((evt, idx) => {
                   const isSelected = selectedPreviousEventId === evt.id;
-                  const evtNumber = evt.event_number || (idx + 1);
+                  const evtNumber = parseEventNumber(evt, idx);
                   return (
                     <button
                       key={evt.id}
@@ -981,9 +987,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         fetchPreviousEventLeaderboard(evt.id);
                       }}
                       className={cn(
-                        "px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 border flex items-center gap-2.5",
+                        "px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 border flex items-center gap-2.5 cursor-pointer",
                         isSelected
-                          ? "bg-slate-500/10 border-slate-500/30 text-slate-400 shadow-sm"
+                          ? "bg-slate-500/10 border-slate-500/30 text-slate-300 shadow-sm font-black"
                           : "dark:bg-zinc-900/50 bg-slate-100 border-transparent dark:text-white/50 text-slate-600 hover:dark:text-white hover:text-slate-900"
                       )}
                     >

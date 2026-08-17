@@ -2,23 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, isSupabaseConfigured, buildProfileOrFilter } from '@/lib/supabase';
 import { Shield, Trophy, Edit2, Check, ExternalLink, Gamepad2, History, Clock, CheckCircle2, AlertCircle, XCircle, Skull, Search, X, Filter, Bell, MessageSquare, Camera } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, parseEventNumber } from '@/lib/utils';
 import { Team, TEAM_COLORS } from '@/types';
 
-export const parseEventNumber = (evt: any, fallbackIdx?: number): number => {
-  if (!evt) return fallbackIdx !== undefined ? fallbackIdx + 1 : 1;
-  if (evt.event_number !== undefined && evt.event_number !== null && !isNaN(Number(evt.event_number))) {
-    return Number(evt.event_number);
-  }
-  if (evt.number !== undefined && evt.number !== null && !isNaN(Number(evt.number))) {
-    return Number(evt.number);
-  }
-  const match = String(evt.title || evt.name || '').match(/#(\d+)/i);
-  if (match && match[1]) {
-    return parseInt(match[1], 10);
-  }
-  return fallbackIdx !== undefined ? fallbackIdx + 1 : 1;
-};
+export { parseEventNumber };
 
 const getEventSnapshot = (evt: any) => {
   if (!evt) return null;
