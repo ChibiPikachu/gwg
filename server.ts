@@ -2483,12 +2483,44 @@ async function createServer() {
 
       const { data: verifiedSubs } = await subQuery;
 
+      // Deduplicate/reconcile screenshot contest points to prevent deleted test screenshots from inflating score
+      const { data: allScreenshots } = await supabase.from('screenshot_submissions').select('user_id, status');
+      const userScreenshotCount: Record<string, number> = {};
+      (allScreenshots || []).forEach((sc: any) => {
+        if (sc.status !== 'rejected') {
+          const uid = String(sc.user_id);
+          userScreenshotCount[uid] = (userScreenshotCount[uid] || 0) + 1;
+          const cleanUid = uid.startsWith('discord_') ? uid.replace('discord_', '') : uid;
+          userScreenshotCount[cleanUid] = (userScreenshotCount[cleanUid] || 0) + 1;
+        }
+      });
+
+      const userScreenshotPointRowsCount: Record<string, number> = {};
+
       const userPointsMap: Record<string, number> = {};
       (verifiedSubs || []).forEach((sub: any) => {
         if (!sub.user_id || sub.user_id === 'system_notification' || String(sub.user_id).startsWith('team_pts_')) return;
         if (sub.game_name === 'Event Update') return;
-        const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
+
         const subUserId = String(sub.user_id);
+        const cleanSubUserId = subUserId.startsWith('discord_') ? subUserId.replace('discord_', '') : subUserId;
+        
+        // If this is a screenshot contest point row, ensure we do not exceed the actual number of screenshots
+        const isScreenshotPoint = sub.platform === 'Screenshot Event' || 
+          (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+          (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+
+        if (isScreenshotPoint) {
+          const allowed = Math.max(userScreenshotCount[subUserId] || 0, userScreenshotCount[cleanSubUserId] || 0);
+          const seen = userScreenshotPointRowsCount[cleanSubUserId] || 0;
+          if (seen >= allowed) {
+            // Orphaned/excess point row from a deleted screenshot - do not double count
+            return;
+          }
+          userScreenshotPointRowsCount[cleanSubUserId] = seen + 1;
+        }
+
+        const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
         userPointsMap[subUserId] = (userPointsMap[subUserId] || 0) + pts;
       });
 

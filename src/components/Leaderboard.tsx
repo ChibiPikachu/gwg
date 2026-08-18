@@ -548,6 +548,12 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     fetchUsers();
     fetchAdjustments();
 
+    const handleLeaderboardUpdate = () => {
+      fetchUsers();
+      fetchAdjustments();
+    };
+    window.addEventListener('leaderboard-updated', handleLeaderboardUpdate);
+
     // Fetch all events for active check & previous events list
     const loadEvents = async () => {
       if (isSupabaseConfigured && supabase) {

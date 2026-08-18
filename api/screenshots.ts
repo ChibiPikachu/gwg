@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -23,7 +25,28 @@ function buildProfileOrFilter(key: string): string {
   return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
 }
 
-let persistentDefaultSubmissionPoints = 20;
+const SETTINGS_FILE_PATH = path.join(process.cwd(), '.screenshot_settings.json');
+
+function getSavedSubmissionPoints(): number {
+  try {
+    if (fs.existsSync(SETTINGS_FILE_PATH)) {
+      const raw = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed.submission_points !== undefined && !isNaN(Number(parsed.submission_points))) {
+        return Number(parsed.submission_points);
+      }
+    }
+  } catch (e) {}
+  return 20;
+}
+
+function saveSubmissionPointsLocally(points: number) {
+  try {
+    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify({ submission_points: points }), 'utf8');
+  } catch (e) {}
+}
+
+let persistentDefaultSubmissionPoints = getSavedSubmissionPoints();
 
 // In-memory fallback for local dev when Supabase is not connected
 let memoryEvent: any = {
@@ -34,7 +57,7 @@ let memoryEvent: any = {
   is_voting_active: false,
   is_admin_only: true,
   max_submissions_per_user: 10,
-  submission_points: 20,
+  submission_points: persistentDefaultSubmissionPoints,
   created_at: new Date().toISOString()
 };
 
@@ -42,6 +65,62 @@ let memorySubmissions: any[] = [];
 let memoryVotes: any[] = [];
 let memoryComments: any[] = [];
 let memoryNotifications: any[] = [];
+
+async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string) {
+  if (!supabaseClient || !targetUserId) return;
+  try {
+    const cleanId = targetUserId.startsWith('discord_') ? targetUserId.replace('discord_', '') : targetUserId;
+    const prefixedDiscordId = `discord_${cleanId}`;
+    
+    // 1. Fetch current valid (non-rejected) screenshot submissions for this user
+    const { data: userScreenshots } = await supabaseClient
+      .from('screenshot_submissions')
+      .select('id, status')
+      .or(`user_id.eq.${targetUserId},user_id.eq.${cleanId},user_id.eq.${prefixedDiscordId}`);
+    
+    const validCount = (userScreenshots || []).filter((s: any) => s.status !== 'rejected').length;
+    
+    // 2. Fetch all screenshot point rows in submissions table
+    const { data: existingPointRows } = await supabaseClient
+      .from('submissions')
+      .select('id, points, calculated_score, notes, created_at')
+      .or(`user_id.eq.${targetUserId},user_id.eq.${cleanId},user_id.eq.${prefixedDiscordId}`)
+      .or('platform.eq.Screenshot Event,game_name.ilike.%Screenshot Contest Submission%,game_name.ilike.%Screenshot Submission%')
+      .order('created_at', { ascending: false });
+
+    const currentPointRows = existingPointRows || [];
+    
+    // If user has more point rows than screenshots, remove the excess
+    if (currentPointRows.length > validCount) {
+      const excessCount = currentPointRows.length - validCount;
+      const toDelete = currentPointRows.slice(0, excessCount);
+      for (const row of toDelete) {
+        await supabaseClient.from('submissions').delete().eq('id', row.id);
+      }
+    }
+
+    // 3. Recalculate profile points from remaining verified submissions
+    const { data: userSubs } = await supabaseClient
+      .from('submissions')
+      .select('points, calculated_score, game_name')
+      .or(`user_id.eq.${targetUserId},user_id.eq.${cleanId},user_id.eq.${prefixedDiscordId}`)
+      .or('status.eq.verified,status.eq.approved');
+
+    let newTotal = 0;
+    for (const s of (userSubs || [])) {
+      if (s.game_name === 'Event Update') continue;
+      const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
+      newTotal += Math.round(pts);
+    }
+
+    await supabaseClient
+      .from('profiles')
+      .update({ points: newTotal })
+      .or(buildProfileOrFilter(targetUserId));
+  } catch (err) {
+    console.warn('[Screenshot API] Error reconciling user screenshot points:', err);
+  }
+}
 
 export default async function handler(req: Request, res: Response) {
   const method = req.method;
@@ -125,7 +204,7 @@ export default async function handler(req: Request, res: Response) {
     }
 
     if (method === 'POST') {
-      // SUBMIT SCREENSHOT (+20 pts to user's team)
+      // SUBMIT SCREENSHOT (+pts to user's team)
       if (action === 'submit') {
         const { userId, userName, userAvatar, userTeam, imageUrl, caption, gameName, isSpoiler, isSelected } = req.body;
 
@@ -162,6 +241,7 @@ export default async function handler(req: Request, res: Response) {
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
             is_selected: Boolean(isSelected || userSubCount === 0), // Default 1st upload to selected if none selected
+            status: 'approved',
             created_at: new Date().toISOString()
           };
 
@@ -169,7 +249,7 @@ export default async function handler(req: Request, res: Response) {
           if (error) throw error;
 
           // Fetch current event submission points
-          let ptsToAward = memoryEvent.submission_points ?? 20;
+          let ptsToAward = getSavedSubmissionPoints();
           if (supabase) {
             const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
             if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
@@ -186,28 +266,11 @@ export default async function handler(req: Request, res: Response) {
               points: ptsToAward,
               calculated_score: ptsToAward,
               status: 'verified',
-              notes: `__META_START__${JSON.stringify({ userNotes: `Submitted screenshot for ${gameName || 'Game'}` })}__META_END__`,
+              notes: `__META_START__${JSON.stringify({ screenshotId: inserted.id, gameName: gameName || 'Game', userNotes: `Submitted screenshot for ${gameName || 'Game'}` })}__META_END__`,
               created_at: new Date().toISOString()
             }]);
 
-            // Sync user's profile points if available
-            const { data: userSubs } = await supabase
-              .from('submissions')
-              .select('points, calculated_score, game_name')
-              .or(`user_id.eq.${userId},user_id.eq.discord_${userId}`)
-              .eq('status', 'verified');
-
-            let newTotal = 0;
-            for (const s of (userSubs || [])) {
-              if (s.game_name === 'Event Update') continue;
-              const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
-              newTotal += Math.round(pts);
-            }
-
-            await supabase
-              .from('profiles')
-              .update({ points: newTotal })
-              .or(buildProfileOrFilter(userId));
+            await reconcileUserScreenshotPoints(supabase, userId);
           }
 
           return res.status(200).json({ success: true, submission: inserted });
@@ -233,6 +296,7 @@ export default async function handler(req: Request, res: Response) {
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
             is_selected: Boolean(isSelected || userSubCount === 0),
+            status: 'approved',
             created_at: new Date().toISOString()
           };
 
@@ -262,6 +326,44 @@ export default async function handler(req: Request, res: Response) {
             }
             return s;
           });
+          return res.status(200).json({ success: true });
+        }
+      }
+
+      // ADMIN: SET STATUS (Approved, Pending, Rejected)
+      if (action === 'admin-set-status') {
+        const { submissionId, status } = req.body;
+        if (!submissionId || !status) {
+          return res.status(400).json({ error: 'Missing submissionId or status' });
+        }
+
+        const validStatus = ['approved', 'pending', 'rejected'].includes(status) ? status : 'approved';
+
+        if (supabase) {
+          const { data: targetSub } = await supabase
+            .from('screenshot_submissions')
+            .select('*')
+            .eq('id', submissionId)
+            .maybeSingle();
+
+          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
+
+          const { data: updated, error } = await supabase
+            .from('screenshot_submissions')
+            .update({ status: validStatus })
+            .eq('id', submissionId)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          if (targetSub.user_id) {
+            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
+          }
+
+          return res.status(200).json({ success: true, submission: updated });
+        } else {
+          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? { ...s, status: validStatus } : s);
           return res.status(200).json({ success: true });
         }
       }
@@ -426,36 +528,47 @@ export default async function handler(req: Request, res: Response) {
         }
       }
 
-      // ADMIN: UPDATE SUBMISSION (edit caption, game_name, or force is_spoiler)
+      // ADMIN: UPDATE SUBMISSION (edit caption, game_name, is_spoiler, status)
       if (action === 'admin-update-submission') {
-        const { submissionId, caption, gameName, isSpoiler } = req.body;
+        const { submissionId, caption, gameName, isSpoiler, status } = req.body;
+
+        const updateFields: any = {};
+        if (caption !== undefined) updateFields.caption = caption;
+        if (gameName !== undefined) updateFields.game_name = gameName;
+        if (isSpoiler !== undefined) updateFields.is_spoiler = Boolean(isSpoiler);
+        if (status !== undefined) updateFields.status = status;
 
         if (supabase) {
+          const { data: targetSub } = await supabase
+            .from('screenshot_submissions')
+            .select('*')
+            .eq('id', submissionId)
+            .maybeSingle();
+
           const { data: updated, error } = await supabase
             .from('screenshot_submissions')
-            .update({
-              caption: caption,
-              game_name: gameName,
-              is_spoiler: Boolean(isSpoiler)
-            })
+            .update(updateFields)
             .eq('id', submissionId)
             .select()
             .single();
 
           if (error) throw error;
+
+          if (targetSub?.user_id) {
+            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
+          }
+
           return res.status(200).json({ success: true, submission: updated });
         } else {
           memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
             ...s,
-            caption: caption !== undefined ? caption : s.caption,
-            game_name: gameName !== undefined ? gameName : s.game_name,
-            is_spoiler: isSpoiler !== undefined ? Boolean(isSpoiler) : s.is_spoiler
+            ...updateFields
           } : s);
           return res.status(200).json({ success: true });
         }
       }
 
-      // ADMIN OR USER: DELETE SUBMISSION (removes +20 points awarded & updates leaderboard)
+      // ADMIN OR USER: DELETE SUBMISSION (removes points awarded & updates leaderboard)
       if (action === 'admin-delete-submission' || action === 'delete-submission') {
         const { submissionId } = req.body;
 
@@ -474,41 +587,10 @@ export default async function handler(req: Request, res: Response) {
           await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
 
           if (targetUserId) {
-            // Find 1 corresponding submission record for this screenshot upload
-            const { data: subPointRow } = await supabase
-              .from('submissions')
-              .select('id')
-              .eq('user_id', targetUserId)
-              .eq('platform', 'Screenshot Event')
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            if (subPointRow) {
-              await supabase.from('submissions').delete().eq('id', subPointRow.id);
-            }
-
-            // Recalculate user's profile points and update profile in Supabase
-            const { data: userSubs } = await supabase
-              .from('submissions')
-              .select('points, calculated_score, game_name')
-              .or(`user_id.eq.${targetUserId},user_id.eq.discord_${targetUserId}`)
-              .eq('status', 'verified');
-
-            let newTotal = 0;
-            for (const s of (userSubs || [])) {
-              if (s.game_name === 'Event Update') continue;
-              const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
-              newTotal += Math.round(pts);
-            }
-
-            await supabase
-              .from('profiles')
-              .update({ points: newTotal })
-              .or(`steamid.eq.${targetUserId},discord_id.eq.${targetUserId},id.eq.${targetUserId}`);
+            await reconcileUserScreenshotPoints(supabase, targetUserId);
           }
 
-          return res.status(200).json({ success: true, message: 'Submission deleted and 20 points deducted' });
+          return res.status(200).json({ success: true, message: 'Submission deleted and points reconciled' });
         } else {
           memorySubmissions = memorySubmissions.filter(s => s.id !== submissionId);
           memoryVotes = memoryVotes.filter(v => v.submission_id !== submissionId);
@@ -552,7 +634,7 @@ export default async function handler(req: Request, res: Response) {
           is_voting_active: memoryEvent.status === 'voting_active',
           event: {
             ...memoryEvent,
-            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
+            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : getSavedSubmissionPoints(),
             is_voting_active: memoryEvent.status === 'voting_active'
           }
         });
@@ -572,9 +654,11 @@ export default async function handler(req: Request, res: Response) {
           memoryEvent.is_admin_only = Boolean(isAdminOnly);
         }
         if (submissionPoints !== undefined && !isNaN(Number(submissionPoints))) {
-          persistentDefaultSubmissionPoints = Math.max(0, Number(submissionPoints));
-          updateData.submission_points = persistentDefaultSubmissionPoints;
-          memoryEvent.submission_points = persistentDefaultSubmissionPoints;
+          const pts = Math.max(0, Number(submissionPoints));
+          persistentDefaultSubmissionPoints = pts;
+          saveSubmissionPointsLocally(pts);
+          updateData.submission_points = pts;
+          memoryEvent.submission_points = pts;
         }
 
         if (supabase) {
@@ -613,11 +697,13 @@ export default async function handler(req: Request, res: Response) {
           }
         }
 
+        const effectivePts = memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : getSavedSubmissionPoints();
+
         return res.status(200).json({
           success: true,
           event: {
             ...memoryEvent,
-            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
+            submission_points: effectivePts,
             is_voting_active: memoryEvent.status === 'voting_active'
           }
         });

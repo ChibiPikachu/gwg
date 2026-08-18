@@ -3,7 +3,8 @@ import {
   Camera, Image as ImageIcon, Upload, Eye, EyeOff, Heart, MessageSquare, 
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
   Trash2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
-  ChevronLeft, ChevronRight, Maximize2, Users, BarChart3, UserCheck, Search, ListFilter
+  ChevronLeft, ChevronRight, Maximize2, Users, BarChart3, UserCheck, Search, ListFilter,
+  Clock, XCircle, Check
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -22,6 +23,7 @@ interface ScreenshotSubmission {
   game_name: string;
   is_spoiler: boolean;
   is_selected: boolean;
+  status?: 'pending' | 'approved' | 'rejected' | 'verified';
   created_at: string;
 }
 
@@ -167,6 +169,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [editCaption, setEditCaption] = useState('');
   const [editGameName, setEditGameName] = useState('');
   const [editIsSpoiler, setEditIsSpoiler] = useState(false);
+  const [editStatus, setEditStatus] = useState<'pending' | 'approved' | 'rejected'>('approved');
 
   // Notice modal for voting inactive
   const [votingNoticeMessage, setVotingNoticeMessage] = useState<string | null>(null);
@@ -551,6 +554,24 @@ interface UserSubmissionStat {
     }
   };
 
+  const handleAdminSetStatus = async (subId: string, newStatus: 'approved' | 'pending' | 'rejected') => {
+    // Optimistic local update
+    setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, status: newStatus } : s));
+    try {
+      const res = await fetch('/api/screenshots?action=admin-set-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: subId, status: newStatus })
+      });
+      if (res.ok) {
+        fetchData();
+        window.dispatchEvent(new Event('leaderboard-updated'));
+      }
+    } catch (err) {
+      console.error('Failed to update submission status:', err);
+    }
+  };
+
   const handleAdminDelete = async (subId: string) => {
     if (!confirm('Are you sure you want to delete this screenshot submission?')) return;
     try {
@@ -581,12 +602,14 @@ interface UserSubmissionStat {
           submissionId: editingSub.id,
           caption: editCaption,
           gameName: editGameName,
-          isSpoiler: editIsSpoiler
+          isSpoiler: editIsSpoiler,
+          status: editStatus
         })
       });
       if (res.ok) {
         setEditingSub(null);
         fetchData();
+        window.dispatchEvent(new Event('leaderboard-updated'));
       }
     } catch (err) {
       console.error('Failed to edit submission:', err);
@@ -616,6 +639,11 @@ interface UserSubmissionStat {
       setIsTallying(false);
     }
   };
+
+  // Featured Approved Screenshots for top showcase
+  const featuredSubmissions = useMemo(() => {
+    return submissions.filter(s => (s.status === 'approved' || !s.status || s.status === 'verified')).slice(0, 6);
+  }, [submissions]);
 
   // Filtered Submissions list
   const filteredSubmissions = useMemo(() => {
@@ -806,6 +834,120 @@ interface UserSubmissionStat {
         </div>
       </div>
 
+      {/* FEATURED SCREENSHOTS SHOWCASE GRID */}
+      {featuredSubmissions.length > 0 && (
+        <div className="bg-black/5 dark:bg-white/[0.03] border border-black/5 dark:border-white/10 rounded-3xl p-5 md:p-6 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className={cn("p-2 rounded-xl border flex items-center justify-center shadow-inner", teamBgAccent)}>
+                <Sparkles size={18} className={teamTextAccent} />
+              </div>
+              <div>
+                <h2 className="text-sm md:text-base font-black dark:text-white text-slate-900 tracking-tight flex items-center gap-2">
+                  Featured Highlights
+                  <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wider", teamBgAccent)}>
+                    {featuredSubmissions.length} Approved
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-white/40">
+                  Recent approved community screenshots. Click any capture to view in full-screen mode.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {featuredSubmissions.slice(0, 4).map((sub) => {
+              const isSpoilerHidden = sub.is_spoiler && !revealedSpoilers[sub.id];
+              const team = sub.user_team || 'none';
+              const teamColor = TEAM_COLORS[team as Team] || TEAM_COLORS['none'];
+
+              return (
+                <motion.div
+                  key={`featured-${sub.id}`}
+                  whileHover={{ y: -3 }}
+                  onClick={() => setLightboxSubId(sub.id)}
+                  className={cn(
+                    "group relative aspect-[16/10] bg-black/90 rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 shadow-md cursor-pointer flex flex-col justify-end transition-all",
+                    hoverBorderClass
+                  )}
+                >
+                  <img
+                    src={sub.image_url}
+                    alt={sub.caption || sub.game_name}
+                    className={cn(
+                      "absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105",
+                      isSpoilerHidden && "blur-xl scale-110 opacity-30 select-none pointer-events-none"
+                    )}
+                  />
+
+                  {/* Gradient Scrim */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent z-10" />
+
+                  {/* Hover Expand Overlay */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white gap-1.5 z-20 pointer-events-none">
+                    <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-black shadow-lg">
+                      <Maximize2 size={14} />
+                      <span>Full-Screen View</span>
+                    </div>
+                  </div>
+
+                  {/* Top Badges */}
+                  <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 z-20 pointer-events-none">
+                    <span className="bg-black/80 backdrop-blur-md text-white font-bold text-[10px] px-2 py-0.5 rounded-lg border border-white/10 truncate max-w-[130px]">
+                      {sub.game_name}
+                    </span>
+                    <span className={cn(
+                      "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md",
+                      team !== 'none'
+                        ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
+                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                    )}>
+                      <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
+                      Approved
+                    </span>
+                  </div>
+
+                  {/* Bottom Info */}
+                  <div className="relative z-20 p-3 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 truncate">
+                        {sub.user_avatar ? (
+                          <img src={sub.user_avatar} alt="" className="w-5 h-5 rounded-full border border-white/20 shrink-0" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full bg-purple-500/30 text-purple-200 flex items-center justify-center font-bold text-[9px] shrink-0">
+                            {sub.user_name?.[0]?.toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <span className="text-[11px] font-bold text-white truncate drop-shadow-sm">
+                          {sub.user_name}
+                        </span>
+                      </div>
+
+                      {sub.user_team && sub.user_team !== 'none' && (
+                        <span className={cn(
+                          "text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0",
+                          TEAM_COLORS[sub.user_team as Team]?.secondary,
+                          TEAM_COLORS[sub.user_team as Team]?.primary,
+                          TEAM_COLORS[sub.user_team as Team]?.border
+                        )}>
+                          {sub.user_team}
+                        </span>
+                      )}
+                    </div>
+                    {sub.caption && (
+                      <p className="text-[10px] text-white/80 line-clamp-1 italic">
+                        "{sub.caption}"
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Navigation & Controls Bar */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-black/5 dark:border-white/5 pb-4">
         {/* Tabs */}
@@ -946,11 +1088,46 @@ interface UserSubmissionStat {
 
                   {/* Top Badges */}
                   <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-20 pointer-events-none">
-                    <span className="bg-black/70 backdrop-blur-md text-white/90 font-bold text-[11px] px-2.5 py-1 rounded-lg border border-white/10 truncate max-w-[160px]">
+                    <span className="bg-black/70 backdrop-blur-md text-white/90 font-bold text-[11px] px-2.5 py-1 rounded-lg border border-white/10 truncate max-w-[150px]">
                       {sub.game_name}
                     </span>
 
                     <div className="flex items-center gap-1.5 pointer-events-auto">
+                      {/* Color-Coded Status Badge matching Team Palette */}
+                      {(() => {
+                        const status = sub.status || 'approved';
+                        const team = sub.user_team || 'none';
+                        const teamColor = TEAM_COLORS[team as Team] || TEAM_COLORS['none'];
+
+                        if (status === 'approved' || status === 'verified') {
+                          return (
+                            <span className={cn(
+                              "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md",
+                              team !== 'none'
+                                ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
+                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                            )}>
+                              <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
+                              Approved
+                            </span>
+                          );
+                        }
+                        if (status === 'pending') {
+                          return (
+                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md">
+                              <Clock size={10} className="text-amber-400 animate-pulse" />
+                              Pending
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md">
+                            <XCircle size={10} className="text-rose-400" />
+                            Rejected
+                          </span>
+                        );
+                      })()}
+
                       {sub.is_selected && (
                         <span className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-lg shadow-md flex items-center gap-1">
                           <Star size={10} className="fill-black" /> Voting Entry
@@ -974,6 +1151,53 @@ interface UserSubmissionStat {
                   {/* Admin controls overlay */}
                   {user?.isAdmin && (
                     <div className="absolute bottom-3 right-3 flex items-center gap-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Quick Status Buttons for Admin */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminSetStatus(sub.id, 'approved');
+                        }}
+                        title="Mark as Approved"
+                        className={cn(
+                          "p-1.5 rounded-lg border transition-colors cursor-pointer",
+                          (sub.status === 'approved' || !sub.status)
+                            ? "bg-emerald-500 text-black border-emerald-400"
+                            : "bg-black/80 hover:bg-black text-emerald-400 border-emerald-500/30"
+                        )}
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminSetStatus(sub.id, 'pending');
+                        }}
+                        title="Mark as Pending"
+                        className={cn(
+                          "p-1.5 rounded-lg border transition-colors cursor-pointer",
+                          sub.status === 'pending'
+                            ? "bg-amber-500 text-black border-amber-400"
+                            : "bg-black/80 hover:bg-black text-amber-400 border-amber-500/30"
+                        )}
+                      >
+                        <Clock size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminSetStatus(sub.id, 'rejected');
+                        }}
+                        title="Mark as Rejected"
+                        className={cn(
+                          "p-1.5 rounded-lg border transition-colors cursor-pointer",
+                          sub.status === 'rejected'
+                            ? "bg-rose-500 text-white border-rose-400"
+                            : "bg-black/80 hover:bg-black text-rose-400 border-rose-500/30"
+                        )}
+                      >
+                        <XCircle size={12} />
+                      </button>
+
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -991,6 +1215,7 @@ interface UserSubmissionStat {
                           setEditCaption(sub.caption);
                           setEditGameName(sub.game_name);
                           setEditIsSpoiler(sub.is_spoiler);
+                          setEditStatus(sub.status as any || 'approved');
                         }}
                         title="Edit Submission"
                         className="p-1.5 bg-black/80 hover:bg-black text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
@@ -1434,6 +1659,19 @@ interface UserSubmissionStat {
                     onChange={(e) => setEditCaption(e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-white/70 mb-1">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as any)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  >
+                    <option value="approved">Approved</option>
+                    <option value="pending">Pending Review</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
                 </div>
 
                 <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer pt-2">
