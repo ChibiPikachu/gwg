@@ -2460,26 +2460,48 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
-      let { data: activeEvent } = await supabase
-        .from('events')
-        .select('id')
-        .eq('is_active', true)
-        .maybeSingle();
+      // 1. Fetch active event & its snapshot (if any)
+      const { data: allEvents } = await supabase.from('events').select('*');
+      const activeEvent = (allEvents || []).find((e: any) => Boolean(e.is_active) || String(e.is_active) === 'true') ||
+        (allEvents || []).sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
 
-      if (!activeEvent) {
-        const { data: recentEvent } = await supabase
-          .from('events')
-          .select('id')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        activeEvent = recentEvent;
+      let savedScores: any = null;
+      if (activeEvent?.description && activeEvent.description.includes('<!--EVENT_SCORES:')) {
+        try {
+          const match = activeEvent.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+          if (match && match[1]) {
+            savedScores = JSON.parse(match[1]);
+          }
+        } catch (e) {}
       }
 
-      // Fetch all submissions with clean in-memory status check
+      // 2. Publicly return profiles assigned to a team
+      const { data: users, error } = await supabase
+        .from('profiles')
+        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role, id')
+        .not('team', 'is', null)
+        .neq('team', 'none');
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Build profileMap for robust multi-ID resolution across Steam, Discord, and UUID
+      const profileMap = new Map<string, any>();
+      (users || []).forEach((p: any) => {
+        if (p.steamid) profileMap.set(String(p.steamid).trim(), p);
+        if (p.discord_id) {
+          const rawDid = String(p.discord_id).trim();
+          const cleanDid = rawDid.startsWith('discord_') ? rawDid.replace('discord_', '') : rawDid;
+          profileMap.set(rawDid, p);
+          profileMap.set(cleanDid, p);
+          profileMap.set(`discord_${cleanDid}`, p);
+        }
+        if (p.id) profileMap.set(String(p.id).trim(), p);
+      });
+
+      // 3. Fetch submissions for active event
       const { data: allSubs, error: subError } = await supabase
         .from('submissions')
-        .select('user_id, points, calculated_score, game_name, status, platform, event_id');
+        .select('id, user_id, points, calculated_score, game_name, status, platform, event_id, notes');
 
       if (subError) throw subError;
 
@@ -2492,7 +2514,7 @@ async function createServer() {
         return true;
       });
 
-      // Deduplicate/reconcile screenshot contest points to prevent deleted test screenshots from inflating score
+      // 4. Fetch valid (non-rejected) screenshot submissions to guard against orphaned screenshot points
       const { data: allScreenshots } = await supabase.from('screenshot_submissions').select('user_id, status');
       const userScreenshotCount: Record<string, number> = {};
       (allScreenshots || []).forEach((sc: any) => {
@@ -2501,43 +2523,55 @@ async function createServer() {
           const cleanUid = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
           if (cleanUid) {
             userScreenshotCount[cleanUid] = (userScreenshotCount[cleanUid] || 0) + 1;
+            const prof = profileMap.get(rawId) || profileMap.get(cleanUid);
+            if (prof) {
+              if (prof.steamid) userScreenshotCount[String(prof.steamid)] = (userScreenshotCount[String(prof.steamid)] || 0) + 1;
+              if (prof.discord_id) {
+                const dClean = String(prof.discord_id).replace('discord_', '');
+                userScreenshotCount[dClean] = (userScreenshotCount[dClean] || 0) + 1;
+                userScreenshotCount[`discord_${dClean}`] = (userScreenshotCount[`discord_${dClean}`] || 0) + 1;
+              }
+              if (prof.id) userScreenshotCount[String(prof.id)] = (userScreenshotCount[String(prof.id)] || 0) + 1;
+            }
           }
         }
       });
 
+      // 5. Aggregate live submission points per profile
+      const profilePointsMap = new Map<any, number>();
       const userScreenshotPointRowsCount: Record<string, number> = {};
 
-      const userPointsMap: Record<string, number> = {};
       (verifiedSubs || []).forEach((sub: any) => {
         if (!sub.user_id || sub.user_id === 'system_notification' || String(sub.user_id).startsWith('team_pts_')) return;
         if (sub.game_name === 'Event Update') return;
 
         const rawSubUserId = String(sub.user_id || '').trim();
         const cleanSubUserId = rawSubUserId.startsWith('discord_') ? rawSubUserId.replace('discord_', '') : rawSubUserId;
-        
-        // If this is a screenshot contest point row, ensure we do not exceed the actual number of valid screenshots
+        const prof = profileMap.get(rawSubUserId) || profileMap.get(cleanSubUserId);
+
         const isScreenshotPoint = sub.platform === 'Screenshot Event' || 
           (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
           (sub.game_name && sub.game_name.includes('Screenshot Submission'));
 
         if (isScreenshotPoint) {
-          const allowed = userScreenshotCount[cleanSubUserId] || 0;
-          const seen = userScreenshotPointRowsCount[cleanSubUserId] || 0;
+          const checkKey = prof?.steamid || prof?.discord_id || cleanSubUserId;
+          const allowed = userScreenshotCount[checkKey] || userScreenshotCount[cleanSubUserId] || 0;
+          const seen = userScreenshotPointRowsCount[checkKey] || 0;
           if (seen >= allowed) {
             // Orphaned/excess point row from a deleted screenshot - do not count
             return;
           }
-          userScreenshotPointRowsCount[cleanSubUserId] = seen + 1;
+          userScreenshotPointRowsCount[checkKey] = seen + 1;
         }
 
         const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
-        userPointsMap[rawSubUserId] = (userPointsMap[rawSubUserId] || 0) + pts;
-        if (cleanSubUserId !== rawSubUserId) {
-          userPointsMap[cleanSubUserId] = (userPointsMap[cleanSubUserId] || 0) + pts;
+
+        if (prof) {
+          profilePointsMap.set(prof, (profilePointsMap.get(prof) || 0) + pts);
         }
       });
 
-      // Fetch adjustments for active event as well
+      // 6. Fetch adjustments for active event as well
       const { data: allAdjustments } = await supabase.from('team_adjustments').select('user_id, points, event_id');
       const adjustments = (allAdjustments || []).filter((adj: any) => {
         if (activeEvent) {
@@ -2551,20 +2585,14 @@ async function createServer() {
         const pts = Math.round(Number(adj.points) || 0);
         const rawAdjUserId = String(adj.user_id || '').trim();
         const cleanAdjUserId = rawAdjUserId.startsWith('discord_') ? rawAdjUserId.replace('discord_', '') : rawAdjUserId;
-        userPointsMap[rawAdjUserId] = (userPointsMap[rawAdjUserId] || 0) + pts;
-        if (cleanAdjUserId !== rawAdjUserId) {
-          userPointsMap[cleanAdjUserId] = (userPointsMap[cleanAdjUserId] || 0) + pts;
+        const prof = profileMap.get(rawAdjUserId) || profileMap.get(cleanAdjUserId);
+        if (prof) {
+          profilePointsMap.set(prof, (profilePointsMap.get(prof) || 0) + pts);
         }
       });
 
-      // Publicly return profiles assigned to a team
-      const { data: users, error } = await supabase
-        .from('profiles')
-        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role, id')
-        .not('team', 'is', null)
-        .neq('team', 'none');
-
-      if (error) return res.status(500).json({ error: error.message });
+      // 7. Check if forcedByAdmin scores exist in activeEvent snapshot
+      const forcedUserScores = (savedScores?.forcedByAdmin && savedScores?.userScores) ? savedScores.userScores : null;
 
       const transformedUsers = (users || []).map((u: any) => {
         let finalAvatar = u.steam_avatar;
@@ -2572,29 +2600,27 @@ async function createServer() {
           finalAvatar = u.discord_avatar;
         }
 
-        const rawCandidateIds = [
-          u.steamid ? String(u.steamid) : null,
-          u.discord_id ? String(u.discord_id) : null,
-          u.discord_id ? `discord_${u.discord_id}` : null,
-          u.id ? String(u.id) : null
-        ].filter(Boolean) as string[];
+        let userFinalPoints = profilePointsMap.get(u) || 0;
 
-        const cleanCandidateIds = Array.from(new Set(rawCandidateIds.map(id => id.startsWith('discord_') ? id.replace('discord_', '') : id)));
+        if (forcedUserScores) {
+          const rawCandidateIds = [
+            u.steamid ? String(u.steamid) : null,
+            u.discord_id ? String(u.discord_id) : null,
+            u.discord_id ? `discord_${u.discord_id}` : null,
+            u.id ? String(u.id) : null
+          ].filter(Boolean) as string[];
 
-        let calcPoints = 0;
-        let hasCalculatedPoints = false;
-        cleanCandidateIds.forEach(id => {
-          if (userPointsMap[id] !== undefined) {
-            calcPoints = Math.max(calcPoints, userPointsMap[id]);
-            hasCalculatedPoints = true;
+          for (const cid of rawCandidateIds) {
+            if (forcedUserScores[cid] !== undefined) {
+              userFinalPoints = Number(forcedUserScores[cid]) || 0;
+              break;
+            }
           }
-        });
-
-        const finalPts = hasCalculatedPoints ? calcPoints : (Number(u.points) || 0);
+        }
 
         return {
           ...u,
-          points: finalPts,
+          points: userFinalPoints,
           steam_avatar: finalAvatar
         };
       });
