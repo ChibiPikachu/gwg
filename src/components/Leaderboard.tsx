@@ -686,9 +686,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
     if (!isSupabaseConfigured) return;
 
-    // Subscribe to real-time updates for profiles
+    // Subscribe to real-time updates for profiles, submissions, screenshot_submissions, and adjustments
     const channel = supabase
-      .channel('leaderboard-profiles')
+      .channel('leaderboard-realtime')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
@@ -696,22 +696,34 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       }, () => {
         fetchUsers();
       })
-      .subscribe();
-
-    const subChannel = supabase
-      .channel('leaderboard-submissions')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
         table: 'submissions' 
       }, () => {
+        fetchUsers();
+        fetchAdjustments();
+      })
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'screenshot_submissions' 
+      }, () => {
+        fetchUsers();
+        fetchAdjustments();
+      })
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'team_adjustments' 
+      }, () => {
+        fetchUsers();
         fetchAdjustments();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
-      supabase.removeChannel(subChannel);
     };
   }, []); // Run once on component mount
 

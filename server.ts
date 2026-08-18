@@ -2143,12 +2143,15 @@ async function createServer() {
 
       if (!event) return;
 
-      // 1. Fetch current verified submissions for this event
-      const { data: verifiedSubs } = await supabase
+      // 1. Fetch current submissions for this event (accept verified, approved, or unflagged)
+      const { data: allSubs } = await supabase
         .from('submissions')
-        .select('id, user_id, points, calculated_score')
-        .eq('event_id', eventId)
-        .eq('status', 'verified');
+        .select('id, user_id, points, calculated_score, status, game_name, platform')
+        .eq('event_id', eventId);
+
+      const verifiedSubs = (allSubs || []).filter((s: any) => 
+        s.status === 'verified' || s.status === 'approved' || !s.status
+      );
 
       // 2. Fetch user_event_teams & profiles
       const { data: uets } = await supabase
@@ -2163,10 +2166,12 @@ async function createServer() {
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('steamid, team, points');
+        .select('steamid, discord_id, id, team, points');
       const profMap = new Map<string, string>();
       (profiles || []).forEach((p: any) => {
         if (p.steamid && p.team) profMap.set(p.steamid, p.team);
+        if (p.discord_id && p.team) profMap.set(p.discord_id, p.team);
+        if (p.id && p.team) profMap.set(p.id, p.team);
       });
 
       // Parse existing saved scores if present
@@ -2182,7 +2187,7 @@ async function createServer() {
         }
       }
 
-      // Preserve existing userScores from previous snapshots or forced entries so deleted submissions don't zero out members
+      // Preserve existing userScores from previous snapshots or forced entries
       const userScores: Record<string, number> = {};
       if (existingSaved?.userScores) {
         for (const [sid, val] of Object.entries(existingSaved.userScores)) {
@@ -2214,10 +2219,10 @@ async function createServer() {
         }
       });
 
-      // Calculate points from live verified submissions
+      // Calculate points from live submissions
       const liveUserScores: Record<string, number> = {};
       (verifiedSubs || []).forEach((sub: any) => {
-        if (sub.user_id === 'system_notification') return;
+        if (sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return;
         const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
 
         if (sub.user_id?.startsWith('team_pts_')) {
@@ -2585,7 +2590,7 @@ async function createServer() {
           }
         });
 
-        const finalPts = hasCalculatedPoints ? Math.max(calcPoints, Number(u.points || 0)) : (Number(u.points) || 0);
+        const finalPts = hasCalculatedPoints ? calcPoints : (Number(u.points) || 0);
 
         return {
           ...u,
