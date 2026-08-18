@@ -2551,6 +2551,7 @@ async function createServer() {
   });
 
   app.all('/api/leaderboards', (req, res) => leaderboardsHandler(req as any, res as any));
+  app.all('/api/screenshots', (req, res) => screenshotHandler(req as any, res as any));
 
   app.get('/api/leaderboard/games', async (req, res) => {
     const supabase = getSupabase();

@@ -563,8 +563,14 @@ export default async function handler(req: Request, res: Response) {
         const { status, isAdminOnly, submissionPoints } = req.body;
 
         const updateData: any = {};
-        if (status) updateData.status = status;
-        if (isAdminOnly !== undefined) updateData.is_admin_only = Boolean(isAdminOnly);
+        if (status) {
+          updateData.status = status;
+          memoryEvent.status = status;
+        }
+        if (isAdminOnly !== undefined) {
+          updateData.is_admin_only = Boolean(isAdminOnly);
+          memoryEvent.is_admin_only = Boolean(isAdminOnly);
+        }
         if (submissionPoints !== undefined && !isNaN(Number(submissionPoints))) {
           persistentDefaultSubmissionPoints = Math.max(0, Number(submissionPoints));
           updateData.submission_points = persistentDefaultSubmissionPoints;
@@ -572,48 +578,49 @@ export default async function handler(req: Request, res: Response) {
         }
 
         if (supabase) {
-          let targetId = memoryEvent.id;
-          const { data: existingEvt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
-          if (existingEvt) {
-            targetId = existingEvt.id;
-            memoryEvent = { ...memoryEvent, ...existingEvt };
-          }
+          try {
+            let targetId = memoryEvent.id;
+            const { data: existingEvt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
+            if (existingEvt) {
+              targetId = existingEvt.id;
+              memoryEvent = { ...memoryEvent, ...existingEvt, ...updateData };
+              
+              const { data: updated, error } = await supabase
+                .from('screenshot_events')
+                .update(updateData)
+                .eq('id', targetId)
+                .select()
+                .maybeSingle();
 
-          const { data: updated, error } = await supabase
-            .from('screenshot_events')
-            .update(updateData)
-            .eq('id', targetId)
-            .select()
-            .single();
+              if (!error && updated) {
+                memoryEvent = { ...memoryEvent, ...updated };
+              }
+            } else {
+              // Insert seed record with updateData
+              const seedEvt = { ...memoryEvent, ...updateData };
+              const { data: inserted, error } = await supabase
+                .from('screenshot_events')
+                .insert([seedEvt])
+                .select()
+                .maybeSingle();
 
-          if (!error && updated) {
-            memoryEvent = { ...memoryEvent, ...updated };
-          } else {
-            if (status) memoryEvent.status = status;
-            if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
-            if (submissionPoints !== undefined) memoryEvent.submission_points = persistentDefaultSubmissionPoints;
+              if (!error && inserted) {
+                memoryEvent = { ...memoryEvent, ...inserted };
+              }
+            }
+          } catch (dbErr) {
+            console.warn('[Screenshot API] Supabase update failed, using in-memory state:', dbErr);
           }
-          return res.status(200).json({
-            success: true,
-            event: {
-              ...memoryEvent,
-              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
-              is_voting_active: memoryEvent.status === 'voting_active'
-            }
-          });
-        } else {
-          if (status) memoryEvent.status = status;
-          if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
-          if (submissionPoints !== undefined) memoryEvent.submission_points = persistentDefaultSubmissionPoints;
-          return res.status(200).json({
-            success: true,
-            event: {
-              ...memoryEvent,
-              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
-              is_voting_active: memoryEvent.status === 'voting_active'
-            }
-          });
         }
+
+        return res.status(200).json({
+          success: true,
+          event: {
+            ...memoryEvent,
+            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
+            is_voting_active: memoryEvent.status === 'voting_active'
+          }
+        });
       }
 
       // ADMIN: TALLY VOTES & AWARD WINNER POINTS (+50, +40, +30, +20, +10)

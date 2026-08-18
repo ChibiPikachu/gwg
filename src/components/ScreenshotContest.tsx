@@ -3,7 +3,7 @@ import {
   Camera, Image as ImageIcon, Upload, Eye, EyeOff, Heart, MessageSquare, 
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
   Trash2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
-  ChevronLeft, ChevronRight, Maximize2
+  ChevronLeft, ChevronRight, Maximize2, Users, BarChart3, UserCheck, Search, ListFilter
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -175,6 +175,11 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [tallyResults, setTallyResults] = useState<any[] | null>(null);
   const [isTallying, setIsTallying] = useState(false);
 
+  // Admin user submission counts breakdown modal & user filter
+  const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
+  const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -207,6 +212,63 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
     if (!currentUserId) return [];
     return submissions.filter(s => s.user_id === currentUserId);
   }, [submissions, currentUserId]);
+
+interface UserSubmissionStat {
+  userId: string;
+  name: string;
+  avatar: string;
+  team: Team;
+  count: number;
+  selectedCount: number;
+  lastSubmitted: string;
+  games: string[];
+}
+
+  // Calculate per-user submission counts & stats for admin view and user indicators
+  const userSubmissionCounts = useMemo<Record<string, UserSubmissionStat>>(() => {
+    const map: Record<string, UserSubmissionStat> = {};
+
+    submissions.forEach(s => {
+      const uid = s.user_id;
+      if (!map[uid]) {
+        map[uid] = {
+          userId: uid,
+          name: s.user_name || 'Member',
+          avatar: s.user_avatar || '',
+          team: s.user_team || 'none',
+          count: 0,
+          selectedCount: 0,
+          lastSubmitted: s.created_at,
+          games: []
+        };
+      }
+      map[uid].count += 1;
+      if (s.is_selected) map[uid].selectedCount += 1;
+      if (s.game_name && !map[uid].games.includes(s.game_name)) {
+        map[uid].games.push(s.game_name);
+      }
+      if (new Date(s.created_at) > new Date(map[uid].lastSubmitted)) {
+        map[uid].lastSubmitted = s.created_at;
+      }
+    });
+
+    return map;
+  }, [submissions]);
+
+  const userSubmissionsList = useMemo<UserSubmissionStat[]>(() => {
+    const list: UserSubmissionStat[] = Object.values(userSubmissionCounts);
+    return list.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [userSubmissionCounts]);
+
+  const filteredUserList = useMemo<UserSubmissionStat[]>(() => {
+    if (!userSearchTerm.trim()) return userSubmissionsList;
+    const q = userSearchTerm.toLowerCase();
+    return userSubmissionsList.filter(u => 
+      u.name.toLowerCase().includes(q) || 
+      u.team.toLowerCase().includes(q) ||
+      u.games.some(g => g.toLowerCase().includes(q))
+    );
+  }, [userSubmissionsList, userSearchTerm]);
 
   // Vote map
   const voteCounts = useMemo(() => {
@@ -438,13 +500,34 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   };
 
   const handleAdminUpdateStatus = async (newStatus: string) => {
+    // Optimistically update local state so phase selector doesn't snap back
+    setEvent(prev => prev ? {
+      ...prev,
+      status: newStatus as any,
+      is_voting_active: newStatus === 'voting_active'
+    } : {
+      id: 'default-evt',
+      title: 'Screenshot Submission',
+      status: newStatus as any,
+      submission_points: editSubmissionPoints,
+      is_admin_only: false,
+      is_voting_active: newStatus === 'voting_active'
+    });
+
     try {
       const res = await fetch('/api/screenshots?action=admin-event-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, submissionPoints: editSubmissionPoints })
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        const data = await res.json();
+        if (data.event) {
+          setEvent(data.event);
+        } else {
+          fetchData();
+        }
+      }
     } catch (err) {
       console.error('Failed to update event status:', err);
     }
@@ -537,6 +620,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   // Filtered Submissions list
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(sub => {
+      if (adminFilterUserId && sub.user_id !== adminFilterUserId) return false;
       if (activeTab === 'voting' && !sub.is_selected) return false;
       if (activeTab === 'mine' && sub.user_id !== currentUserId) return false;
       if (searchGame.trim()) {
@@ -548,7 +632,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       }
       return true;
     });
-  }, [submissions, activeTab, currentUserId, searchGame]);
+  }, [submissions, activeTab, currentUserId, searchGame, adminFilterUserId]);
 
   // Lightbox Navigation Handlers
   const handlePrevLightbox = () => {
@@ -620,6 +704,15 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               </button>
             </div>
 
+            {/* Admin User Submissions Count Overview Button */}
+            <button
+              onClick={() => setAdminUserModalOpen(true)}
+              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+            >
+              <Users size={14} />
+              User Submissions ({userSubmissionsList.length})
+            </button>
+
             <button
               onClick={handleAdminToggleVoting}
               className={cn(
@@ -635,7 +728,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             <select
               value={event?.status || 'submissions_open'}
               onChange={(e) => handleAdminUpdateStatus(e.target.value)}
-              className="bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-bold text-white focus:outline-none cursor-pointer"
+              className="bg-black/40 border border-amber-500/30 rounded-xl px-3 py-1.5 text-xs font-bold text-white focus:outline-none cursor-pointer hover:border-amber-400 transition-colors"
             >
               <option value="draft">Phase: Draft</option>
               <option value="submissions_open">Phase: Submissions Open</option>
@@ -651,6 +744,24 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               {isTallying ? 'Calculating...' : 'Tally & Award Points'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Admin Active User Filter Banner */}
+      {adminFilterUserId && (
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl p-3 px-4 flex items-center justify-between gap-3 text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <Filter size={15} className="text-amber-400 shrink-0" />
+            <span>
+              Admin Filter Active: Viewing screenshots submitted by <strong className="text-white font-bold">{userSubmissionCounts[adminFilterUserId]?.name || 'User'}</strong> ({userSubmissionCounts[adminFilterUserId]?.count || 0}/10 uploads)
+            </span>
+          </div>
+          <button
+            onClick={() => setAdminFilterUserId(null)}
+            className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-3 py-1 rounded-lg border border-amber-500/30 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+          >
+            <X size={12} /> Clear User Filter
+          </button>
         </div>
       )}
 
@@ -918,17 +1029,39 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                         </span>
                       </div>
 
-                      {/* Team badge */}
-                      {sub.user_team && sub.user_team !== 'none' && (
-                        <span className={cn(
-                          "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0",
-                          TEAM_COLORS[sub.user_team as Team]?.secondary,
-                          TEAM_COLORS[sub.user_team as Team]?.primary,
-                          TEAM_COLORS[sub.user_team as Team]?.border
-                        )}>
-                          Team {sub.user_team}
-                        </span>
-                      )}
+                      {/* Team badge and Admin User Submission Count */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {user?.isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAdminFilterUserId(adminFilterUserId === sub.user_id ? null : sub.user_id);
+                            }}
+                            title={`Admin View: ${sub.user_name} has submitted ${userSubmissionCounts[sub.user_id]?.count || 1}/10 screenshots. Click to filter.`}
+                            className={cn(
+                              "text-[9px] font-black px-1.5 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1",
+                              adminFilterUserId === sub.user_id
+                                ? "bg-amber-500 text-black border-amber-400"
+                                : "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+                            )}
+                          >
+                            <Camera size={10} />
+                            <span>{userSubmissionCounts[sub.user_id]?.count || 1}/10</span>
+                          </button>
+                        )}
+
+                        {sub.user_team && sub.user_team !== 'none' && (
+                          <span className={cn(
+                            "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0",
+                            TEAM_COLORS[sub.user_team as Team]?.secondary,
+                            TEAM_COLORS[sub.user_team as Team]?.primary,
+                            TEAM_COLORS[sub.user_team as Team]?.border
+                          )}>
+                            Team {sub.user_team}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Caption */}
@@ -1531,6 +1664,27 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       )}
                     </div>
 
+                    {/* Admin User Submission Stats Pill in Lightbox */}
+                    {user?.isAdmin && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-300">
+                        <div className="flex items-center gap-1.5">
+                          <Camera size={13} className="text-amber-400" />
+                          <span>
+                            Admin: <strong>{userSubmissionCounts[currentSub.user_id]?.count || 1} / 10</strong> uploaded ({userSubmissionCounts[currentSub.user_id]?.selectedCount || 0} voting entry)
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setAdminFilterUserId(currentSub.user_id);
+                            setLightboxSubId(null);
+                          }}
+                          className="text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 px-2 py-0.5 rounded text-amber-200 transition-colors cursor-pointer"
+                        >
+                          Filter by user
+                        </button>
+                      </div>
+                    )}
+
                     {/* Game Title & Overlay Caption Box */}
                     <div className="space-y-2">
                       <span className={cn("text-[10px] font-black uppercase tracking-widest", teamTextAccent)}>Game Title</span>
@@ -1652,6 +1806,159 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             </motion.div>
           );
         })()}
+      </AnimatePresence>
+      {/* ADMIN USER SUBMISSIONS BREAKDOWN MODAL */}
+      <AnimatePresence>
+        {adminUserModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 md:p-8 max-w-2xl w-full space-y-6 shadow-2xl overflow-y-auto max-h-[85vh]"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-2xl">
+                    <Users size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      User Screenshot Submissions
+                      <span className="bg-amber-500/20 text-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-500/30">
+                        Admin Overview
+                      </span>
+                    </h3>
+                    <p className="text-xs text-white/50">
+                      View how many screenshots each member has uploaded (Max 10 / user)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAdminUserModalOpen(false)}
+                  className="p-2 text-white/40 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white/5 rounded-2xl p-3 border border-white/5 text-center">
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Total Submissions</span>
+                  <span className="text-lg font-black text-white">{submissions.length}</span>
+                </div>
+                <div className="bg-white/5 rounded-2xl p-3 border border-white/5 text-center">
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Active Users</span>
+                  <span className="text-lg font-black text-amber-400">{userSubmissionsList.length}</span>
+                </div>
+                <div className="bg-white/5 rounded-2xl p-3 border border-white/5 text-center">
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Voting Entries</span>
+                  <span className="text-lg font-black text-emerald-400">{submissions.filter(s => s.is_selected).length}</span>
+                </div>
+              </div>
+
+              {/* User Search Bar */}
+              <div className="relative">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
+                <input
+                  type="text"
+                  placeholder="Search user name, team, or game..."
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              {/* Users List */}
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {filteredUserList.length === 0 ? (
+                  <div className="text-center py-8 text-white/40 text-xs italic">
+                    {userSearchTerm ? 'No users matching your search.' : 'No screenshot submissions yet.'}
+                  </div>
+                ) : (
+                  filteredUserList.map((usr) => (
+                    <div
+                      key={usr.userId}
+                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        {usr.avatar ? (
+                          <img src={usr.avatar} alt="" className="w-8 h-8 rounded-full border border-white/10" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-xs">
+                            {usr.name?.[0]?.toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white">{usr.name}</span>
+                            {usr.team && usr.team !== 'none' && (
+                              <span className={cn(
+                                "text-[9px] font-black uppercase px-1.5 py-0.5 rounded border shrink-0",
+                                TEAM_COLORS[usr.team as Team]?.secondary,
+                                TEAM_COLORS[usr.team as Team]?.primary,
+                                TEAM_COLORS[usr.team as Team]?.border
+                              )}>
+                                Team {usr.team}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-white/40">
+                            <span>Games: {usr.games.slice(0, 2).join(', ')}{usr.games.length > 2 ? ` +${usr.games.length - 2}` : ''}</span>
+                            <span>•</span>
+                            <span>{new Date(usr.lastSubmitted).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Counts & Actions */}
+                      <div className="flex items-center gap-3 justify-between sm:justify-end">
+                        <div className="text-right">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <span className="text-xs font-black text-amber-400">{usr.count} / 10</span>
+                            <span className="text-[10px] text-white/50 font-medium">uploads</span>
+                          </div>
+                          {usr.selectedCount > 0 ? (
+                            <span className="text-[9px] font-bold text-emerald-400 flex items-center gap-1 justify-end">
+                              <Star size={10} className="fill-emerald-400" /> Voting Entry Set
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-medium text-white/30 block">No voting entry set</span>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setAdminFilterUserId(usr.userId);
+                            setAdminUserModalOpen(false);
+                          }}
+                          className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          View Screenshots
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Close Button */}
+              <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                <span className="text-xs text-white/40">
+                  Showing {filteredUserList.length} of {userSubmissionsList.length} active contributors
+                </span>
+                <button
+                  onClick={() => setAdminUserModalOpen(false)}
+                  className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );

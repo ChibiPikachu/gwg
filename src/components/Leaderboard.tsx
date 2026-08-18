@@ -501,9 +501,16 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       const res = await fetch(`/api/leaderboard/event/${eventId}`);
       if (res.ok) {
         const data = await res.json();
-        const hasScores = data.standings && data.standings.some((s: any) => Number(s.points) > 0);
-        if (hasScores || !targetEvt) {
-          setPreviousEventData(data);
+        if (data && data.standings) {
+          const eventObj = data.event || targetEvt || { id: eventId, title: 'Previous Event', is_active: false };
+          setPreviousEventData({
+            ...data,
+            event: eventObj,
+            standings: data.standings || [],
+            topUsers: data.topUsers || [],
+            totalParticipants: data.totalParticipants || data.topUsers?.length || 0,
+            adjustments: data.adjustments || []
+          });
           setLoadingPrevious(false);
           return;
         }
@@ -516,8 +523,24 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       const localData = buildPreviousEventDataFromSnapshot(targetEvt, usersRef.current);
       if (localData) {
         setPreviousEventData(localData);
+        setLoadingPrevious(false);
+        return;
       }
     }
+
+    // Safe default fallback
+    setPreviousEventData({
+      event: targetEvt || { id: eventId, title: 'Previous Event', is_active: false },
+      standings: [
+        { team: 'blue', points: 0, members: 0, rank: 1 },
+        { team: 'purple', points: 0, members: 0, rank: 2 },
+        { team: 'green', points: 0, members: 0, rank: 3 },
+        { team: 'red', points: 0, members: 0, rank: 4 }
+      ],
+      topUsers: [],
+      totalParticipants: 0,
+      adjustments: []
+    });
     setLoadingPrevious(false);
   }, [buildPreviousEventDataFromSnapshot]);
 
@@ -795,10 +818,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               setActiveTab('previous');
               if (previousEvents.length > 0) {
                 const currentSelectedExists = previousEvents.some((e: any) => e.id === selectedPreviousEventId);
-                if (!currentSelectedExists || !selectedPreviousEventId) {
-                  const latestPast = previousEvents[previousEvents.length - 1];
-                  setSelectedPreviousEventId(latestPast.id);
-                  fetchPreviousEventLeaderboard(latestPast.id);
+                const targetId = (currentSelectedExists && selectedPreviousEventId) ? selectedPreviousEventId : previousEvents[previousEvents.length - 1].id;
+                setSelectedPreviousEventId(targetId);
+                if (!previousEventData || previousEventData.event?.id !== targetId) {
+                  fetchPreviousEventLeaderboard(targetId);
                 }
               }
             }}
@@ -1244,7 +1267,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
                           Archived Event Standings
                         </span>
-                        {previousEventData.event.winner_team && (
+                        {previousEventData.event?.winner_team && (
                           <span className={cn(
                             "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1",
                             TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary,
@@ -1256,9 +1279,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                           </span>
                         )}
                       </div>
-                      <h2 className="text-2xl md:text-3xl font-black">{previousEventData.event.title}</h2>
+                      <h2 className="text-2xl md:text-3xl font-black">{previousEventData.event?.title || 'Archived Event'}</h2>
                       <p className="text-xs opacity-50 mt-1">
-                        Total Participants: <span className="font-bold dark:text-white text-slate-900">{previousEventData.totalParticipants} users</span>
+                        Total Participants: <span className="font-bold dark:text-white text-slate-900">{previousEventData.totalParticipants || previousEventData.topUsers?.length || 0} users</span>
                       </p>
                     </div>
 
@@ -1285,7 +1308,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                         </>
                       )}
 
-                      {previousEventData.event.winner_team && (
+                      {previousEventData.event?.winner_team && (
                         <div className={cn(
                           "p-4 rounded-2xl border flex items-center gap-3 shrink-0",
                           TEAM_COLORS[previousEventData.event.winner_team as Team]?.secondary || "bg-slate-500/10",
@@ -1319,8 +1342,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                      {previousEventData.standings.map((s: any) => {
-                        const isWinner = previousEventData.event.winner_team === s.team;
+                      {(previousEventData.standings || []).map((s: any) => {
+                        const isWinner = previousEventData.event?.winner_team === s.team;
                         const winnerBg = s.team === 'blue' ? 'bg-sky-500' : s.team === 'green' ? 'bg-green-500' : s.team === 'red' ? 'bg-red-500' : 'bg-purple-500';
                         const winnerRing = s.team === 'blue' ? 'ring-2 ring-sky-500/50 shadow-sky-500/10' : s.team === 'green' ? 'ring-2 ring-green-500/50 shadow-green-500/10' : s.team === 'red' ? 'ring-2 ring-red-500/50 shadow-red-500/10' : 'ring-2 ring-purple-500/50 shadow-purple-500/10';
                         return (
@@ -1429,9 +1452,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     </div>
 
                     {/* Members Counter */}
-                    {previousEventData.topUsers.length > 0 && (
+                    {(previousEventData.topUsers || []).length > 0 && (
                       <div className="mb-4 flex items-center justify-between text-[11px] font-bold opacity-50 px-1">
-                        <span>Showing {filteredPreviousUsers.length} of {previousEventData.topUsers.length} members</span>
+                        <span>Showing {filteredPreviousUsers.length} of {(previousEventData.topUsers || []).length} members</span>
                         {(prevSearchQuery || prevTeamFilter !== 'all') && (
                           <button
                             onClick={() => { setPrevSearchQuery(''); setPrevTeamFilter('all'); }}
@@ -1443,7 +1466,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       </div>
                     )}
 
-                    {previousEventData.topUsers.length === 0 ? (
+                    {(previousEventData.topUsers || []).length === 0 ? (
                       <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 opacity-40 italic font-bold">
                         No user points logged for this event.
                       </div>
