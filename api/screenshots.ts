@@ -23,6 +23,8 @@ function buildProfileOrFilter(key: string): string {
   return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
 }
 
+let persistentDefaultSubmissionPoints = 20;
+
 // In-memory fallback for local dev when Supabase is not connected
 let memoryEvent: any = {
   id: 'evt_screenshot_01',
@@ -72,9 +74,17 @@ export default async function handler(req: Request, res: Response) {
       if (supabase) {
         let { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
         if (!evt) {
-          // seed event
-          const { data: newEvt } = await supabase.from('screenshot_events').insert([memoryEvent]).select().single();
-          evt = newEvt || memoryEvent;
+          // seed event with persistent points
+          const seedEvent = { ...memoryEvent, submission_points: persistentDefaultSubmissionPoints };
+          const { data: newEvt } = await supabase.from('screenshot_events').insert([seedEvent]).select().single();
+          evt = newEvt || seedEvent;
+        }
+
+        if (evt) {
+          memoryEvent = { ...memoryEvent, ...evt };
+          if (evt.submission_points !== undefined && evt.submission_points !== null) {
+            persistentDefaultSubmissionPoints = Number(evt.submission_points);
+          }
         }
 
         const { data: subs } = await supabase.from('screenshot_submissions').select('*').order('created_at', { ascending: false });
@@ -82,10 +92,14 @@ export default async function handler(req: Request, res: Response) {
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
         const eventData = evt || memoryEvent;
+        const currentPoints = eventData.submission_points !== undefined && eventData.submission_points !== null 
+          ? Number(eventData.submission_points) 
+          : persistentDefaultSubmissionPoints;
+
         return res.status(200).json({
           event: {
             ...eventData,
-            submission_points: eventData.submission_points !== undefined && eventData.submission_points !== null ? Number(eventData.submission_points) : 20,
+            submission_points: currentPoints,
             is_voting_active: eventData.status === 'voting_active'
           },
           submissions: subs || [],
@@ -93,10 +107,14 @@ export default async function handler(req: Request, res: Response) {
           comments: comments || []
         });
       } else {
+        const currentPoints = memoryEvent.submission_points !== undefined 
+          ? Number(memoryEvent.submission_points) 
+          : persistentDefaultSubmissionPoints;
+
         return res.status(200).json({
           event: {
             ...memoryEvent,
-            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : 20,
+            submission_points: currentPoints,
             is_voting_active: memoryEvent.status === 'voting_active'
           },
           submissions: memorySubmissions,
@@ -501,10 +519,15 @@ export default async function handler(req: Request, res: Response) {
 
       // ADMIN: TOGGLE VOTING PERIOD
       if (action === 'admin-toggle-voting') {
+        let targetId = memoryEvent.id;
         let currentStatus = memoryEvent.status;
         if (supabase) {
           const { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
-          if (evt) currentStatus = evt.status;
+          if (evt) {
+            targetId = evt.id;
+            currentStatus = evt.status;
+            memoryEvent = { ...memoryEvent, ...evt };
+          }
         }
 
         const newStatus = currentStatus === 'voting_active' ? 'submissions_open' : 'voting_active';
@@ -513,11 +536,11 @@ export default async function handler(req: Request, res: Response) {
           const { data: updated } = await supabase
             .from('screenshot_events')
             .update({ status: newStatus })
-            .eq('id', memoryEvent.id)
+            .eq('id', targetId)
             .select()
             .single();
 
-          if (updated) memoryEvent = updated;
+          if (updated) memoryEvent = { ...memoryEvent, ...updated };
           else memoryEvent.status = newStatus;
         } else {
           memoryEvent.status = newStatus;
@@ -529,6 +552,7 @@ export default async function handler(req: Request, res: Response) {
           is_voting_active: memoryEvent.status === 'voting_active',
           event: {
             ...memoryEvent,
+            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
             is_voting_active: memoryEvent.status === 'voting_active'
           }
         });
@@ -542,41 +566,50 @@ export default async function handler(req: Request, res: Response) {
         if (status) updateData.status = status;
         if (isAdminOnly !== undefined) updateData.is_admin_only = Boolean(isAdminOnly);
         if (submissionPoints !== undefined && !isNaN(Number(submissionPoints))) {
-          updateData.submission_points = Math.max(0, Number(submissionPoints));
+          persistentDefaultSubmissionPoints = Math.max(0, Number(submissionPoints));
+          updateData.submission_points = persistentDefaultSubmissionPoints;
+          memoryEvent.submission_points = persistentDefaultSubmissionPoints;
         }
 
         if (supabase) {
+          let targetId = memoryEvent.id;
+          const { data: existingEvt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
+          if (existingEvt) {
+            targetId = existingEvt.id;
+            memoryEvent = { ...memoryEvent, ...existingEvt };
+          }
+
           const { data: updated, error } = await supabase
             .from('screenshot_events')
             .update(updateData)
-            .eq('id', memoryEvent.id)
+            .eq('id', targetId)
             .select()
             .single();
 
-          if (error) {
+          if (!error && updated) {
+            memoryEvent = { ...memoryEvent, ...updated };
+          } else {
             if (status) memoryEvent.status = status;
             if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
-            if (submissionPoints !== undefined) memoryEvent.submission_points = Math.max(0, Number(submissionPoints));
-          } else {
-            memoryEvent = updated;
+            if (submissionPoints !== undefined) memoryEvent.submission_points = persistentDefaultSubmissionPoints;
           }
           return res.status(200).json({
             success: true,
             event: {
               ...memoryEvent,
-              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : 20,
+              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
               is_voting_active: memoryEvent.status === 'voting_active'
             }
           });
         } else {
           if (status) memoryEvent.status = status;
           if (isAdminOnly !== undefined) memoryEvent.is_admin_only = Boolean(isAdminOnly);
-          if (submissionPoints !== undefined) memoryEvent.submission_points = Math.max(0, Number(submissionPoints));
+          if (submissionPoints !== undefined) memoryEvent.submission_points = persistentDefaultSubmissionPoints;
           return res.status(200).json({
             success: true,
             event: {
               ...memoryEvent,
-              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : 20,
+              submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : persistentDefaultSubmissionPoints,
               is_voting_active: memoryEvent.status === 'voting_active'
             }
           });

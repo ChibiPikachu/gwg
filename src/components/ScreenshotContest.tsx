@@ -63,11 +63,66 @@ const TEAM_HOVER_BORDERS: Record<string, string> = {
   none: 'hover:border-slate-400 hover:shadow-slate-500/20'
 };
 
+const TEAM_SOLID_BUTTON: Record<string, string> = {
+  blue: 'bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-500/25 border border-sky-500',
+  green: 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/25 border border-green-500',
+  purple: 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/25 border border-purple-500',
+  red: 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-500/25 border border-red-500',
+  none: 'bg-slate-700 hover:bg-slate-600 text-white shadow-lg shadow-slate-500/25 border border-slate-600'
+};
+
+const TEAM_ACTIVE_TAB: Record<string, string> = {
+  blue: 'bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm',
+  green: 'bg-green-500/20 text-green-300 border border-green-500/30 shadow-sm',
+  purple: 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm',
+  red: 'bg-red-500/20 text-red-300 border border-red-500/30 shadow-sm',
+  none: 'bg-slate-500/20 text-slate-300 border border-slate-500/30 shadow-sm'
+};
+
+const TEAM_SUBTLE_BUTTON: Record<string, string> = {
+  blue: 'bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30',
+  green: 'bg-green-600/20 hover:bg-green-600/30 text-green-300 border border-green-500/30',
+  purple: 'bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30',
+  red: 'bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30',
+  none: 'bg-slate-600/20 hover:bg-slate-600/30 text-slate-300 border border-slate-500/30'
+};
+
+const TEAM_FOCUS_BORDER: Record<string, string> = {
+  blue: 'focus:border-sky-500/50',
+  green: 'focus:border-green-500/50',
+  purple: 'focus:border-purple-500/50',
+  red: 'focus:border-red-500/50',
+  none: 'focus:border-white/30'
+};
+
+const TEAM_TEXT_ACCENT: Record<string, string> = {
+  blue: 'text-sky-400',
+  green: 'text-green-400',
+  purple: 'text-purple-400',
+  red: 'text-red-400',
+  none: 'text-slate-400'
+};
+
+const TEAM_BG_ACCENT: Record<string, string> = {
+  blue: 'bg-sky-500/10 border-sky-500/20 text-sky-400',
+  green: 'bg-green-500/10 border-green-500/20 text-green-400',
+  purple: 'bg-purple-500/10 border-purple-500/20 text-purple-400',
+  red: 'bg-red-500/10 border-red-500/20 text-red-400',
+  none: 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+};
+
 export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (steamId: string) => void }) {
   const { user, theme } = useAuth();
   const currentUserId = user?.steamId || user?.discordId || user?.uid || '';
   const userTeam = user?.team || 'none';
   const hoverBorderClass = TEAM_HOVER_BORDERS[userTeam] || TEAM_HOVER_BORDERS['none'];
+  const teamSolidBtn = TEAM_SOLID_BUTTON[userTeam] || TEAM_SOLID_BUTTON['none'];
+  const teamActiveTab = TEAM_ACTIVE_TAB[userTeam] || TEAM_ACTIVE_TAB['none'];
+  const teamSubtleBtn = TEAM_SUBTLE_BUTTON[userTeam] || TEAM_SUBTLE_BUTTON['none'];
+  const teamFocusBorder = TEAM_FOCUS_BORDER[userTeam] || TEAM_FOCUS_BORDER['none'];
+  const teamTextAccent = TEAM_TEXT_ACCENT[userTeam] || TEAM_TEXT_ACCENT['none'];
+  const teamBgAccent = TEAM_BG_ACCENT[userTeam] || TEAM_BG_ACCENT['none'];
+  const userTeamColors = TEAM_COLORS[userTeam as Team] || TEAM_COLORS['none'];
 
   const [event, setEvent] = useState<ScreenshotEvent | null>(null);
   const [submissions, setSubmissions] = useState<ScreenshotSubmission[]>([]);
@@ -84,8 +139,11 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   // Lightbox state
   const [lightboxSubId, setLightboxSubId] = useState<string | null>(null);
 
-  // Admin settings state
-  const [editSubmissionPoints, setEditSubmissionPoints] = useState<number>(20);
+  // Admin settings state (with local storage persistence)
+  const [editSubmissionPoints, setEditSubmissionPoints] = useState<number>(() => {
+    const saved = localStorage.getItem('admin_screenshot_submission_points');
+    return saved && !isNaN(Number(saved)) ? Number(saved) : 20;
+  });
 
   // Submission Modal state
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
@@ -124,8 +182,10 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       if (res.ok) {
         const data = await res.json();
         setEvent(data.event || null);
-        if (data.event?.submission_points !== undefined) {
-          setEditSubmissionPoints(Number(data.event.submission_points));
+        if (data.event?.submission_points !== undefined && data.event?.submission_points !== null) {
+          const pts = Number(data.event.submission_points);
+          setEditSubmissionPoints(pts);
+          localStorage.setItem('admin_screenshot_submission_points', String(pts));
         }
         setSubmissions(data.submissions || []);
         setVotes(data.votes || []);
@@ -313,9 +373,12 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   };
 
   // Submit comment
-  const handleAddComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeCommentSubId || !commentText.trim()) return;
+  const handleAddComment = async (eOrSubId?: React.FormEvent | string) => {
+    if (eOrSubId && typeof eOrSubId === 'object' && 'preventDefault' in eOrSubId) {
+      eOrSubId.preventDefault();
+    }
+    const targetSubId = typeof eOrSubId === 'string' ? eOrSubId : activeCommentSubId;
+    if (!targetSubId || !commentText.trim()) return;
 
     setCommenting(true);
     try {
@@ -323,7 +386,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          submissionId: activeCommentSubId,
+          submissionId: targetSubId,
           userId: currentUserId,
           userName: user?.steamName || user?.discordName || 'Member',
           userAvatar: user?.steamAvatar || user?.discordAvatar || '',
@@ -344,11 +407,13 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
 
   // Admin Actions
   const handleAdminUpdatePoints = async (points: number) => {
+    const validatedPoints = Math.max(0, Number(points));
+    localStorage.setItem('admin_screenshot_submission_points', String(validatedPoints));
     try {
       const res = await fetch('/api/screenshots?action=admin-event-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionPoints: points })
+        body: JSON.stringify({ submissionPoints: validatedPoints })
       });
       if (res.ok) {
         const data = await res.json();
@@ -363,7 +428,8 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
     try {
       const res = await fetch('/api/screenshots?action=admin-toggle-voting', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionPoints: editSubmissionPoints })
       });
       if (res.ok) fetchData();
     } catch (err) {
@@ -376,7 +442,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       const res = await fetch('/api/screenshots?action=admin-event-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus, submissionPoints: editSubmissionPoints })
       });
       if (res.ok) fetchData();
     } catch (err) {
@@ -560,7 +626,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                 "font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer border",
                 (event?.status === 'voting_active' || event?.is_voting_active)
                   ? "bg-amber-500 text-black border-amber-400 hover:bg-amber-400"
-                  : "bg-purple-600 text-white border-purple-500 hover:bg-purple-500"
+                  : teamSolidBtn
               )}
             >
               <Star size={14} className={(event?.status === 'voting_active' || event?.is_voting_active) ? "fill-black" : ""} />
@@ -590,12 +656,11 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
 
       {/* Header Banner */}
       <div className="relative overflow-hidden rounded-3xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/10 p-6 md:p-10 shadow-xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl -z-0 pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-3 max-w-2xl">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full flex items-center gap-1.5">
-                <Camera size={12} /> Screenshot Showcase Event
+              <span className={cn("border text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full flex items-center gap-1.5", teamBgAccent)}>
+                <Camera size={12} /> Screenshot Submission
               </span>
               <span className={cn(
                 "text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border",
@@ -614,14 +679,14 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
               {event?.title || 'Screenshot Submissions'}
             </h1>
             <p className="text-sm dark:text-white/60 text-slate-600 leading-relaxed">
-              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+{event?.submission_points ?? 20} points</strong> for your team! Select <b>one</b> official screenshot for voting when the Voting Period starts. Screenshots taken during and before the event are allowed.
+              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+{event?.submission_points ?? editSubmissionPoints ?? 20} points</strong> for your team! Select <b>one</b> official screenshot for voting when the Voting Period starts. Screenshots taken during and before the event are allowed.
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <button
               onClick={() => setIsSubmitModalOpen(true)}
-              className="w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm px-6 py-3.5 rounded-2xl shadow-lg shadow-purple-500/25 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              className={cn("w-full sm:w-auto font-bold text-sm px-6 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer", teamSolidBtn)}
             >
               <Plus size={18} />
               Submit Screenshot
@@ -639,7 +704,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             className={cn(
               "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
               activeTab === 'all'
-                ? "bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm"
+                ? teamActiveTab
                 : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
@@ -665,7 +730,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             className={cn(
               "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
               activeTab === 'mine'
-                ? "bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm"
+                ? teamActiveTab
                 : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
@@ -682,7 +747,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             placeholder="Search game, caption, or user..."
             value={searchGame}
             onChange={(e) => setSearchGame(e.target.value)}
-            className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-medium dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 transition-colors"
+            className={cn("w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-medium dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none transition-colors", teamFocusBorder)}
           />
         </div>
       </div>
@@ -690,19 +755,19 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
       {/* Submissions Grid */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
-          <RefreshCw size={28} className="animate-spin text-purple-400" />
+          <RefreshCw size={28} className={cn("animate-spin", teamTextAccent)} />
           <p className="text-xs font-medium">Loading screenshots gallery...</p>
         </div>
       ) : filteredSubmissions.length === 0 ? (
         <div className="py-16 text-center border-2 border-dashed border-black/5 dark:border-white/10 rounded-3xl p-8 space-y-3">
-          <Camera size={40} className="mx-auto opacity-20 text-purple-400" />
+          <Camera size={40} className={cn("mx-auto opacity-30", teamTextAccent)} />
           <h3 className="text-base font-bold dark:text-white text-slate-800">No screenshots found</h3>
           <p className="text-xs opacity-50 max-w-md mx-auto">
             {searchGame ? 'Try clearing your search filter.' : 'Be the first to submit a screenshot for your team!'}
           </p>
           <button
             onClick={() => setIsSubmitModalOpen(true)}
-            className="mt-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
+            className={cn("mt-2 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer", teamSubtleBtn)}
           >
             + Upload Screenshot
           </button>
@@ -946,12 +1011,12 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-purple-500/20 text-purple-400 rounded-xl">
+                  <div className={cn("p-2 rounded-xl", userTeamColors.secondary, userTeamColors.primary)}>
                     <Camera size={20} />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-white">Upload Screenshot</h3>
-                    <p className="text-xs text-white/50">Earn +20 points for Team {user?.team || 'Members'}</p>
+                    <p className="text-xs text-white/50">Earn +{event?.submission_points ?? editSubmissionPoints ?? 20} points for Team {user?.team || 'Members'}</p>
                   </div>
                 </div>
                 <button
@@ -995,11 +1060,11 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       className={cn(
                         "border-2 border-dashed rounded-2xl p-6 text-center space-y-2 cursor-pointer transition-all",
                         isDragging
-                          ? "border-purple-400 bg-purple-500/20 scale-[1.02]"
-                          : "border-white/20 hover:border-purple-500/50 bg-white/5"
+                          ? "border-white/40 bg-white/10 scale-[1.02]"
+                          : "border-white/20 hover:border-white/40 bg-white/5"
                       )}
                     >
-                      <Upload size={32} className="mx-auto text-purple-400 opacity-60" />
+                      <Upload size={32} className={cn("mx-auto opacity-70", teamTextAccent)} />
                       <p className="text-xs font-bold text-white">Click or Drag Image Here</p>
                       <p className="text-[10px] text-white/40">PNG, JPG, WEBP up to 8MB</p>
                       <input
@@ -1023,7 +1088,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     placeholder="https://..."
                     value={imageUrlInput}
                     onChange={(e) => setImageUrlInput(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
+                    className={cn("w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none", teamFocusBorder)}
                   />
                 </div>
 
@@ -1038,7 +1103,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     placeholder="e.g. Life is Strange, Elden Ring..."
                     value={gameNameInput}
                     onChange={(e) => setGameNameInput(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
+                    className={cn("w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none", teamFocusBorder)}
                   />
                 </div>
 
@@ -1052,7 +1117,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     placeholder="Add a fun caption or description for this shot..."
                     value={captionInput}
                     onChange={(e) => setCaptionInput(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 resize-none"
+                    className={cn("w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none resize-none", teamFocusBorder)}
                   />
                 </div>
 
@@ -1063,7 +1128,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       type="checkbox"
                       checked={isSpoilerInput}
                       onChange={(e) => setIsSpoilerInput(e.target.checked)}
-                      className="w-4 h-4 rounded bg-black/40 border-white/20 text-purple-600 focus:ring-0 cursor-pointer"
+                      className="w-4 h-4 rounded bg-black/40 border-white/20 text-red-500 focus:ring-0 cursor-pointer"
                     />
                     <span>Contains Spoilers</span>
                   </label>
@@ -1075,8 +1140,8 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                       onChange={(e) => setIsSelectedInput(e.target.checked)}
                       className="w-4 h-4 rounded bg-black/40 border-white/20 text-amber-500 focus:ring-0 cursor-pointer"
                     />
-                    <span className="text-indigo-400 font-bold flex items-center gap-1">
-                      <Star size={12} className="fill-indigo-400" />
+                    <span className="text-amber-400 font-bold flex items-center gap-1">
+                      <Star size={12} className="fill-amber-400" />
                       Set as my official entry for Voting
                     </span>
                   </label>
@@ -1093,9 +1158,9 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-purple-500/25 transition-all flex items-center gap-2 cursor-pointer"
+                    className={cn("font-bold text-xs px-6 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer", teamSolidBtn)}
                   >
-                    {submitting ? 'Uploading...' : 'Submit (+20 Points)'}
+                    {submitting ? 'Uploading...' : `Submit (+${event?.submission_points ?? editSubmissionPoints ?? 20} Points)`}
                   </button>
                 </div>
               </form>
@@ -1116,7 +1181,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <MessageSquare size={16} className="text-purple-400" />
+                  <MessageSquare size={16} className={teamTextAccent} />
                   Comments ({activeCommentsForSub.length})
                 </h3>
                 <button
@@ -1137,7 +1202,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                   activeCommentsForSub.map((cmt) => (
                     <div key={cmt.id} className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold text-purple-300">
+                        <span className="text-[11px] font-bold text-white/90">
                           {cmt.user_name}
                         </span>
                         <span className="text-[9px] text-white/30">
@@ -1159,12 +1224,12 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                   placeholder="Write a comment..."
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
+                  className={cn("flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none", teamFocusBorder)}
                 />
                 <button
                   type="submit"
                   disabled={commenting || !commentText.trim()}
-                  className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold p-2.5 rounded-xl transition-all cursor-pointer"
+                  className={cn("disabled:opacity-40 text-white font-bold p-2.5 rounded-xl transition-all cursor-pointer", teamSolidBtn)}
                 >
                   <Send size={14} />
                 </button>
@@ -1343,7 +1408,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center gap-3">
-                  <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1.5">
+                  <span className={cn("text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1.5", teamActiveTab)}>
                     <Camera size={14} /> {currentSub.game_name}
                   </span>
                   {totalCount > 1 && (
@@ -1442,7 +1507,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                         {currentSub.user_avatar ? (
                           <img src={currentSub.user_avatar} alt="" className="w-10 h-10 rounded-full border border-white/20" />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-sm">
+                          <div className={cn("w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm", teamActiveTab)}>
                             {currentSub.user_name?.[0]?.toUpperCase() || 'U'}
                           </div>
                         )}
@@ -1468,7 +1533,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
 
                     {/* Game Title & Overlay Caption Box */}
                     <div className="space-y-2">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">Game Title</span>
+                      <span className={cn("text-[10px] font-black uppercase tracking-widest", teamTextAccent)}>Game Title</span>
                       <h3 className="text-base font-extrabold text-white">{currentSub.game_name}</h3>
 
                       {currentSub.caption ? (
@@ -1519,7 +1584,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                     <div className="space-y-3 pt-4 border-t border-white/10">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <MessageSquare size={14} className="text-purple-400" />
+                          <MessageSquare size={14} className={teamTextAccent} />
                           Comments ({subComments.length})
                         </h4>
                       </div>
@@ -1531,7 +1596,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                           subComments.map(c => (
                             <div key={c.id} className="p-2.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-bold text-purple-300">{c.user_name}</span>
+                                <span className="font-bold text-white/90">{c.user_name}</span>
                                 <span className="text-[9px] text-white/30">{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                               </div>
                               <p className="text-xs text-white/80 leading-normal">{c.content}</p>
@@ -1554,12 +1619,12 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleAddComment(currentSub.id);
                           }}
-                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                          className={cn("flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none", teamFocusBorder)}
                         />
                         <button
                           onClick={() => handleAddComment(currentSub.id)}
                           disabled={commenting || !commentText.trim()}
-                          className="p-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer"
+                          className={cn("p-2 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer", teamSolidBtn)}
                         >
                           <Send size={14} />
                         </button>
