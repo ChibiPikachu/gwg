@@ -69,54 +69,140 @@ let memoryNotifications: any[] = [];
 async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string) {
   if (!supabaseClient || !targetUserId) return;
   try {
-    const cleanId = targetUserId.startsWith('discord_') ? targetUserId.replace('discord_', '') : targetUserId;
+    const rawTarget = String(targetUserId).trim();
+    const cleanId = rawTarget.startsWith('discord_') ? rawTarget.replace('discord_', '') : rawTarget;
     const prefixedDiscordId = `discord_${cleanId}`;
     
+    // Fetch profile to find all associated ID variants (steamid, discord_id, id)
+    const { data: userProfile } = await supabaseClient
+      .from('profiles')
+      .select('steamid, discord_id, id, team')
+      .or(`steamid.eq.${cleanId},discord_id.eq.${cleanId},discord_id.eq.${prefixedDiscordId},id.eq.${cleanId}`)
+      .maybeSingle();
+
+    const candidateIds = new Set<string>([
+      rawTarget,
+      cleanId,
+      prefixedDiscordId,
+      userProfile?.steamid ? String(userProfile.steamid) : null,
+      userProfile?.discord_id ? String(userProfile.discord_id) : null,
+      userProfile?.discord_id ? `discord_${userProfile.discord_id}` : null,
+      userProfile?.id ? String(userProfile.id) : null
+    ].filter(Boolean) as string[]);
+
     // 1. Fetch current valid (non-rejected) screenshot submissions for this user
-    const { data: userScreenshots } = await supabaseClient
+    const { data: allScreenshots } = await supabaseClient
       .from('screenshot_submissions')
-      .select('id, status')
-      .or(`user_id.eq.${targetUserId},user_id.eq.${cleanId},user_id.eq.${prefixedDiscordId}`);
+      .select('id, user_id, status');
     
-    const validCount = (userScreenshots || []).filter((s: any) => s.status !== 'rejected').length;
-    
-    // 2. Fetch all screenshot point rows in submissions table
-    const { data: existingPointRows } = await supabaseClient
+    const userValidScreenshots = (allScreenshots || []).filter((s: any) => {
+      const sUid = String(s.user_id || '').trim();
+      const sClean = sUid.startsWith('discord_') ? sUid.replace('discord_', '') : sUid;
+      return (candidateIds.has(sUid) || candidateIds.has(sClean)) && s.status !== 'rejected';
+    });
+
+    const validCount = userValidScreenshots.length;
+    const validScreenshotIds = new Set(userValidScreenshots.map((s: any) => s.id));
+
+    // 2. Fetch all submissions for this user from submissions table
+    const { data: allSubmissions } = await supabaseClient
       .from('submissions')
-      .select('id, points, calculated_score, notes, created_at')
-      .or(`user_id.eq.${targetUserId},user_id.eq.${cleanId},user_id.eq.${prefixedDiscordId}`)
-      .or('platform.eq.Screenshot Event,game_name.ilike.%Screenshot Contest Submission%,game_name.ilike.%Screenshot Submission%')
+      .select('id, user_id, points, calculated_score, notes, platform, game_name, status, created_at')
       .order('created_at', { ascending: false });
 
-    const currentPointRows = existingPointRows || [];
-    
-    // If user has more point rows than screenshots, remove the excess
-    if (currentPointRows.length > validCount) {
-      const excessCount = currentPointRows.length - validCount;
-      const toDelete = currentPointRows.slice(0, excessCount);
+    const userAllSubs = (allSubmissions || []).filter((sub: any) => {
+      const subUid = String(sub.user_id || '').trim();
+      const subClean = subUid.startsWith('discord_') ? subUid.replace('discord_', '') : subUid;
+      return candidateIds.has(subUid) || candidateIds.has(subClean);
+    });
+
+    const userScreenshotPointRows = userAllSubs.filter((sub: any) => {
+      const isScreenshot = sub.platform === 'Screenshot Event' ||
+        (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+        (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+      return isScreenshot;
+    });
+
+    // If user has more point rows than valid screenshots, remove the excess or orphaned ones
+    if (userScreenshotPointRows.length > validCount) {
+      const orphanedRows: any[] = [];
+      const keptRows: any[] = [];
+
+      for (const row of userScreenshotPointRows) {
+        let isOrphan = false;
+        if (row.notes) {
+          let matchedValid = false;
+          for (const sId of validScreenshotIds) {
+            if (row.notes.includes(sId)) {
+              matchedValid = true;
+              break;
+            }
+          }
+          if (!matchedValid && validScreenshotIds.size > 0) {
+            isOrphan = true;
+          }
+        }
+        if (isOrphan) {
+          orphanedRows.push(row);
+        } else {
+          keptRows.push(row);
+        }
+      }
+
+      const excessCount = (orphanedRows.length + keptRows.length) - validCount;
+      const toDelete = [...orphanedRows];
+      if (toDelete.length < excessCount) {
+        toDelete.push(...keptRows.slice(0, excessCount - toDelete.length));
+      }
+
       for (const row of toDelete) {
         await supabaseClient.from('submissions').delete().eq('id', row.id);
       }
     }
 
-    // 3. Recalculate profile points from remaining verified submissions
-    const { data: userSubs } = await supabaseClient
-      .from('submissions')
-      .select('points, calculated_score, game_name')
-      .or(`user_id.eq.${targetUserId},user_id.eq.${cleanId},user_id.eq.${prefixedDiscordId}`)
-      .or('status.eq.verified,status.eq.approved');
+    // 3. Recalculate profile points from remaining verified submissions + adjustments
+    const remainingSubs = userAllSubs.filter((sub: any) => {
+      const isApproved = sub.status === 'verified' || sub.status === 'approved';
+      return isApproved && sub.game_name !== 'Event Update';
+    });
 
-    let newTotal = 0;
-    for (const s of (userSubs || [])) {
-      if (s.game_name === 'Event Update') continue;
+    // 4. Also fetch adjustments
+    const { data: adjustments } = await supabaseClient
+      .from('team_adjustments')
+      .select('points, user_id');
+
+    let userAdjPoints = 0;
+    (adjustments || []).forEach((adj: any) => {
+      const adjUid = String(adj.user_id || '').trim();
+      const adjClean = adjUid.startsWith('discord_') ? adjUid.replace('discord_', '') : adjUid;
+      if (candidateIds.has(adjUid) || candidateIds.has(adjClean)) {
+        userAdjPoints += Math.round(Number(adj.points) || 0);
+      }
+    });
+
+    let newTotal = userAdjPoints;
+    let screenshotCountSeen = 0;
+    for (const s of remainingSubs) {
+      const isScreenshot = s.platform === 'Screenshot Event' ||
+        (s.game_name && s.game_name.includes('Screenshot Contest Submission')) ||
+        (s.game_name && s.game_name.includes('Screenshot Submission'));
+
+      if (isScreenshot) {
+        if (screenshotCountSeen >= validCount) continue;
+        screenshotCountSeen++;
+      }
+
       const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
       newTotal += Math.round(pts);
     }
 
-    await supabaseClient
-      .from('profiles')
-      .update({ points: newTotal })
-      .or(buildProfileOrFilter(targetUserId));
+    // Update profiles table for all candidate IDs
+    for (const cId of Array.from(candidateIds)) {
+      await supabaseClient
+        .from('profiles')
+        .update({ points: newTotal })
+        .or(`steamid.eq.${cId},discord_id.eq.${cId},id.eq.${cId}`);
+    }
   } catch (err) {
     console.warn('[Screenshot API] Error reconciling user screenshot points:', err);
   }
@@ -585,6 +671,11 @@ export default async function handler(req: Request, res: Response) {
           await supabase.from('screenshot_comments').delete().eq('submission_id', submissionId);
           await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
           await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
+
+          // Clean up point row in submissions table matching this submission
+          try {
+            await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`);
+          } catch (e) {}
 
           if (targetUserId) {
             await reconcileUserScreenshotPoints(supabase, targetUserId);

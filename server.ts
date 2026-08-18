@@ -2488,10 +2488,11 @@ async function createServer() {
       const userScreenshotCount: Record<string, number> = {};
       (allScreenshots || []).forEach((sc: any) => {
         if (sc.status !== 'rejected') {
-          const uid = String(sc.user_id);
-          userScreenshotCount[uid] = (userScreenshotCount[uid] || 0) + 1;
-          const cleanUid = uid.startsWith('discord_') ? uid.replace('discord_', '') : uid;
-          userScreenshotCount[cleanUid] = (userScreenshotCount[cleanUid] || 0) + 1;
+          const rawId = String(sc.user_id || '').trim();
+          const cleanUid = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+          if (cleanUid) {
+            userScreenshotCount[cleanUid] = (userScreenshotCount[cleanUid] || 0) + 1;
+          }
         }
       });
 
@@ -2502,26 +2503,26 @@ async function createServer() {
         if (!sub.user_id || sub.user_id === 'system_notification' || String(sub.user_id).startsWith('team_pts_')) return;
         if (sub.game_name === 'Event Update') return;
 
-        const subUserId = String(sub.user_id);
-        const cleanSubUserId = subUserId.startsWith('discord_') ? subUserId.replace('discord_', '') : subUserId;
+        const rawSubUserId = String(sub.user_id || '').trim();
+        const cleanSubUserId = rawSubUserId.startsWith('discord_') ? rawSubUserId.replace('discord_', '') : rawSubUserId;
         
-        // If this is a screenshot contest point row, ensure we do not exceed the actual number of screenshots
+        // If this is a screenshot contest point row, ensure we do not exceed the actual number of valid screenshots
         const isScreenshotPoint = sub.platform === 'Screenshot Event' || 
           (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
           (sub.game_name && sub.game_name.includes('Screenshot Submission'));
 
         if (isScreenshotPoint) {
-          const allowed = Math.max(userScreenshotCount[subUserId] || 0, userScreenshotCount[cleanSubUserId] || 0);
+          const allowed = userScreenshotCount[cleanSubUserId] || 0;
           const seen = userScreenshotPointRowsCount[cleanSubUserId] || 0;
           if (seen >= allowed) {
-            // Orphaned/excess point row from a deleted screenshot - do not double count
+            // Orphaned/excess point row from a deleted screenshot - do not count
             return;
           }
           userScreenshotPointRowsCount[cleanSubUserId] = seen + 1;
         }
 
         const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
-        userPointsMap[subUserId] = (userPointsMap[subUserId] || 0) + pts;
+        userPointsMap[cleanSubUserId] = (userPointsMap[cleanSubUserId] || 0) + pts;
       });
 
       // Fetch adjustments for active event as well
@@ -2533,8 +2534,9 @@ async function createServer() {
       (adjustments || []).forEach((adj: any) => {
         if (!adj.user_id || String(adj.user_id).startsWith('team_pts_')) return;
         const pts = Math.round(Number(adj.points) || 0);
-        const adjUserId = String(adj.user_id);
-        userPointsMap[adjUserId] = (userPointsMap[adjUserId] || 0) + pts;
+        const rawAdjUserId = String(adj.user_id || '').trim();
+        const cleanAdjUserId = rawAdjUserId.startsWith('discord_') ? rawAdjUserId.replace('discord_', '') : rawAdjUserId;
+        userPointsMap[cleanAdjUserId] = (userPointsMap[cleanAdjUserId] || 0) + pts;
       });
 
       // Publicly return profiles assigned to a team
@@ -2552,19 +2554,24 @@ async function createServer() {
           finalAvatar = u.discord_avatar;
         }
 
-        const candidateIds = Array.from(new Set([
+        const rawCandidateIds = [
           u.steamid ? String(u.steamid) : null,
           u.discord_id ? String(u.discord_id) : null,
-          u.discord_id ? `discord_${u.discord_id}` : null,
           u.id ? String(u.id) : null
-        ].filter(Boolean))) as string[];
+        ].filter(Boolean) as string[];
+
+        const cleanCandidateIds = Array.from(new Set(rawCandidateIds.map(id => id.startsWith('discord_') ? id.replace('discord_', '') : id)));
 
         let calcPoints = 0;
-        candidateIds.forEach(id => {
-          if (userPointsMap[id]) calcPoints += userPointsMap[id];
+        let hasCalculatedPoints = false;
+        cleanCandidateIds.forEach(id => {
+          if (userPointsMap[id] !== undefined) {
+            calcPoints += userPointsMap[id];
+            hasCalculatedPoints = true;
+          }
         });
 
-        const finalPts = calcPoints > 0 ? calcPoints : (u.points || 0);
+        const finalPts = hasCalculatedPoints ? calcPoints : (u.points || 0);
 
         return {
           ...u,
