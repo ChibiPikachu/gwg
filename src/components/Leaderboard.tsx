@@ -129,12 +129,95 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     if (!evt) return null;
     const profiles = allProfiles || usersRef.current || [];
     const snapshot = getEventSnapshot(evt);
+    
     const teamTotals: Record<string, number> = {
       blue: Number(snapshot?.teamTotals?.blue ?? 0),
       green: Number(snapshot?.teamTotals?.green ?? 0),
       purple: Number(snapshot?.teamTotals?.purple ?? 0),
       red: Number(snapshot?.teamTotals?.red ?? 0)
     };
+
+    const profileMap = new Map<string, any>();
+    profiles.forEach((p: any) => {
+      if (p.steamid) profileMap.set(String(p.steamid), p);
+      if (p.discord_id) {
+        profileMap.set(String(p.discord_id), p);
+        profileMap.set(`discord_${p.discord_id}`, p);
+      }
+      if (p.id) profileMap.set(String(p.id), p);
+    });
+
+    const userScores = snapshot?.userScores || {};
+    const userTeams = snapshot?.userTeams || {};
+
+    const allUserIds = new Set<string>([
+      ...Object.keys(userScores),
+      ...profiles.map((p: any) => String(p.steamid || p.discord_id || p.id || ''))
+    ]);
+
+    const processedUsers = new Set<string>();
+    const topUsersList: any[] = [];
+
+    allUserIds.forEach((uid) => {
+      if (!uid) return;
+      const cleanUid = uid.startsWith('discord_') ? uid.replace('discord_', '') : uid;
+      const prof = profileMap.get(uid) || profileMap.get(cleanUid);
+      const primaryId = prof?.steamid || prof?.discord_id || prof?.id || uid;
+
+      if (processedUsers.has(primaryId)) return;
+      processedUsers.add(primaryId);
+
+      const candidateKeys = [
+        uid,
+        cleanUid,
+        `discord_${cleanUid}`,
+        prof?.steamid ? String(prof.steamid) : null,
+        prof?.discord_id ? String(prof.discord_id) : null,
+        prof?.discord_id ? `discord_${prof.discord_id}` : null,
+        prof?.id ? String(prof.id) : null
+      ].filter(Boolean) as string[];
+
+      let userPoints = 0;
+      for (const k of candidateKeys) {
+        if (userScores[k] !== undefined && userScores[k] !== null) {
+          const val = Number(userScores[k]) || 0;
+          if (val > userPoints) userPoints = val;
+        }
+      }
+
+      let userTeam = 'none';
+      for (const k of candidateKeys) {
+        if (userTeams[k] && userTeams[k] !== 'none') {
+          userTeam = userTeams[k];
+          break;
+        }
+      }
+      if (userTeam === 'none' && prof?.team && prof.team !== 'none') {
+        userTeam = prof.team;
+      }
+
+      if (prof || userPoints > 0 || userTeam !== 'none') {
+        topUsersList.push({
+          steamid: primaryId,
+          steam_name: prof?.steam_name || prof?.discord_name || 'Member',
+          steam_avatar: prof?.steam_avatar || prof?.discord_avatar || '',
+          discord_name: prof?.discord_name || null,
+          team: userTeam,
+          points: userPoints,
+          status: prof?.status || '',
+          role: prof?.role || 'user'
+        });
+      }
+    });
+
+    // If team totals are all 0 but userScores has values, calculate team totals from user scores
+    if (Object.values(teamTotals).every(v => v === 0) && Object.keys(userScores).length > 0) {
+      topUsersList.forEach(u => {
+        if (u.team && teamTotals[u.team] !== undefined) {
+          teamTotals[u.team] += Number(u.points) || 0;
+        }
+      });
+    }
 
     let winnerTeam: string | null = evt.winner_team || snapshot?.winnerTeam || null;
     if (!winnerTeam) {
@@ -148,7 +231,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
 
     const teamStandings = (['blue', 'purple', 'green', 'red'] as const).map(team => {
-      const memberCount = profiles.filter(p => (snapshot?.userTeams?.[p.steamid] || p.team) === team).length;
+      const memberCount = topUsersList.filter(u => u.team === team).length;
       return {
         team,
         points: teamTotals[team] || 0,
@@ -157,19 +240,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       };
     }).sort((a, b) => b.points - a.points).map((s, idx) => ({ ...s, rank: idx + 1 }));
 
-    const topUsers = profiles.map((p, idx) => {
-      const userTeam = snapshot?.userTeams?.[p.steamid] || p.team || 'none';
-      const userPoints = Number(snapshot?.userScores?.[p.steamid] ?? 0);
-      return {
-        steamid: p.steamid,
-        steam_name: p.steam_name || p.discord_name || 'Member',
-        steam_avatar: p.steam_avatar || p.discord_avatar || '',
-        discord_name: p.discord_name || null,
-        team: userTeam,
-        points: userPoints,
-        rank: idx + 1
-      };
-    }).sort((a, b) => b.points - a.points).map((u, idx) => ({ ...u, rank: idx + 1 }));
+    const topUsers = topUsersList.sort((a, b) => b.points - a.points).map((u, idx) => ({ ...u, rank: idx + 1 }));
 
     return {
       event: {
