@@ -477,7 +477,9 @@ interface UserSubmissionStat {
   // Admin Actions
   const handleAdminUpdatePoints = async (points: number) => {
     const validatedPoints = Math.max(0, Number(points));
+    setEditSubmissionPoints(validatedPoints);
     localStorage.setItem('admin_screenshot_submission_points', String(validatedPoints));
+    setEvent(prev => prev ? { ...prev, submission_points: validatedPoints } : prev);
     try {
       const res = await fetch('/api/screenshots?action=admin-event-status', {
         method: 'POST',
@@ -486,7 +488,14 @@ interface UserSubmissionStat {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.event) setEvent(data.event);
+        if (data.event) {
+          setEvent(data.event);
+          if (data.event.submission_points !== undefined && data.event.submission_points !== null) {
+            const pts = Number(data.event.submission_points);
+            setEditSubmissionPoints(pts);
+            localStorage.setItem('admin_screenshot_submission_points', String(pts));
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to update submission points:', err);

@@ -33,7 +33,7 @@ function getSavedSubmissionPoints(): number {
       const raw = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8');
       const parsed = JSON.parse(raw);
       if (parsed.submission_points !== undefined && !isNaN(Number(parsed.submission_points))) {
-        return Number(parsed.submission_points);
+        return Math.max(0, Number(parsed.submission_points));
       }
     }
   } catch (e) {}
@@ -42,8 +42,21 @@ function getSavedSubmissionPoints(): number {
 
 function saveSubmissionPointsLocally(points: number) {
   try {
-    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify({ submission_points: points }), 'utf8');
+    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify({ submission_points: Math.max(0, points) }), 'utf8');
   } catch (e) {}
+}
+
+function extractSubmissionPoints(evt: any): number {
+  if (evt?.submission_points !== undefined && evt?.submission_points !== null && !isNaN(Number(evt.submission_points))) {
+    return Math.max(0, Number(evt.submission_points));
+  }
+  if (evt?.description && typeof evt.description === 'string') {
+    const match = evt.description.match(/<!--SUBMISSION_POINTS:(\d+)-->/);
+    if (match && match[1]) {
+      return Math.max(0, Number(match[1]));
+    }
+  }
+  return getSavedSubmissionPoints();
 }
 
 let persistentDefaultSubmissionPoints = getSavedSubmissionPoints();
@@ -52,7 +65,7 @@ let persistentDefaultSubmissionPoints = getSavedSubmissionPoints();
 let memoryEvent: any = {
   id: 'evt_screenshot_01',
   title: 'Screenshot Showcase & Contest',
-  description: 'Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting!',
+  description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${persistentDefaultSubmissionPoints}-->`,
   status: 'submissions_open', // 'draft' | 'submissions_open' | 'voting_active' | 'concluded'
   is_voting_active: false,
   is_admin_only: true,
@@ -74,11 +87,12 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     const prefixedDiscordId = `discord_${cleanId}`;
     
     // Fetch profile to find all associated ID variants (steamid, discord_id, id)
-    const { data: userProfile } = await supabaseClient
+    const { data: userProfiles } = await supabaseClient
       .from('profiles')
-      .select('steamid, discord_id, id, team')
-      .or(`steamid.eq.${cleanId},discord_id.eq.${cleanId},discord_id.eq.${prefixedDiscordId},id.eq.${cleanId}`)
-      .maybeSingle();
+      .select('steamid, discord_id, id, team, points')
+      .or(`steamid.eq.${cleanId},discord_id.eq.${cleanId},discord_id.eq.${prefixedDiscordId},id.eq.${cleanId}`);
+
+    const userProfile = (userProfiles && userProfiles.length > 0) ? userProfiles[0] : null;
 
     const candidateIds = new Set<string>([
       rawTarget,
@@ -102,7 +116,7 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     });
 
     const validCount = userValidScreenshots.length;
-    const validScreenshotIds = new Set(userValidScreenshots.map((s: any) => s.id));
+    const validScreenshotIds = new Set(userValidScreenshots.map((s: any) => String(s.id)));
 
     // 2. Fetch all submissions for this user from submissions table
     const { data: allSubmissions } = await supabaseClient
@@ -119,11 +133,13 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     const userScreenshotPointRows = userAllSubs.filter((sub: any) => {
       const isScreenshot = sub.platform === 'Screenshot Event' ||
         (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
-        (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+        (sub.game_name && sub.game_name.includes('Screenshot Submission')) ||
+        (sub.notes && sub.notes.includes('screenshot contest submission')) ||
+        (sub.notes && sub.notes.includes('Screenshot'));
       return isScreenshot;
     });
 
-    // If user has more point rows than valid screenshots, remove the excess or orphaned ones
+    // If user has more point rows than valid screenshots, delete the excess or orphaned ones
     if (userScreenshotPointRows.length > validCount) {
       const orphanedRows: any[] = [];
       const keptRows: any[] = [];
@@ -132,15 +148,17 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
         let isOrphan = false;
         if (row.notes) {
           let matchedValid = false;
-          for (const sId of validScreenshotIds) {
+          for (const sId of Array.from(validScreenshotIds)) {
             if (row.notes.includes(sId)) {
               matchedValid = true;
               break;
             }
           }
-          if (!matchedValid && validScreenshotIds.size > 0) {
+          if (!matchedValid) {
             isOrphan = true;
           }
+        } else {
+          isOrphan = true;
         }
         if (isOrphan) {
           orphanedRows.push(row);
@@ -155,15 +173,24 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
         toDelete.push(...keptRows.slice(0, excessCount - toDelete.length));
       }
 
-      for (const row of toDelete) {
-        await supabaseClient.from('submissions').delete().eq('id', row.id);
+      const deleteIds = toDelete.map(r => r.id).filter(Boolean);
+      if (deleteIds.length > 0) {
+        await supabaseClient.from('submissions').delete().in('id', deleteIds);
       }
     }
 
     // 3. Recalculate profile points from remaining verified submissions + adjustments
-    const remainingSubs = userAllSubs.filter((sub: any) => {
+    // Refetch verified subs to be 100% accurate
+    const { data: updatedSubmissions } = await supabaseClient
+      .from('submissions')
+      .select('id, user_id, points, calculated_score, notes, platform, game_name, status, created_at')
+      .order('created_at', { ascending: false });
+
+    const remainingUserSubs = (updatedSubmissions || []).filter((sub: any) => {
+      const subUid = String(sub.user_id || '').trim();
+      const subClean = subUid.startsWith('discord_') ? subUid.replace('discord_', '') : subUid;
       const isApproved = sub.status === 'verified' || sub.status === 'approved';
-      return isApproved && sub.game_name !== 'Event Update';
+      return (candidateIds.has(subUid) || candidateIds.has(subClean)) && isApproved && sub.game_name !== 'Event Update';
     });
 
     // 4. Also fetch adjustments
@@ -182,10 +209,12 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
 
     let newTotal = userAdjPoints;
     let screenshotCountSeen = 0;
-    for (const s of remainingSubs) {
+    for (const s of remainingUserSubs) {
       const isScreenshot = s.platform === 'Screenshot Event' ||
         (s.game_name && s.game_name.includes('Screenshot Contest Submission')) ||
-        (s.game_name && s.game_name.includes('Screenshot Submission'));
+        (s.game_name && s.game_name.includes('Screenshot Submission')) ||
+        (s.notes && s.notes.includes('screenshot contest submission')) ||
+        (s.notes && s.notes.includes('Screenshot'));
 
       if (isScreenshot) {
         if (screenshotCountSeen >= validCount) continue;
@@ -197,11 +226,18 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     }
 
     // Update profiles table for all candidate IDs
-    for (const cId of Array.from(candidateIds)) {
-      await supabaseClient
-        .from('profiles')
-        .update({ points: newTotal })
-        .or(`steamid.eq.${cId},discord_id.eq.${cId},id.eq.${cId}`);
+    if (userProfile?.id) {
+      await supabaseClient.from('profiles').update({ points: newTotal }).eq('id', userProfile.id);
+    }
+    if (userProfile?.steamid) {
+      await supabaseClient.from('profiles').update({ points: newTotal }).eq('steamid', userProfile.steamid);
+    }
+    if (userProfile?.discord_id) {
+      await supabaseClient.from('profiles').update({ points: newTotal }).eq('discord_id', userProfile.discord_id);
+    }
+    if (cleanId) {
+      await supabaseClient.from('profiles').update({ points: newTotal }).eq('steamid', cleanId);
+      await supabaseClient.from('profiles').update({ points: newTotal }).eq('discord_id', cleanId);
     }
   } catch (err) {
     console.warn('[Screenshot API] Error reconciling user screenshot points:', err);
@@ -238,18 +274,33 @@ export default async function handler(req: Request, res: Response) {
       // 1. Get Event, Submissions, Votes, Comments
       if (supabase) {
         let { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
+        const savedPts = getSavedSubmissionPoints();
+
         if (!evt) {
           // seed event with persistent points
-          const seedEvent = { ...memoryEvent, submission_points: persistentDefaultSubmissionPoints };
-          const { data: newEvt } = await supabase.from('screenshot_events').insert([seedEvent]).select().single();
-          evt = newEvt || seedEvent;
+          const seedEvent = {
+            ...memoryEvent,
+            submission_points: savedPts,
+            description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${savedPts}-->`
+          };
+          try {
+            const { data: newEvt } = await supabase.from('screenshot_events').insert([seedEvent]).select().single();
+            evt = newEvt || seedEvent;
+          } catch (e) {
+            evt = seedEvent;
+          }
         }
 
+        const currentPoints = extractSubmissionPoints(evt);
+        persistentDefaultSubmissionPoints = currentPoints;
+        saveSubmissionPointsLocally(currentPoints);
+
         if (evt) {
-          memoryEvent = { ...memoryEvent, ...evt };
-          if (evt.submission_points !== undefined && evt.submission_points !== null) {
-            persistentDefaultSubmissionPoints = Number(evt.submission_points);
-          }
+          memoryEvent = {
+            ...memoryEvent,
+            ...evt,
+            submission_points: currentPoints
+          };
         }
 
         const { data: subs } = await supabase.from('screenshot_submissions').select('*').order('created_at', { ascending: false });
@@ -257,9 +308,6 @@ export default async function handler(req: Request, res: Response) {
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
         const eventData = evt || memoryEvent;
-        const currentPoints = eventData.submission_points !== undefined && eventData.submission_points !== null 
-          ? Number(eventData.submission_points) 
-          : persistentDefaultSubmissionPoints;
 
         return res.status(200).json({
           event: {
@@ -272,9 +320,9 @@ export default async function handler(req: Request, res: Response) {
           comments: comments || []
         });
       } else {
-        const currentPoints = memoryEvent.submission_points !== undefined 
-          ? Number(memoryEvent.submission_points) 
-          : persistentDefaultSubmissionPoints;
+        const currentPoints = extractSubmissionPoints(memoryEvent);
+        persistentDefaultSubmissionPoints = currentPoints;
+        saveSubmissionPointsLocally(currentPoints);
 
         return res.status(200).json({
           event: {
@@ -750,6 +798,12 @@ export default async function handler(req: Request, res: Response) {
           saveSubmissionPointsLocally(pts);
           updateData.submission_points = pts;
           memoryEvent.submission_points = pts;
+
+          const baseDesc = (memoryEvent.description || 'Screenshot Showcase & Contest')
+            .replace(/<!--SUBMISSION_POINTS:\d+-->/g, '')
+            .trim();
+          updateData.description = `${baseDesc} <!--SUBMISSION_POINTS:${pts}-->`;
+          memoryEvent.description = updateData.description;
         }
 
         if (supabase) {
@@ -758,6 +812,11 @@ export default async function handler(req: Request, res: Response) {
             const { data: existingEvt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
             if (existingEvt) {
               targetId = existingEvt.id;
+              if (updateData.description && existingEvt.description) {
+                const baseDesc = existingEvt.description.replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim();
+                const currentPts = updateData.submission_points !== undefined ? updateData.submission_points : persistentDefaultSubmissionPoints;
+                updateData.description = `${baseDesc} <!--SUBMISSION_POINTS:${currentPts}-->`;
+              }
               memoryEvent = { ...memoryEvent, ...existingEvt, ...updateData };
               
               const { data: updated, error } = await supabase
@@ -769,6 +828,19 @@ export default async function handler(req: Request, res: Response) {
 
               if (!error && updated) {
                 memoryEvent = { ...memoryEvent, ...updated };
+              } else if (error) {
+                // If update failed due to missing submission_points column, fallback to description-only update
+                const fallbackData = { ...updateData };
+                delete fallbackData.submission_points;
+                const { data: fallbackUpdated } = await supabase
+                  .from('screenshot_events')
+                  .update(fallbackData)
+                  .eq('id', targetId)
+                  .select()
+                  .maybeSingle();
+                if (fallbackUpdated) {
+                  memoryEvent = { ...memoryEvent, ...fallbackUpdated, submission_points: persistentDefaultSubmissionPoints };
+                }
               }
             } else {
               // Insert seed record with updateData
@@ -781,6 +853,17 @@ export default async function handler(req: Request, res: Response) {
 
               if (!error && inserted) {
                 memoryEvent = { ...memoryEvent, ...inserted };
+              } else if (error) {
+                const fallbackSeed = { ...seedEvt };
+                delete fallbackSeed.submission_points;
+                const { data: fallbackInserted } = await supabase
+                  .from('screenshot_events')
+                  .insert([fallbackSeed])
+                  .select()
+                  .maybeSingle();
+                if (fallbackInserted) {
+                  memoryEvent = { ...memoryEvent, ...fallbackInserted, submission_points: persistentDefaultSubmissionPoints };
+                }
               }
             }
           } catch (dbErr) {
@@ -788,7 +871,7 @@ export default async function handler(req: Request, res: Response) {
           }
         }
 
-        const effectivePts = memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : getSavedSubmissionPoints();
+        const effectivePts = extractSubmissionPoints(memoryEvent);
 
         return res.status(200).json({
           success: true,
