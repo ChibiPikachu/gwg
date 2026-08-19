@@ -231,7 +231,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
 
     const teamStandings = (['blue', 'purple', 'green', 'red'] as const).map(team => {
-      const memberCount = topUsersList.filter(u => u.team === team).length;
+      let memberCount = topUsersList.filter(u => u.team === team).length;
+      if (memberCount === 0 && profiles.length > 0) {
+        memberCount = profiles.filter((p: any) => p.team === team).length;
+      }
       return {
         team,
         points: teamTotals[team] || 0,
@@ -568,18 +571,46 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     const evtsList = currentEventsList || eventsRef.current;
     const targetEvt = evtsList.find((e: any) => e.id === eventId);
 
+    // 1. Immediately compute and display local snapshot data if present so user sees instant accurate state
+    const localData = targetEvt ? buildPreviousEventDataFromSnapshot(targetEvt, usersRef.current) : null;
+    if (localData && (localData.standings.some((s: any) => s.points > 0) || localData.topUsers.length > 0)) {
+      setPreviousEventData(localData);
+    }
+
     try {
       const res = await fetch(`/api/leaderboard/event/${eventId}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.standings) {
-          const eventObj = data.event || targetEvt || { id: eventId, title: 'Previous Event', is_active: false };
+          const apiPointsSum = (data.standings || []).reduce((acc: number, s: any) => acc + (Number(s.points) || 0), 0);
+          const localPointsSum = (localData?.standings || []).reduce((acc: number, s: any) => acc + (Number(s.points) || 0), 0);
+
+          let finalStandings = data.standings || [];
+          let finalTopUsers = data.topUsers || [];
+          let finalTotalParticipants = data.totalParticipants || finalTopUsers.length || 0;
+          const finalWinner = data.event?.winner_team || localData?.event?.winner_team || targetEvt?.winner_team;
+
+          // If local snapshot has higher/verified points (e.g. from forced scores or snapshot), preserve snapshot
+          if (localPointsSum > apiPointsSum && localData?.standings) {
+            finalStandings = localData.standings;
+            if (localData.topUsers && localData.topUsers.length > 0) {
+              finalTopUsers = localData.topUsers;
+              finalTotalParticipants = localData.totalParticipants;
+            }
+          }
+
+          const eventObj = {
+            ...(targetEvt || {}),
+            ...(data.event || {}),
+            winner_team: finalWinner
+          };
+
           setPreviousEventData({
             ...data,
             event: eventObj,
-            standings: data.standings || [],
-            topUsers: data.topUsers || [],
-            totalParticipants: data.totalParticipants || data.topUsers?.length || 0,
+            standings: finalStandings,
+            topUsers: finalTopUsers,
+            totalParticipants: finalTotalParticipants,
             adjustments: data.adjustments || []
           });
           setLoadingPrevious(false);
@@ -590,13 +621,10 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       console.warn('API fetch for previous event leaderboard failed:', err);
     }
 
-    if (targetEvt) {
-      const localData = buildPreviousEventDataFromSnapshot(targetEvt, usersRef.current);
-      if (localData) {
-        setPreviousEventData(localData);
-        setLoadingPrevious(false);
-        return;
-      }
+    if (localData) {
+      setPreviousEventData(localData);
+      setLoadingPrevious(false);
+      return;
     }
 
     // Safe default fallback

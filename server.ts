@@ -3183,16 +3183,26 @@ async function createServer() {
           totalTeamPoints = Math.max(liveTotal, savedTot);
         }
 
+        let memberCount = teamUserCounts[t] || 0;
+        if (memberCount === 0 && profiles) {
+          memberCount = (profiles || []).filter((p: any) => p.team === t).length;
+        }
+
         return {
           team: t,
           points: totalTeamPoints,
-          members: teamUserCounts[t] || 0,
+          members: memberCount,
           rank: 1
         };
       });
 
       teamStandings.sort((a, b) => b.points - a.points);
       teamStandings.forEach((s, idx) => { s.rank = idx + 1; });
+
+      let calculatedWinner = event.winner_team || savedScores?.winnerTeam || null;
+      if (!calculatedWinner && teamStandings.length > 0 && teamStandings[0].points > 0) {
+        calculatedWinner = teamStandings[0].team;
+      }
 
       console.log(`[Leaderboard API] Standings calculated successfully for "${event.title || event.name}":`);
       console.log(`[Leaderboard API] Team Standings:`, teamStandings.map(t => `${t.team}: ${t.points} pts (${t.members} members)`).join(' | '));
@@ -3204,7 +3214,7 @@ async function createServer() {
           id: event.id,
           title: event.title,
           is_active: event.is_active,
-          winner_team: event.winner_team,
+          winner_team: calculatedWinner,
           start_date: event.start_date,
           end_date: event.end_date,
           description: event.description
