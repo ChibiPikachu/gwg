@@ -2137,21 +2137,59 @@ async function createServer() {
     try {
       const { data: event } = await supabase
         .from('events')
-        .select('id, is_active, winner_team, description')
+        .select('*')
         .eq('id', eventId)
         .maybeSingle();
 
       if (!event) return;
 
-      // 1. Fetch current submissions for this event (accept verified, approved, or unflagged)
+      const { data: activeEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const isCurrentOrActive = activeEvent ? activeEvent.id === eventId : Boolean(event.is_active);
+
+      // 1. Fetch current submissions and team adjustments for this event
       const { data: allSubs } = await supabase
         .from('submissions')
-        .select('id, user_id, points, calculated_score, status, game_name, platform')
-        .eq('event_id', eventId);
+        .select('*');
 
-      const verifiedSubs = (allSubs || []).filter((s: any) => 
-        s.status === 'verified' || s.status === 'approved' || !s.status
-      );
+      const isMatchingSub = (sub: any) => {
+        if (!sub.user_id || sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return false;
+        const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+        if (!isVerified) return false;
+        if (sub.event_id && String(sub.event_id) === String(eventId)) return true;
+        if (isCurrentOrActive && !sub.event_id) return true;
+        if (!sub.event_id && event.start_date && event.end_date && sub.created_at) {
+          const subTime = new Date(sub.created_at).getTime();
+          const start = new Date(event.start_date).getTime() - 86400000;
+          const end = new Date(event.end_date).getTime() + 86400000;
+          if (subTime >= start && subTime <= end) return true;
+        }
+        return false;
+      };
+
+      const verifiedSubs = (allSubs || []).filter(isMatchingSub);
+
+      const { data: allAdjustments } = await supabase
+        .from('team_adjustments')
+        .select('*');
+
+      const isMatchingAdj = (adj: any) => {
+        if (adj.event_id && String(adj.event_id) === String(eventId)) return true;
+        if (isCurrentOrActive && !adj.event_id) return true;
+        if (!adj.event_id && event.start_date && event.end_date && adj.created_at) {
+          const adjTime = new Date(adj.created_at).getTime();
+          const start = new Date(event.start_date).getTime() - 86400000;
+          const end = new Date(event.end_date).getTime() + 86400000;
+          if (adjTime >= start && adjTime <= end) return true;
+        }
+        return false;
+      };
+
+      const eventAdjustments = (allAdjustments || []).filter(isMatchingAdj);
 
       // 2. Fetch user_event_teams & profiles
       const { data: uets } = await supabase
@@ -2161,17 +2199,23 @@ async function createServer() {
 
       const uetMap = new Map<string, string>();
       (uets || []).forEach((u: any) => {
-        if (u.steamid && u.team) uetMap.set(u.steamid, u.team);
+        if (u.steamid && u.team) uetMap.set(String(u.steamid), u.team);
       });
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('steamid, discord_id, id, team, points');
-      const profMap = new Map<string, string>();
+        .select('steamid, discord_id, id, team, points, steam_name, discord_name');
+      const profileMap = new Map<string, any>();
       (profiles || []).forEach((p: any) => {
-        if (p.steamid && p.team) profMap.set(p.steamid, p.team);
-        if (p.discord_id && p.team) profMap.set(p.discord_id, p.team);
-        if (p.id && p.team) profMap.set(p.id, p.team);
+        if (p.steamid) profileMap.set(String(p.steamid).trim(), p);
+        if (p.discord_id) {
+          const rawDid = String(p.discord_id).trim();
+          const cleanDid = rawDid.startsWith('discord_') ? rawDid.replace('discord_', '') : rawDid;
+          profileMap.set(rawDid, p);
+          profileMap.set(cleanDid, p);
+          profileMap.set(`discord_${cleanDid}`, p);
+        }
+        if (p.id) profileMap.set(String(p.id).trim(), p);
       });
 
       // Parse existing saved scores if present
@@ -2187,98 +2231,151 @@ async function createServer() {
         }
       }
 
-      // Preserve existing userScores from previous snapshots or forced entries
-      const userScores: Record<string, number> = {};
-      if (existingSaved?.userScores) {
-        for (const [sid, val] of Object.entries(existingSaved.userScores)) {
-          userScores[sid] = Number(val) || 0;
-        }
-      }
-
-      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
-      if (existingSaved?.teamAdjustments) {
-        for (const [t, val] of Object.entries(existingSaved.teamAdjustments)) {
-          teamAdjustments[t] = Number(val) || 0;
-        }
-      }
-
-      const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
-      
-      // Seed existing member teams
-      if (existingSaved?.userTeams) {
-        for (const [sid, t] of Object.entries(existingSaved.userTeams)) {
-          if (typeof t === 'string' && teamMembers[t]) {
-            teamMembers[t].add(sid);
-          }
-        }
-      }
-
-      (uets || []).forEach((u: any) => {
-        if (u.team && teamMembers[u.team]) {
-          teamMembers[u.team].add(u.steamid);
-        }
-      });
+      const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
 
       // Calculate points from live submissions
-      const liveUserScores: Record<string, number> = {};
-      (verifiedSubs || []).forEach((sub: any) => {
-        if (sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return;
-        const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+      const profileLivePoints = new Map<any, number>();
+      const genericLivePoints = new Map<string, number>();
 
-        if (sub.user_id?.startsWith('team_pts_')) {
-          const team = sub.user_id.substring('team_pts_'.length);
+      verifiedSubs.forEach((sub: any) => {
+        const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+        if (String(sub.user_id).startsWith('team_pts_')) {
+          const team = String(sub.user_id).substring('team_pts_'.length);
           if (teamAdjustments[team] !== undefined) {
-            teamAdjustments[team] = (Number(teamAdjustments[team]) || 0) + pts;
+            teamAdjustments[team] += pts;
           }
           return;
         }
 
-        const sid = String(sub.user_id);
-        liveUserScores[sid] = (Number(liveUserScores[sid]) || 0) + pts;
-        const team = uetMap.get(sid) || profMap.get(sid);
-        if (team && teamMembers[team]) {
-          teamMembers[team].add(sid);
+        const rawSid = String(sub.user_id).trim();
+        const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
+        const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
+        if (prof) {
+          profileLivePoints.set(prof, (profileLivePoints.get(prof) || 0) + pts);
+        } else {
+          genericLivePoints.set(cleanSid, (genericLivePoints.get(cleanSid) || 0) + pts);
         }
       });
 
-      const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
-      if (existingSaved?.forcedByAdmin && !forceResync) {
-        // Keep forced user scores intact
-        for (const [sid, pts] of Object.entries(existingSaved.userScores || {})) {
-          userScores[sid] = Number(pts) || 0;
-          const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
-          if (team !== 'none') userTeams[sid] = team;
+      eventAdjustments.forEach((adj: any) => {
+        const pts = Number(adj.points) || 0;
+        if (adj.user_id && String(adj.user_id).startsWith('team_pts_')) {
+          const team = String(adj.user_id).substring('team_pts_'.length);
+          if (teamAdjustments[team] !== undefined) {
+            teamAdjustments[team] += pts;
+          }
+          return;
         }
-      } else {
-        for (const [sid, pts] of Object.entries(liveUserScores)) {
-          const currentPts = Number(userScores[sid]) || 0;
-          const livePts = Number(pts) || 0;
-          userScores[sid] = Math.max(currentPts, livePts);
-          const team = uetMap.get(sid) || profMap.get(sid) || userTeams[sid] || 'none';
-          if (team !== 'none') userTeams[sid] = team;
+        if (adj.user_id) {
+          const rawSid = String(adj.user_id).trim();
+          const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
+          const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
+          if (prof) {
+            profileLivePoints.set(prof, (profileLivePoints.get(prof) || 0) + pts);
+          } else {
+            genericLivePoints.set(cleanSid, (genericLivePoints.get(cleanSid) || 0) + pts);
+          }
         }
-      }
+      });
 
-      // Ensure any users from uets or profiles with teams are preserved
+      const userScores: Record<string, number> = {};
+      const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
+
+      // Map profiles into userScores and userTeams
+      (profiles || []).forEach((p: any) => {
+        const primaryId = p.steamid ? String(p.steamid) : (p.discord_id ? `discord_${p.discord_id}` : String(p.id));
+        const candidateKeys = [
+          p.steamid ? String(p.steamid) : null,
+          p.discord_id ? String(p.discord_id) : null,
+          p.discord_id ? `discord_${p.discord_id}` : null,
+          p.id ? String(p.id) : null
+        ].filter(Boolean) as string[];
+
+        // Check if forced by admin
+        if (existingSaved?.forcedByAdmin && !forceResync) {
+          let forcedPts: number | null = null;
+          for (const k of candidateKeys) {
+            if (existingSaved.userScores?.[k] !== undefined) {
+              forcedPts = Number(existingSaved.userScores[k]) || 0;
+              break;
+            }
+          }
+          if (forcedPts !== null) {
+            userScores[primaryId] = forcedPts;
+            if (p.steamid) userScores[String(p.steamid)] = forcedPts;
+            if (p.discord_id) userScores[`discord_${p.discord_id}`] = forcedPts;
+          }
+        } else {
+          const livePts = profileLivePoints.get(p) || 0;
+          let savedPts = 0;
+          for (const k of candidateKeys) {
+            if (existingSaved?.userScores?.[k] !== undefined) {
+              savedPts = Math.max(savedPts, Number(existingSaved.userScores[k]) || 0);
+            }
+          }
+          const finalPts = Math.max(livePts, savedPts);
+          if (finalPts > 0) {
+            userScores[primaryId] = finalPts;
+            if (p.steamid) userScores[String(p.steamid)] = finalPts;
+            if (p.discord_id) userScores[`discord_${p.discord_id}`] = finalPts;
+          }
+        }
+
+        // Determine team
+        let team = 'none';
+        for (const k of candidateKeys) {
+          if (uetMap.get(k)) {
+            team = uetMap.get(k)!;
+            break;
+          }
+          if (existingSaved?.userTeams?.[k] && existingSaved.userTeams[k] !== 'none') {
+            team = existingSaved.userTeams[k];
+            break;
+          }
+        }
+        if (team === 'none' && p.team && p.team !== 'none') {
+          team = p.team;
+        }
+        if (team !== 'none') {
+          userTeams[primaryId] = team;
+          if (p.steamid) userTeams[String(p.steamid)] = team;
+          if (p.discord_id) userTeams[`discord_${p.discord_id}`] = team;
+        }
+      });
+
+      // Handle generic users without profile
+      genericLivePoints.forEach((pts, uid) => {
+        if (!userScores[uid] && pts > 0) {
+          userScores[uid] = pts;
+        }
+      });
+
+      // Preserve existing userTeams
       (uets || []).forEach((u: any) => {
         if (u.steamid && u.team && u.team !== 'none') {
-          userTeams[u.steamid] = u.team;
+          userTeams[String(u.steamid)] = u.team;
         }
       });
 
-      // Calculate team totals
+      // Calculate team totals from user scores
+      const teamUserSums: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+      (profiles || []).forEach((p: any) => {
+        const primaryId = p.steamid ? String(p.steamid) : (p.discord_id ? `discord_${p.discord_id}` : String(p.id));
+        const pts = userScores[primaryId] || (p.steamid ? userScores[String(p.steamid)] : 0) || (p.discord_id ? userScores[`discord_${p.discord_id}`] : 0) || 0;
+        const team = userTeams[primaryId] || (p.steamid ? userTeams[String(p.steamid)] : null) || (p.discord_id ? userTeams[`discord_${p.discord_id}`] : null) || p.team;
+        if (team && teamUserSums[team] !== undefined) {
+          teamUserSums[team] += pts;
+        }
+      });
+
       const teamTotals: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
       ['blue', 'green', 'purple', 'red'].forEach((t) => {
-        let sum = 0;
-        teamMembers[t].forEach((sid) => {
-          sum += (Number(userScores[sid]) || 0);
-        });
-        const existingTot = Number(existingSaved?.teamTotals?.[t]) || 0;
-        const adj = Number(teamAdjustments[t]) || 0;
+        const liveTotal = (teamUserSums[t] || 0) + (teamAdjustments[t] || 0);
         if (existingSaved?.forcedByAdmin && existingSaved?.teamTotals?.[t] !== undefined && !forceResync) {
-          teamTotals[t] = existingTot;
+          teamTotals[t] = Number(existingSaved.teamTotals[t]) || 0;
         } else {
-          teamTotals[t] = Math.max(existingTot, sum + adj);
+          const existingTot = Number(existingSaved?.teamTotals?.[t]) || 0;
+          teamTotals[t] = Math.max(liveTotal, existingTot);
         }
       });
 
@@ -2331,7 +2428,7 @@ async function createServer() {
         })
         .eq('id', eventId);
 
-      console.log(`[EnsureEventScoresSaved] Saved score snapshot for event ${eventId} (forceResync=${forceResync})`);
+      console.log(`[EnsureEventScoresSaved] Saved score snapshot for event ${eventId} (forceResync=${forceResync})`, teamTotals);
     } catch (err) {
       console.error(`[EnsureEventScoresSaved] Error saving scores for event ${eventId}:`, err);
     }
@@ -2815,7 +2912,7 @@ async function createServer() {
         }
       }
 
-      // 2. Fetch all verified submissions for this event
+      // 2. Fetch all verified submissions and adjustments for this event
       const { data: activeEvent } = await supabase
         .from('events')
         .select('id')
@@ -2830,17 +2927,42 @@ async function createServer() {
 
       if (subErr) throw subErr;
 
-      const eventSubs = (allEventSubs || []).filter((sub: any) => {
+      const isMatchingSub = (sub: any) => {
+        if (!sub.user_id || sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return false;
         const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
         if (!isVerified) return false;
-        if (isCurrentOrActive) {
-          return !sub.event_id || sub.event_id === eventId;
-        } else {
-          return sub.event_id === eventId;
+        if (sub.event_id && String(sub.event_id) === String(eventId)) return true;
+        if (isCurrentOrActive && !sub.event_id) return true;
+        if (!sub.event_id && event.start_date && event.end_date && sub.created_at) {
+          const subTime = new Date(sub.created_at).getTime();
+          const start = new Date(event.start_date).getTime() - 86400000;
+          const end = new Date(event.end_date).getTime() + 86400000;
+          if (subTime >= start && subTime <= end) return true;
         }
-      });
+        return false;
+      };
 
-      console.log(`[Leaderboard API] Verified submissions retrieved: ${eventSubs.length}`);
+      const eventSubs = (allEventSubs || []).filter(isMatchingSub);
+
+      const { data: allAdjustments } = await supabase
+        .from('team_adjustments')
+        .select('*');
+
+      const isMatchingAdj = (adj: any) => {
+        if (adj.event_id && String(adj.event_id) === String(eventId)) return true;
+        if (isCurrentOrActive && !adj.event_id) return true;
+        if (!adj.event_id && event.start_date && event.end_date && adj.created_at) {
+          const adjTime = new Date(adj.created_at).getTime();
+          const start = new Date(event.start_date).getTime() - 86400000;
+          const end = new Date(event.end_date).getTime() + 86400000;
+          if (adjTime >= start && adjTime <= end) return true;
+        }
+        return false;
+      };
+
+      const eventAdjustments = (allAdjustments || []).filter(isMatchingAdj);
+
+      console.log(`[Leaderboard API] Verified submissions retrieved: ${eventSubs.length}, adjustments: ${eventAdjustments.length}`);
 
       // 3. Fetch user_event_teams for this event
       const { data: uets } = await supabase
@@ -2856,26 +2978,29 @@ async function createServer() {
       // 4. Fetch profiles
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, role');
+        .select('id, steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, role, points');
 
       const profileMap = new Map<string, any>();
       (profiles || []).forEach((p: any) => {
-        if (p.steamid) profileMap.set(String(p.steamid), p);
+        if (p.steamid) profileMap.set(String(p.steamid).trim(), p);
         if (p.discord_id) {
-          profileMap.set(String(p.discord_id), p);
-          profileMap.set(`discord_${p.discord_id}`, p);
+          const rawDid = String(p.discord_id).trim();
+          const cleanDid = rawDid.startsWith('discord_') ? rawDid.replace('discord_', '') : rawDid;
+          profileMap.set(rawDid, p);
+          profileMap.set(cleanDid, p);
+          profileMap.set(`discord_${cleanDid}`, p);
         }
-        if (p.id) profileMap.set(String(p.id), p);
+        if (p.id) profileMap.set(String(p.id).trim(), p);
       });
 
       // 5. Calculate user event points & team adjustments
-      const userEventPoints: Record<string, number> = {};
       const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(savedScores?.teamAdjustments || {}) };
       const adjustmentLogs: any[] = [];
 
-      (eventSubs || []).forEach((sub: any) => {
-        if (!sub.user_id || sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return;
+      const profileLivePoints = new Map<any, number>();
+      const genericLivePoints = new Map<string, number>();
 
+      (eventSubs || []).forEach((sub: any) => {
         const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
 
         if (String(sub.user_id).startsWith('team_pts_')) {
@@ -2895,204 +3020,173 @@ async function createServer() {
 
         const rawSid = String(sub.user_id).trim();
         const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
-
-        userEventPoints[rawSid] = (userEventPoints[rawSid] || 0) + pts;
-        if (cleanSid !== rawSid) {
-          userEventPoints[cleanSid] = (userEventPoints[cleanSid] || 0) + pts;
-        }
-
         const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
         if (prof) {
-          if (prof.steamid) userEventPoints[String(prof.steamid)] = (userEventPoints[String(prof.steamid)] || 0) + pts;
-          if (prof.discord_id) {
-            userEventPoints[String(prof.discord_id)] = (userEventPoints[String(prof.discord_id)] || 0) + pts;
-            userEventPoints[`discord_${prof.discord_id}`] = (userEventPoints[`discord_${prof.discord_id}`] || 0) + pts;
-          }
-          if (prof.id) userEventPoints[String(prof.id)] = (userEventPoints[String(prof.id)] || 0) + pts;
+          profileLivePoints.set(prof, (profileLivePoints.get(prof) || 0) + pts);
+        } else {
+          genericLivePoints.set(cleanSid, (genericLivePoints.get(cleanSid) || 0) + pts);
         }
       });
 
-      // Combine with savedScores if present
-      if (savedScores?.forcedByAdmin && savedScores?.userScores) {
-        console.log(`[Leaderboard API] Applying authoritative forced user scores (count: ${Object.keys(savedScores.userScores).length})...`);
-        // When forced by admin, the forced userScores dictionary is authoritative
-        Object.keys(userEventPoints).forEach(k => {
-          userEventPoints[k] = 0;
-        });
-        for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
-          const numPts = Number(savedPts) || 0;
-          const cleanSid = sid.startsWith('discord_') ? sid.replace('discord_', '') : sid;
-          userEventPoints[sid] = numPts;
-          userEventPoints[cleanSid] = numPts;
-          const prof = profileMap.get(sid) || profileMap.get(cleanSid);
+      (eventAdjustments || []).forEach((adj: any) => {
+        const pts = Number(adj.points) || 0;
+        if (adj.user_id && String(adj.user_id).startsWith('team_pts_')) {
+          const team = String(adj.user_id).substring('team_pts_'.length);
+          if (teamAdjustments[team] !== undefined) {
+            teamAdjustments[team] += pts;
+          }
+          adjustmentLogs.push({
+            id: adj.id,
+            user_id: adj.user_id,
+            notes: adj.reason || adj.notes || 'Team adjustment',
+            points: pts,
+            created_at: adj.created_at
+          });
+          return;
+        }
+        if (adj.user_id) {
+          const rawSid = String(adj.user_id).trim();
+          const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
+          const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
           if (prof) {
-            if (prof.steamid) userEventPoints[String(prof.steamid)] = numPts;
-            if (prof.discord_id) {
-              userEventPoints[String(prof.discord_id)] = numPts;
-              userEventPoints[`discord_${prof.discord_id}`] = numPts;
-            }
-            if (prof.id) userEventPoints[String(prof.id)] = numPts;
+            profileLivePoints.set(prof, (profileLivePoints.get(prof) || 0) + pts);
+          } else {
+            genericLivePoints.set(cleanSid, (genericLivePoints.get(cleanSid) || 0) + pts);
           }
-        }
-      } else if (savedScores?.userScores) {
-        for (const [sid, savedPts] of Object.entries(savedScores.userScores)) {
-          const numPts = Number(savedPts) || 0;
-          const cleanSid = sid.startsWith('discord_') ? sid.replace('discord_', '') : sid;
-          userEventPoints[sid] = Math.max(userEventPoints[sid] || 0, numPts);
-          userEventPoints[cleanSid] = Math.max(userEventPoints[cleanSid] || 0, numPts);
-          const prof = profileMap.get(sid) || profileMap.get(cleanSid);
-          if (prof) {
-            if (prof.steamid) userEventPoints[String(prof.steamid)] = Math.max(userEventPoints[String(prof.steamid)] || 0, numPts);
-            if (prof.discord_id) {
-              userEventPoints[String(prof.discord_id)] = Math.max(userEventPoints[String(prof.discord_id)] || 0, numPts);
-              userEventPoints[`discord_${prof.discord_id}`] = Math.max(userEventPoints[`discord_${prof.discord_id}`] || 0, numPts);
-            }
-            if (prof.id) userEventPoints[String(prof.id)] = Math.max(userEventPoints[String(prof.id)] || 0, numPts);
-          }
-        }
-      }
-
-      // 6. Determine user teams for this event
-      const teamMembers: Record<string, Set<string>> = { blue: new Set(), green: new Set(), purple: new Set(), red: new Set() };
-      
-      if (savedScores?.userTeams) {
-        for (const [sid, t] of Object.entries(savedScores.userTeams)) {
-          if (typeof t === 'string' && teamMembers[t]) {
-            teamMembers[t].add(sid);
-          }
-        }
-      }
-
-      (uets || []).forEach((u: any) => {
-        if (u.team && teamMembers[u.team]) {
-          teamMembers[u.team].add(u.steamid);
+          adjustmentLogs.push({
+            id: adj.id,
+            user_id: adj.user_id,
+            notes: adj.reason || adj.notes || 'Point adjustment',
+            points: pts,
+            created_at: adj.created_at
+          });
         }
       });
 
-      Object.keys(userEventPoints).forEach((steamid) => {
-        const team = uetMap.get(steamid) || savedScores?.userTeams?.[steamid] || profileMap.get(steamid)?.team;
-        if (team && teamMembers[team]) {
-          teamMembers[team].add(steamid);
-        }
-      });
-
-      // Ensure all profiles assigned to a team are in teamMembers
-      (profiles || []).forEach((p: any) => {
-        const team = uetMap.get(p.steamid) || savedScores?.userTeams?.[p.steamid] || p.team;
-        if (team && team !== 'none' && teamMembers[team]) {
-          teamMembers[team].add(p.steamid || p.discord_id || p.id);
-        }
-      });
-
-      // 7. Build User Standings
+      // 6. Build User List and unified user points
       const usersList: any[] = [];
-      const processedProfiles = new Set<string>();
-      const allUserIdsInEvent = new Set([
-        ...Object.keys(userEventPoints),
-        ...(uets || []).map((u: any) => u.steamid),
-        ...Object.keys(savedScores?.userTeams || {}),
-        ...Object.keys(savedScores?.userScores || {}),
-        ...(profiles || []).filter((p: any) => p.team && p.team !== 'none').map((p: any) => p.steamid || p.discord_id || p.id)
-      ]);
+      const userTeamsMap: Record<string, string> = { ...(savedScores?.userTeams || {}) };
 
-      allUserIdsInEvent.forEach((userIdKey) => {
-        const rawKey = String(userIdKey || '').trim();
-        const cleanKey = rawKey.startsWith('discord_') ? rawKey.replace('discord_', '') : rawKey;
-        const prof = profileMap.get(rawKey) || profileMap.get(cleanKey);
-        const primaryId = prof?.steamid || prof?.discord_id || prof?.id || cleanKey;
-        if (processedProfiles.has(primaryId)) return;
-        processedProfiles.add(primaryId);
-
+      (profiles || []).forEach((p: any) => {
+        const primaryId = p.steamid ? String(p.steamid) : (p.discord_id ? `discord_${p.discord_id}` : String(p.id));
         const candidateKeys = [
-          rawKey,
-          cleanKey,
-          `discord_${cleanKey}`,
-          prof?.steamid ? String(prof.steamid) : null,
-          prof?.discord_id ? String(prof.discord_id) : null,
-          prof?.discord_id ? `discord_${prof.discord_id}` : null,
-          prof?.id ? String(prof.id) : null
+          p.steamid ? String(p.steamid) : null,
+          p.discord_id ? String(p.discord_id) : null,
+          p.discord_id ? `discord_${p.discord_id}` : null,
+          p.id ? String(p.id) : null
         ].filter(Boolean) as string[];
 
         let points = 0;
+        if (savedScores?.forcedByAdmin && savedScores?.userScores) {
+          for (const k of candidateKeys) {
+            if (savedScores.userScores[k] !== undefined) {
+              points = Number(savedScores.userScores[k]) || 0;
+              break;
+            }
+          }
+        } else {
+          const livePts = profileLivePoints.get(p) || 0;
+          let savedPts = 0;
+          for (const k of candidateKeys) {
+            if (savedScores?.userScores?.[k] !== undefined) {
+              savedPts = Math.max(savedPts, Number(savedScores.userScores[k]) || 0);
+            }
+          }
+          points = Math.max(livePts, savedPts);
+        }
+
+        // Determine user team
+        let userTeam = 'none';
         for (const k of candidateKeys) {
-          if (userEventPoints[k] !== undefined && userEventPoints[k] !== null) {
-            points = Math.max(points, Number(userEventPoints[k]) || 0);
+          if (uetMap.get(k)) {
+            userTeam = uetMap.get(k)!;
+            break;
+          }
+          if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
+            userTeam = savedScores.userTeams[k];
+            break;
           }
         }
-
-        const userTeam = uetMap.get(primaryId) || 
-                         savedScores?.userTeams?.[primaryId] || 
-                         (prof?.steamid && savedScores?.userTeams?.[prof.steamid]) || 
-                         (prof?.discord_id && savedScores?.userTeams?.[prof.discord_id]) || 
-                         prof?.team || 'none';
-
-        let finalAvatar = prof?.steam_avatar || '';
-        if (prof?.active_avatar === 'discord' && prof?.discord_avatar) {
-          finalAvatar = prof.discord_avatar;
-        } else if (!finalAvatar && prof?.discord_avatar) {
-          finalAvatar = prof.discord_avatar;
+        if (userTeam === 'none' && p.team && p.team !== 'none') {
+          userTeam = p.team;
+        }
+        if (userTeam !== 'none') {
+          userTeamsMap[primaryId] = userTeam;
         }
 
-        if (prof || points > 0) {
+        let finalAvatar = p.steam_avatar || '';
+        if (p.active_avatar === 'discord' && p.discord_avatar) {
+          finalAvatar = p.discord_avatar;
+        } else if (!finalAvatar && p.discord_avatar) {
+          finalAvatar = p.discord_avatar;
+        }
+
+        if (points > 0 || userTeam !== 'none' || p.steamid || p.discord_id) {
           usersList.push({
             steamid: primaryId,
-            steam_name: prof?.steam_name || prof?.discord_name || 'User',
+            steam_name: p.steam_name || p.discord_name || 'User',
             steam_avatar: finalAvatar,
-            discord_name: prof?.discord_name || null,
+            discord_name: p.discord_name || null,
             team: userTeam,
-            status: prof?.status || '',
-            role: prof?.role || 'user',
+            status: p.status || '',
+            role: p.role || 'user',
             points: points
           });
         }
       });
 
-      usersList.sort((a, b) => b.points - a.points);
-
-      // All users ranked by points
-      const allUsers = usersList.map((u, idx) => ({
-        ...u,
-        rank: idx + 1
-      }));
-
-      // 8. Calculate Team Standings
-      const teamStandings = ['blue', 'purple', 'green', 'red'].map((t) => {
-        let userPointsSum = 0;
-        const countedUsers = new Set<string>();
-        teamMembers[t].forEach((sid) => {
-          const rawSid = String(sid || '').trim();
-          const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
-          const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
-          const primaryId = prof?.steamid || prof?.discord_id || prof?.id || cleanSid;
-          if (countedUsers.has(primaryId)) return;
-          countedUsers.add(primaryId);
-
-          const candidateKeys = [
-            rawSid,
-            cleanSid,
-            `discord_${cleanSid}`,
-            prof?.steamid ? String(prof.steamid) : null,
-            prof?.discord_id ? String(prof.discord_id) : null,
-            prof?.discord_id ? `discord_${prof.discord_id}` : null,
-            prof?.id ? String(prof.id) : null
-          ].filter(Boolean) as string[];
-
-          let pts = 0;
-          for (const k of candidateKeys) {
-            if (userEventPoints[k] !== undefined) {
-              pts = Math.max(pts, Number(userEventPoints[k]) || 0);
-            }
+      // Include generic users without profiles
+      genericLivePoints.forEach((pts, uid) => {
+        if (!usersList.find(u => u.steamid === uid)) {
+          let forcedPts: number | null = null;
+          if (savedScores?.forcedByAdmin && savedScores?.userScores?.[uid] !== undefined) {
+            forcedPts = Number(savedScores.userScores[uid]) || 0;
           }
-          userPointsSum += pts;
-        });
-        const liveTotal = userPointsSum + (teamAdjustments[t] || 0);
-        const totalTeamPoints = (savedScores?.forcedByAdmin && savedScores?.teamTotals?.[t] !== undefined)
-          ? Number(savedScores.teamTotals[t])
-          : Math.max(liveTotal, Number(savedScores?.teamTotals?.[t]) || 0);
+          const savedPts = Number(savedScores?.userScores?.[uid]) || 0;
+          const finalPts = forcedPts !== null ? forcedPts : Math.max(pts, savedPts);
+          const team = uetMap.get(uid) || savedScores?.userTeams?.[uid] || 'none';
+          usersList.push({
+            steamid: uid,
+            steam_name: uid.startsWith('discord_') ? `Discord User (${uid.slice(-4)})` : uid,
+            steam_avatar: '',
+            discord_name: null,
+            team: team,
+            status: '',
+            role: 'user',
+            points: finalPts
+          });
+        }
+      });
+
+      usersList.sort((a, b) => b.points - a.points);
+      const allUsers = usersList.map((u, idx) => ({ ...u, rank: idx + 1 }));
+
+      // 7. Calculate Team Standings
+      const teamUserSums: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+      const teamUserCounts: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+
+      allUsers.forEach(u => {
+        if (u.team && teamUserSums[u.team] !== undefined) {
+          teamUserSums[u.team] += Number(u.points) || 0;
+          teamUserCounts[u.team] += 1;
+        }
+      });
+
+      const teamStandings = ['blue', 'purple', 'green', 'red'].map((t) => {
+        const liveTotal = (teamUserSums[t] || 0) + (teamAdjustments[t] || 0);
+        let totalTeamPoints = liveTotal;
+
+        if (savedScores?.forcedByAdmin && savedScores?.teamTotals?.[t] !== undefined) {
+          totalTeamPoints = Number(savedScores.teamTotals[t]);
+        } else if (savedScores?.teamTotals?.[t] !== undefined) {
+          const savedTot = Number(savedScores.teamTotals[t]) || 0;
+          totalTeamPoints = Math.max(liveTotal, savedTot);
+        }
+
         return {
           team: t,
           points: totalTeamPoints,
-          members: countedUsers.size,
+          members: teamUserCounts[t] || 0,
           rank: 1
         };
       });
