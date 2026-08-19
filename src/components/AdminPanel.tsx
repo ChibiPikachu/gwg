@@ -408,6 +408,38 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   }, []);
 
   const fetchEvents = React.useCallback(async () => {
+    const normalizeEvents = (rawList: any[]) => {
+      if (!Array.isArray(rawList)) return [];
+      // Sort oldest to newest to allocate 1-based Event #s
+      const chronological = [...rawList].sort(
+        (a, b) => new Date(a.start_date || a.startDate || 0).getTime() - new Date(b.start_date || b.startDate || 0).getTime()
+      );
+      const withNumbers = chronological.map((ev, idx) => {
+        let num = ev.event_number || ev.eventNumber;
+        if (!num && (ev.title || ev.name)) {
+          const match = String(ev.title || ev.name).match(/Event\s*#?\s*(\d+)/i);
+          if (match && match[1]) {
+            num = parseInt(match[1], 10);
+          }
+        }
+        if (!num) {
+          num = idx + 1;
+        }
+        return {
+          ...ev,
+          event_number: num,
+          eventNumber: num,
+          title: ev.title || ev.name || `Event #${num}`,
+          name: ev.title || ev.name || `Event #${num}`,
+          is_active: Boolean(ev.is_active || ev.isActive)
+        };
+      });
+      // Sort newest to oldest for UI dropdowns and lists
+      return withNumbers.sort(
+        (a, b) => new Date(b.start_date || b.startDate || 0).getTime() - new Date(a.start_date || a.startDate || 0).getTime()
+      );
+    };
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -416,9 +448,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           .order('start_date', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          setEvents(data);
-          const active = data.find((e: any) => e.is_active || e.isActive);
-          setActiveEvent(active || data[0] || null);
+          const normalized = normalizeEvents(data);
+          setEvents(normalized);
+          const active = normalized.find((e: any) => e.is_active || e.isActive);
+          setActiveEvent(active || normalized[0] || null);
           return;
         }
       } catch (e) {
@@ -431,10 +464,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       const contentType = res.headers.get('content-type');
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
-        const list = Array.isArray(data) ? data : [];
-        setEvents(list);
-        const active = list.find((e: any) => e.is_active || e.isActive);
-        setActiveEvent(active || list[0] || null);
+        const normalized = normalizeEvents(Array.isArray(data) ? data : []);
+        setEvents(normalized);
+        const active = normalized.find((e: any) => e.is_active || e.isActive);
+        setActiveEvent(active || normalized[0] || null);
       }
     } catch (err) {
       console.warn('Failed to fetch events inside AdminPanel:', err);
@@ -1646,11 +1679,18 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                       className="appearance-none dark:bg-[#1a1a1a] bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3.5 py-2.5 pr-8 text-xs font-bold dark:text-white text-slate-800 focus:outline-none w-full cursor-pointer h-10"
                     >
                       <option value="active">🔥 Current Active Event & Profile Default</option>
-                      {events.map((ev: any) => (
-                        <option key={ev.id} value={ev.id}>
-                          Event #{ev.event_number || ev.eventNumber}: {ev.name} {ev.is_active ? '(Active)' : '(Ended)'}
-                        </option>
-                      ))}
+                      {events.map((ev: any, idx: number) => {
+                        const num = ev.event_number || ev.eventNumber || (events.length - idx);
+                        const rawTitle = ev.title || ev.name || `Event ${num}`;
+                        const displayTitle = /^Event\s*#?\s*\d+/i.test(rawTitle)
+                          ? rawTitle
+                          : `Event #${num}: ${rawTitle}`;
+                        return (
+                          <option key={ev.id} value={ev.id}>
+                            {displayTitle} {ev.is_active ? '(Active)' : '(Ended)'}
+                          </option>
+                        );
+                      })}
                     </select>
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
                       <ChevronDown size={14} />
@@ -1732,7 +1772,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <div className="text-[11px] dark:text-white/40 text-slate-400 font-medium">
                   {massTargetEventId === 'active' 
                     ? 'Updates profile team & current active event roster.' 
-                    : `Updates team roster for historical ${events.find((e: any) => e.id === massTargetEventId)?.name || 'Selected Event'}.`}
+                    : `Updates team roster for historical ${events.find((e: any) => e.id === massTargetEventId)?.title || events.find((e: any) => e.id === massTargetEventId)?.name || 'Selected Event'}.`}
                 </div>
               </div>
             </div>
@@ -2604,11 +2644,18 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                     onChange={(e) => setBulkEditEventId(e.target.value)}
                     className="dark:bg-black/40 bg-slate-50 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 dark:text-white text-slate-900"
                   >
-                    {events.map((evt: any) => (
-                      <option key={evt.id} value={evt.id}>
-                        {evt.title} {evt.is_active ? '(Active)' : '(Archived)'}
-                      </option>
-                    ))}
+                    {events.map((evt: any, idx: number) => {
+                      const num = evt.event_number || evt.eventNumber || (events.length - idx);
+                      const rawTitle = evt.title || evt.name || `Event ${num}`;
+                      const displayTitle = /^Event\s*#?\s*\d+/i.test(rawTitle)
+                        ? rawTitle
+                        : `Event #${num}: ${rawTitle}`;
+                      return (
+                        <option key={evt.id} value={evt.id}>
+                          {displayTitle} {evt.is_active ? '(Active)' : '(Archived)'}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -3745,7 +3792,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-black dark:text-white text-slate-800">
-                                Event #{e.event_number || e.eventNumber}: {e.name}
+                                {(() => {
+                                  const num = e.event_number || e.eventNumber;
+                                  const rawTitle = e.title || e.name || `Event #${num || '?'}`;
+                                  return /^Event\s*#?\s*\d+/i.test(rawTitle)
+                                    ? rawTitle
+                                    : `Event #${num || '?'}: ${rawTitle}`;
+                                })()}
                               </span>
                               {e.is_active ? (
                                 <span className="text-[8px] px-1.5 py-0.5 rounded-full font-extrabold tracking-wider bg-emerald-500/10 text-emerald-500 uppercase">
