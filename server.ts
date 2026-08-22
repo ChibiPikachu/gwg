@@ -971,7 +971,7 @@ async function createServer() {
   }));
 
   // Auth Routes
-  app.get('/api/auth/steam/url', (req, res) => {
+  const handleSteamLoginRedirect = (req: any, res: any) => {
     const appUrl = getAppBaseUrl(req);
     const returnTo = `${appUrl}/auth/steam/return`;
     const params = new URLSearchParams({
@@ -982,8 +982,15 @@ async function createServer() {
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select'
     });
-    res.json({ url: `https://steamcommunity.com/openid/login?${params.toString()}` });
-  });
+    const steamUrl = `https://steamcommunity.com/openid/login?${params.toString()}`;
+    if (req.query.json === 'true') {
+      return res.json({ url: steamUrl });
+    }
+    return res.redirect(steamUrl);
+  };
+
+  app.get('/api/auth/steam/url', handleSteamLoginRedirect);
+  app.get('/api/auth/steam/login', handleSteamLoginRedirect);
 
   app.get('/auth/steam', (req, res, next) => {
     const appUrl = getAppBaseUrl(req);
