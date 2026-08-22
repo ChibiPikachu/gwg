@@ -796,7 +796,7 @@ const hltbCache = new Map<string, any>();
 
 async function createServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware
   app.set('trust proxy', 1);
@@ -5890,8 +5890,8 @@ async function createServer() {
   // Removed duplicate leaderboard route
 
 
-  // Vite middleware
-  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  // Vite middleware in development; Static assets in production
+  if (process.env.NODE_ENV !== 'production' && !process.env.RENDER) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -5899,11 +5899,10 @@ async function createServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // On Vercel or in production, serve from dist
+    // In production (Render, Cloud Run, standalone), serve compiled static files from dist
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      // In a serverless environment, we might need to be careful with paths
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
@@ -5911,33 +5910,15 @@ async function createServer() {
   return { app, PORT };
 }
 
-// Initialize the server setup promise
-let serverApp: any = null;
-const serverSetupPromise = createServer();
-
-// For non-Vercel environments (like local and container/Cloud Run environments)
-if (!process.env.VERCEL) {
-  serverSetupPromise.then(({ app, PORT }) => {
-    serverApp = app;
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running at http://0.0.0.0:${PORT}`);
-    });
-  }).catch(err => {
-    console.error('Failed to start local server:', err);
+// Start standalone server
+createServer().then(({ app, PORT }) => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server listening on port ${PORT}`);
   });
-}
+}).catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});
 
-// Export a handler for Vercel
-export default async (req: any, res: any) => {
-  try {
-    if (!serverApp) {
-      const { app } = await serverSetupPromise;
-      serverApp = app;
-    }
-    return serverApp(req, res);
-  } catch (err) {
-    console.error('Vercel handler initialization failed:', err);
-    res.status(500).send('Internal Server Error: Server failed to initialize.');
-  }
-};
+export default createServer;
 
