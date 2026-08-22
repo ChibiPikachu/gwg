@@ -15,6 +15,19 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-icons': ['lucide-react'],
+            'vendor-motion': ['motion'],
+          },
+        },
+      },
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,

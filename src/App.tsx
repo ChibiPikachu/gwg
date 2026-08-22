@@ -3,23 +3,35 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { useAuth, AuthProvider } from '@/components/AuthProvider';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import LandingPage from '@/components/LandingPage';
-import EventsPanel from '@/components/Events';
-import MySubmissions from '@/components/MySubmissions';
-import Leaderboard from '@/components/Leaderboard';
-import Profile from '@/components/Profile';
-import MyTeam from '@/components/MyTeam';
-import Games from '@/components/Games';
-import AdminPanel from '@/components/AdminPanel';
-import ScreenshotContest from '@/components/ScreenshotContest';
-import DiscordRegistration from '@/components/DiscordRegistration';
-import { Team } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu } from 'lucide-react';
+import { Menu, Loader2 } from 'lucide-react';
+
+// Lazy-loaded tab components for code splitting & smaller initial bundle size
+const MySubmissions = lazy(() => import('@/components/MySubmissions'));
+const Profile = lazy(() => import('@/components/Profile'));
+const MyTeam = lazy(() => import('@/components/MyTeam'));
+const Games = lazy(() => import('@/components/Games'));
+const Leaderboard = lazy(() => import('@/components/Leaderboard'));
+const EventsPanel = lazy(() => import('@/components/Events'));
+const ScreenshotContest = lazy(() => import('@/components/ScreenshotContest'));
+const AdminPanel = lazy(() => import('@/components/AdminPanel'));
+const DiscordRegistration = lazy(() => import('@/components/DiscordRegistration'));
+
+function TabLoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px] w-full p-8">
+      <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-3" />
+      <p className="text-xs uppercase tracking-wider font-semibold text-slate-400 dark:text-zinc-500 animate-pulse">
+        Loading module...
+      </p>
+    </div>
+  );
+}
 
 function AppContent() {
   const { user, loading, theme, loginWithSteam, loginWithDiscord, logout } = useAuth();
@@ -41,7 +53,11 @@ function AppContent() {
   }
 
   if (user && user.needs_registration) {
-    return <DiscordRegistration />;
+    return (
+      <Suspense fallback={<TabLoadingFallback />}>
+        <DiscordRegistration />
+      </Suspense>
+    );
   }
 
   if (!user) {
@@ -145,7 +161,9 @@ function AppContent() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
             >
-              {renderContent()}
+              <Suspense fallback={<TabLoadingFallback />}>
+                {renderContent()}
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>
