@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { Request as VercelRequest, Response as VercelResponse } from 'express';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(

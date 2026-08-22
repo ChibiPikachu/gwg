@@ -5,14 +5,10 @@ import passport from 'passport';
 import { Strategy as SteamStrategy } from 'passport-steam';
 import { Strategy as DiscordStrategy } from 'passport-discord';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 import { createClient } from '@supabase/supabase-js';
 import screenshotHandler from './api/screenshots.js';
 import leaderboardsHandler from './api/leaderboards.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 let supabaseClient: any = null;
 

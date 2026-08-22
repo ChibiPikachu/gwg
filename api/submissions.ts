@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { Request as VercelRequest, Response as VercelResponse } from 'express';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -23,8 +23,9 @@ function buildProfileOrFilter(key: string): string {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Extract ID if provided in query or URL parameter
   const rawId = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
-  const id = rawId && rawId !== 'undefined' && rawId !== 'null' && rawId.trim() !== ''
-    ? (!isNaN(Number(rawId)) ? Number(rawId) : rawId)
+  const strId = typeof rawId === 'string' ? rawId.trim() : '';
+  const id = strId && strId !== 'undefined' && strId !== 'null'
+    ? (!isNaN(Number(strId)) ? Number(strId) : strId)
     : null;
 
   // 1. Handle POST: Create a brand-new submission
