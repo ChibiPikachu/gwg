@@ -1,5 +1,8 @@
-import type { VercelRequest } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+
+export interface RequestWithHeaders {
+  headers: Record<string, string | string[] | undefined>;
+}
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -11,7 +14,7 @@ export interface AuthUser {
   steamid?: string;
 }
 
-export async function getUserFromRequest(req: VercelRequest): Promise<AuthUser | null> {
+export async function getUserFromRequest(req: RequestWithHeaders | any): Promise<AuthUser | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
@@ -39,7 +42,7 @@ export async function getUserFromRequest(req: VercelRequest): Promise<AuthUser |
   }
 }
 
-export async function requireAdmin(req: VercelRequest): Promise<AuthUser> {
+export async function requireAdmin(req: RequestWithHeaders | any): Promise<AuthUser> {
   const user = await getUserFromRequest(req);
   if (!user || user.role !== 'admin') {
     throw new Error('Unauthorized: Admin rights required');

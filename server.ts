@@ -9,6 +9,7 @@ import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import screenshotHandler from './api/screenshots.js';
 import leaderboardsHandler from './api/leaderboards.js';
+import gamesHandler from './api/games.js';
 
 let supabaseClient: any = null;
 
@@ -1868,40 +1869,7 @@ async function createServer() {
   });
 
   // Game Search Routes
-  const handleGameSearch = async (req: express.Request, res: express.Response) => {
-    const query = String(req.query.query || req.query.q || req.body?.query || req.body?.q || '').trim();
-    if (!query) return res.json([]);
-
-    const supabase = getSupabase();
-    if (supabase) {
-      try {
-        const { data } = await supabase
-          .from('games')
-          .select('*')
-          .ilike('title', `%${query}%`)
-          .limit(10);
-
-        if (data && data.length > 0) {
-          return res.json(data.map((g: any) => ({
-            id: g.id,
-            title: g.title,
-            name: g.title,
-            image: g.image_url,
-            cover: { url: g.image_url },
-            steam_appid: g.steam_appid,
-            steamAppId: g.steam_appid
-          })));
-        }
-      } catch (e) {
-        console.warn('Supabase game search error:', e);
-      }
-    }
-    return res.json([]);
-  };
-
-  app.all('/api/game-search', handleGameSearch);
-  app.all('/api/games/search', handleGameSearch);
-  app.all('/api/games', handleGameSearch);
+  app.all(['/api/game-search', '/api/games/search', '/api/games'], gamesHandler);
 
   app.get('/api/games/:id', async (req, res) => {
     const supabase = getSupabase();
