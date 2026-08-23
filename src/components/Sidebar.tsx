@@ -239,7 +239,24 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
   const votingMatchStr = activeEventToUse?.description?.match(/<!--VOTING:(.*?)-->/);
   const votingStartIsoStr = (activeEventToUse as any)?.voting_timestamp || (votingMatchStr ? votingMatchStr[1] : '');
-  const currentEventNumber = (activeEventToUse as any)?.event_number || 1;
+  
+  // Extract the active event number/name cleanly (e.g. from "EVENT #5", "Event 5", or explicit property)
+  const getEventLabel = (evt: any): string => {
+    if (!evt) return 'Event';
+    if (evt.event_number !== undefined && evt.event_number !== null && !isNaN(Number(evt.event_number))) {
+      return `Event #${evt.event_number}`;
+    }
+    if (evt.title) {
+      const match = evt.title.match(/(?:event\s*#?|#)\s*(\d+)/i) || evt.title.match(/(\d+)/);
+      if (match && match[1]) {
+        return `Event #${match[1]}`;
+      }
+      return evt.title;
+    }
+    return 'Event';
+  };
+
+  const currentEventLabel = getEventLabel(activeEventToUse);
 
   const colors = TEAM_COLORS[userTeam] || TEAM_COLORS['none'];
   const logoColor = userTeam === 'blue' ? 'bg-blue-accent' : 
@@ -392,7 +409,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
                   {votingStartIsoStr && (
                     <div className="w-full border-t border-black/5 dark:border-white/5 pt-4 mt-4 flex flex-col items-center">
                       <span className="text-xs font-bold mb-1 dark:text-white text-slate-800 text-center">
-                        Event #{currentEventNumber} voting period
+                        {currentEventLabel} voting period
                       </span>
                       <span className="text-[10px] opacity-50 mb-4 text-center dark:text-white text-slate-600">
                         {getVotingLegend(votingStartIsoStr)}

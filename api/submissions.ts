@@ -289,12 +289,83 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
+      // Find user_id first so we can reconcile their profile points
+      const { data: existingSub } = await supabase
+        .from('submissions')
+        .select('user_id')
+        .eq('id', id)
+        .maybeSingle();
+
       const { error } = await supabase
         .from('submissions')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
+
+      if (existingSub?.user_id) {
+        try {
+          const rawUid = String(existingSub.user_id).trim();
+          const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
+          
+          const { data: activeEvent } = await supabase
+            .from('events')
+            .select('id')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          const { data: userSubs } = await supabase
+            .from('submissions')
+            .select('points, calculated_score, game_name, status, event_id, platform')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`);
+
+          const { data: allScreenshots } = await supabase
+            .from('screenshot_submissions')
+            .select('id, user_id, status')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`)
+            .neq('status', 'rejected');
+
+          const validScreenshotsCount = (allScreenshots || []).length;
+          let screenshotPointsSeen = 0;
+          let totalPts = 0;
+
+          (userSubs || []).forEach((sub: any) => {
+            const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+            if (!isVerified) return;
+            if (activeEvent && sub.event_id && sub.event_id !== activeEvent.id) return;
+            if (sub.game_name === 'Event Update' || String(sub.user_id).startsWith('team_pts_')) return;
+
+            const isScreenshotPoint = sub.platform === 'Screenshot Event' || 
+              (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+              (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+
+            if (isScreenshotPoint) {
+              if (screenshotPointsSeen >= validScreenshotsCount) return;
+              screenshotPointsSeen++;
+            }
+
+            const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
+            totalPts += pts;
+          });
+
+          // Fetch adjustments
+          const { data: adjustments } = await supabase
+            .from('team_adjustments')
+            .select('points')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`);
+
+          (adjustments || []).forEach((adj: any) => {
+            totalPts += Math.round(Number(adj.points) || 0);
+          });
+
+          await supabase
+            .from('profiles')
+            .update({ points: totalPts })
+            .or(`steamid.eq.${rawUid},steamid.eq.${cleanUid},discord_id.eq.${cleanUid},id.eq.${cleanUid}`);
+        } catch (syncErr) {
+          console.warn('Post-deletion profile points sync warning:', syncErr);
+        }
+      }
 
       return res.status(200).json({ success: true, message: 'Submission deleted' });
     } catch (error: any) {

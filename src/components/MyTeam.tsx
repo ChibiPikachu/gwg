@@ -12,49 +12,116 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
   const [searchQuery, setSearchQuery] = React.useState('');
 
   const fetchTeammates = React.useCallback(async () => {
+    // 1. Prioritize /api/leaderboard/users which calculates live aggregated points matching the Leaderboard exactly
+    try {
+      const res = await fetch('/api/leaderboard/users');
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          if (user?.team && user.team !== 'none') {
+            const teamMembers = data
+              .filter(u => u.team === user.team)
+              .sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0));
+            setMembers(teamMembers);
+          } else {
+            setMembers([]);
+          }
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch /api/leaderboard/users in MyTeam, falling back to direct calculation:', err);
+    }
+
+    // 2. Direct Supabase fallback with dynamic point computation (excluding orphaned screenshot points)
     if (isSupabaseConfigured && supabase && user?.team && user.team !== 'none') {
       try {
-        const { data, error } = await supabase
+        const { data: teamProfiles, error } = await supabase
           .from('profiles')
           .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
           .eq('team', user.team);
 
-        if (!error && data) {
-          const transformed = data.map((u: any) => ({
-            ...u,
-            steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
-            points: u.points || 0
-          })).sort((a: any, b: any) => b.points - a.points);
+        if (!error && teamProfiles) {
+          const { data: activeEvent } = await supabase
+            .from('events')
+            .select('id')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          const { data: verifiedSubs } = await supabase
+            .from('submissions')
+            .select('id, user_id, points, calculated_score, game_name, status, event_id, platform');
+
+          const { data: allScreenshots } = await supabase
+            .from('screenshot_submissions')
+            .select('user_id, status');
+
+          // Count valid non-rejected screenshots per user
+          const userScreenshotCount: Record<string, number> = {};
+          (allScreenshots || []).forEach((sc: any) => {
+            if (sc.status !== 'rejected') {
+              const rawId = String(sc.user_id || '').trim();
+              const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+              if (cleanId) {
+                userScreenshotCount[cleanId] = (userScreenshotCount[cleanId] || 0) + 1;
+                userScreenshotCount[rawId] = (userScreenshotCount[rawId] || 0) + 1;
+              }
+            }
+          });
+
+          const userLivePoints: Record<string, number> = {};
+          const userScreenshotRowsSeen: Record<string, number> = {};
+
+          (verifiedSubs || []).forEach((sub: any) => {
+            const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+            if (!isVerified) return;
+            if (activeEvent && sub.event_id && sub.event_id !== activeEvent.id) return;
+            if (sub.game_name === 'Event Update' || String(sub.user_id).startsWith('team_pts_')) return;
+
+            const rawUid = String(sub.user_id || '').trim();
+            const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
+
+            const isScreenshotPoint = sub.platform === 'Screenshot Event' || 
+              (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+              (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+
+            if (isScreenshotPoint) {
+              const allowed = userScreenshotCount[cleanUid] || userScreenshotCount[rawUid] || 0;
+              const seen = userScreenshotRowsSeen[cleanUid] || 0;
+              if (seen >= allowed) return; // Discard deleted screenshot points
+              userScreenshotRowsSeen[cleanUid] = seen + 1;
+            }
+
+            const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
+            userLivePoints[cleanUid] = (userLivePoints[cleanUid] || 0) + pts;
+            userLivePoints[rawUid] = (userLivePoints[rawUid] || 0) + pts;
+          });
+
+          const transformed = teamProfiles.map((u: any) => {
+            const rawId = String(u.steamid || u.discord_id || '');
+            const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+            const livePts = userLivePoints[cleanId] ?? userLivePoints[rawId];
+            const finalPts = (livePts !== undefined) ? livePts : (u.points || 0);
+
+            return {
+              ...u,
+              steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
+              points: finalPts
+            };
+          }).sort((a: any, b: any) => (Number(b.points) || 0) - (Number(a.points) || 0));
 
           setMembers(transformed);
           setLoading(false);
           return;
         }
       } catch (err) {
-        console.warn('Direct Supabase fetch for team members failed:', err);
+        console.warn('Direct Supabase calculation for team members failed:', err);
       }
     }
 
-    fetch('/api/leaderboard/users')
-      .then(async res => {
-        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-          return res.json();
-        }
-        return [];
-      })
-      .then(data => {
-        const safeData = Array.isArray(data) ? data : [];
-        if (user?.team && user.team !== 'none') {
-          setMembers(safeData.filter(u => u.team === user.team));
-        } else {
-          setMembers([]);
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.warn('Failed to fetch team members:', err);
-        setLoading(false);
-      });
+    setLoading(false);
   }, [user?.team]);
 
   React.useEffect(() => {

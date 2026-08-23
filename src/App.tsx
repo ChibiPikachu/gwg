@@ -25,7 +25,7 @@ const DiscordRegistration = lazy(() => import('@/components/DiscordRegistration'
 function TabLoadingFallback() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] w-full p-8">
-      <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-3" />
+      <Loader2 className="w-8 h-8 animate-spin text-slate-500 mb-3" />
       <p className="text-xs uppercase tracking-wider font-semibold text-slate-400 dark:text-zinc-500 animate-pulse">
         Loading module...
       </p>
@@ -44,6 +44,12 @@ function AppContent() {
     setActiveTab('profile');
   };
 
+  const isDiscordWithoutSteam = Boolean(
+    user &&
+    (user.discordId || (user.uid && String(user.uid).startsWith('discord_'))) &&
+    (!user.steamId || String(user.steamId).startsWith('discord_') || user.needs_registration)
+  );
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center">
@@ -52,7 +58,8 @@ function AppContent() {
     );
   }
 
-  if (user && user.needs_registration) {
+  // Trigger 'Sync your Steam account' flow if user is authenticated via Discord but lacks a linked Steam ID in DB
+  if (user && (user.needs_registration || isDiscordWithoutSteam)) {
     return (
       <Suspense fallback={<TabLoadingFallback />}>
         <DiscordRegistration />

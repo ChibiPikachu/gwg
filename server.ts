@@ -2451,7 +2451,7 @@ async function createServer() {
         // Sum all verified submissions (games, screenshot points, bingo points, etc.) for active event or null event_id
         const { data: verifiedSubmissions, error: subError } = await supabase
           .from('submissions')
-          .select('points, calculated_score, id, status, user_id, event_id, game_name')
+          .select('points, calculated_score, id, status, user_id, event_id, game_name, platform')
           .in('user_id', candidateIds)
           .or(`status.eq.verified,status.eq.approved,status.is.null`)
           .or(`event_id.eq.${activeEvent.id},event_id.is.null`);
@@ -2461,10 +2461,31 @@ async function createServer() {
           throw subError;
         }
 
-        console.log(`[Sync] Found ${verifiedSubmissions?.length || 0} verified submissions in event ${activeEvent.id} for ${steamid}`);
-        
+        // Fetch valid non-rejected screenshots count to guard against orphaned points
+        const { data: validScreenshots } = await supabase
+          .from('screenshot_submissions')
+          .select('id, user_id, status')
+          .in('user_id', candidateIds)
+          .neq('status', 'rejected');
+
+        const validCount = (validScreenshots || []).length;
+        let screenshotPointsSeen = 0;
+
         for (const sub of (verifiedSubmissions || [])) {
           if (sub.game_name === 'Event Update') continue; // Skip system notification row
+          
+          const isScreenshot = sub.platform === 'Screenshot Event' || 
+            (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+            (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+
+          if (isScreenshot) {
+            if (screenshotPointsSeen >= validCount) {
+              // Excess/orphaned screenshot submission row from a deleted screenshot - do not count
+              continue;
+            }
+            screenshotPointsSeen++;
+          }
+
           const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
           totalPoints += Math.round(pts);
         }
