@@ -1015,6 +1015,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         setRejectionReason('');
         await fetchUsers();
         await fetchTeamAdjustments();
+        window.dispatchEvent(new CustomEvent('leaderboard-updated'));
       } else {
         let errorMsg = `Server returned error (${res.status})`;
         try {
@@ -1049,6 +1050,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
       if (res.ok) {
         setSubmissions(prev => prev.filter(s => s.id !== id));
+        await fetchUsers();
+        await fetchTeamAdjustments();
+        window.dispatchEvent(new CustomEvent('leaderboard-updated'));
       } else {
         const data = await res.json();
         alert(`Failed to delete: ${data.error}`);
@@ -1091,7 +1095,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         alert(`Successfully mass accepted ${countAccepted} submission(s)!`);
         setSelectedSubIds([]);
         fetchSubmissions();
-        fetchUsers();
+        await fetchUsers();
+        await fetchTeamAdjustments();
+        window.dispatchEvent(new CustomEvent('leaderboard-updated'));
       } else {
         alert(`Error mass accepting submissions: ${data.error || 'Unknown error'}`);
       }

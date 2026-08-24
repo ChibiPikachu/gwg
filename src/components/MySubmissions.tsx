@@ -632,6 +632,7 @@ export default function MySubmissions() {
       if (res.ok) {
         handleResetForm();
         fetchSubmissions();
+        window.dispatchEvent(new CustomEvent('leaderboard-updated'));
       } else {
         const data = await res.json().catch(() => ({}));
         console.error('Server submission error:', data);
@@ -679,6 +680,7 @@ export default function MySubmissions() {
         const { error } = await supabase.from('submissions').delete().eq('id', id);
         if (!error) {
           setSubmissions(prev => prev.filter(s => s.id !== id));
+          window.dispatchEvent(new CustomEvent('leaderboard-updated'));
           return;
         }
       } catch (err) {
@@ -693,6 +695,7 @@ export default function MySubmissions() {
       });
       if (res.ok) {
         setSubmissions(prev => prev.filter(s => s.id !== id));
+        window.dispatchEvent(new CustomEvent('leaderboard-updated'));
       } else {
         const data = await res.json();
         alert(`Delete failed: ${data.error}`);

@@ -2406,60 +2406,76 @@ async function createServer() {
   }
 
   // Helper to sync points
-  async function syncUserPoints(supabase: any, steamid: string) {
+  async function syncUserPoints(supabase: any, steamid: string, eventIdToSync?: string) {
+    if (!steamid || steamid === 'system_notification' || String(steamid).startsWith('team_pts_')) return null;
+
     try {
       console.log(`[Sync] Starting sync for user ${steamid}`);
+
+      const cleanSteamId = String(steamid).trim();
+      const cleanDiscordId = cleanSteamId.startsWith('discord_') ? cleanSteamId.replace('discord_', '') : cleanSteamId;
 
       // Lookup candidate IDs for user
       const { data: profile } = await supabase
         .from('profiles')
         .select('steamid, discord_id, id')
-        .or(`steamid.eq.${steamid},discord_id.eq.${steamid}`)
+        .or(`steamid.eq.${cleanSteamId},steamid.eq.${cleanDiscordId},discord_id.eq.${cleanSteamId},discord_id.eq.${cleanDiscordId},id.eq.${cleanSteamId},id.eq.${cleanDiscordId}`)
         .maybeSingle();
 
       const candidateIds = Array.from(new Set([
-        steamid,
-        profile?.steamid,
-        profile?.discord_id,
-        profile?.discord_id ? `discord_${profile.discord_id}` : null,
-        profile?.id
+        cleanSteamId,
+        cleanDiscordId,
+        `discord_${cleanDiscordId}`,
+        profile?.steamid ? String(profile.steamid).trim() : null,
+        profile?.discord_id ? String(profile.discord_id).trim() : null,
+        profile?.discord_id ? `discord_${String(profile.discord_id).trim().replace('discord_', '')}` : null,
+        profile?.id ? String(profile.id).trim() : null
       ].filter(Boolean))) as string[];
       
-      let { data: activeEvent, error: eventError } = await supabase
-        .from('events')
-        .select('id')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (eventError) {
-        console.error(`[Sync] Error fetching active event during sync for ${steamid}:`, eventError);
-      }
-
-      if (!activeEvent) {
-        const { data: recentEvent } = await supabase
+      let targetEventId = eventIdToSync;
+      if (!targetEventId) {
+        let { data: activeEvent, error: eventError } = await supabase
           .from('events')
           .select('id')
-          .order('created_at', { ascending: false })
-          .limit(1)
+          .eq('is_active', true)
           .maybeSingle();
-        activeEvent = recentEvent;
+
+        if (eventError) {
+          console.error(`[Sync] Error fetching active event during sync for ${steamid}:`, eventError);
+        }
+
+        if (!activeEvent) {
+          const { data: recentEvent } = await supabase
+            .from('events')
+            .select('id')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          activeEvent = recentEvent;
+        }
+        targetEventId = activeEvent?.id;
       }
 
       let totalPoints = 0;
 
-      if (activeEvent) {
-        // Sum all verified submissions (games, screenshot points, bingo points, etc.) for active event or null event_id
-        const { data: verifiedSubmissions, error: subError } = await supabase
+      if (targetEventId) {
+        // Sum all verified submissions for active event or null event_id
+        const { data: userSubmissions, error: subError } = await supabase
           .from('submissions')
           .select('points, calculated_score, id, status, user_id, event_id, game_name, platform')
-          .in('user_id', candidateIds)
-          .or(`status.eq.verified,status.eq.approved,status.is.null`)
-          .or(`event_id.eq.${activeEvent.id},event_id.is.null`);
+          .in('user_id', candidateIds);
 
         if (subError) {
           console.error(`[Sync] Error fetching submissions for ${steamid}:`, subError);
           throw subError;
         }
+
+        const verifiedSubmissions = (userSubmissions || []).filter((sub: any) => {
+          if (sub.game_name === 'Event Update') return false;
+          const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+          if (!isVerified) return false;
+          return !sub.event_id || String(sub.event_id) === String(targetEventId);
+        });
 
         // Fetch valid non-rejected screenshots count to guard against orphaned points
         const { data: validScreenshots } = await supabase
@@ -2471,9 +2487,7 @@ async function createServer() {
         const validCount = (validScreenshots || []).length;
         let screenshotPointsSeen = 0;
 
-        for (const sub of (verifiedSubmissions || [])) {
-          if (sub.game_name === 'Event Update') continue; // Skip system notification row
-          
+        for (const sub of verifiedSubmissions) {
           const isScreenshot = sub.platform === 'Screenshot Event' || 
             (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
             (sub.game_name && sub.game_name.includes('Screenshot Submission'));
@@ -2489,32 +2503,68 @@ async function createServer() {
           const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
           totalPoints += Math.round(pts);
         }
+
+        // Add user adjustments for target event
+        const { data: userAdjustments } = await supabase
+          .from('team_adjustments')
+          .select('points, event_id')
+          .in('user_id', candidateIds);
+
+        (userAdjustments || []).forEach((adj: any) => {
+          if (adj.event_id && String(adj.event_id) !== String(targetEventId)) return;
+          totalPoints += Math.round(Number(adj.points) || 0);
+        });
       } else {
         const { data: allVerified } = await supabase
           .from('submissions')
-          .select('points, calculated_score, game_name')
-          .in('user_id', candidateIds)
-          .or(`status.eq.verified,status.eq.approved,status.is.null`);
+          .select('points, calculated_score, game_name, status')
+          .in('user_id', candidateIds);
 
         for (const sub of (allVerified || [])) {
           if (sub.game_name === 'Event Update') continue;
+          const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+          if (!isVerified) continue;
           const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
           totalPoints += Math.round(pts);
         }
+
+        const { data: userAdjustments } = await supabase
+          .from('team_adjustments')
+          .select('points')
+          .in('user_id', candidateIds);
+
+        (userAdjustments || []).forEach((adj: any) => {
+          totalPoints += Math.round(Number(adj.points) || 0);
+        });
       }
 
       console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
 
+      const orFilterParts = candidateIds.map(cid => {
+        const clean = cid.replace('discord_', '');
+        return `steamid.eq.${cid},steamid.eq.${clean},discord_id.eq.${cid},discord_id.eq.${clean},id.eq.${cid}`;
+      });
+      const orFilter = orFilterParts.join(',');
+
       const { data: updateResult, error: profileError } = await supabase
         .from('profiles')
         .update({ points: totalPoints })
-        .or(`steamid.eq.${steamid},discord_id.eq.${steamid}`)
+        .or(orFilter)
         .select();
 
       if (profileError) {
         console.error(`[Sync] Error updating profile for ${steamid}:`, profileError);
       } else {
         console.log(`[Sync] Successfully updated profile for ${steamid}. New data:`, updateResult?.[0]);
+      }
+
+      // If targetEventId exists, also sync event snapshot if it exists or is saved
+      if (targetEventId) {
+        try {
+          await ensureEventScoresSaved(supabase, targetEventId);
+        } catch (e) {
+          console.warn('[Sync] ensureEventScoresSaved warning:', e);
+        }
       }
         
       return totalPoints;
@@ -2564,18 +2614,31 @@ async function createServer() {
         } catch (e) {}
       }
 
-      // 2. Publicly return profiles assigned to a team
-      const { data: users, error } = await supabase
-        .from('profiles')
-        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role, id')
-        .not('team', 'is', null)
-        .neq('team', 'none');
+      // Fetch user_event_teams for active event
+      let uetMap = new Map<string, string>();
+      if (activeEvent?.id) {
+        const { data: uets } = await supabase
+          .from('user_event_teams')
+          .select('steamid, team')
+          .eq('event_id', activeEvent.id);
 
-      if (error) return res.status(500).json({ error: error.message });
+        (uets || []).forEach((u: any) => {
+          if (u.steamid && u.team && u.team !== 'none') {
+            uetMap.set(String(u.steamid).trim(), u.team);
+          }
+        });
+      }
+
+      // 2. Fetch all profiles
+      const { data: allProfiles, error: profileErr } = await supabase
+        .from('profiles')
+        .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role, id');
+
+      if (profileErr) return res.status(500).json({ error: profileErr.message });
 
       // Build profileMap for robust multi-ID resolution across Steam, Discord, and UUID
       const profileMap = new Map<string, any>();
-      (users || []).forEach((p: any) => {
+      (allProfiles || []).forEach((p: any) => {
         if (p.steamid) profileMap.set(String(p.steamid).trim(), p);
         if (p.discord_id) {
           const rawDid = String(p.discord_id).trim();
@@ -2598,7 +2661,7 @@ async function createServer() {
         const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
         if (!isVerified) return false;
         if (activeEvent) {
-          return !sub.event_id || sub.event_id === activeEvent.id;
+          return !sub.event_id || String(sub.event_id) === String(activeEvent.id);
         }
         return true;
       });
@@ -2664,7 +2727,7 @@ async function createServer() {
       const { data: allAdjustments } = await supabase.from('team_adjustments').select('user_id, points, event_id');
       const adjustments = (allAdjustments || []).filter((adj: any) => {
         if (activeEvent) {
-          return !adj.event_id || adj.event_id === activeEvent.id;
+          return !adj.event_id || String(adj.event_id) === String(activeEvent.id);
         }
         return true;
       });
@@ -2683,11 +2746,23 @@ async function createServer() {
       // 7. Check if forcedByAdmin scores exist in activeEvent snapshot
       const forcedUserScores = (savedScores?.forcedByAdmin && savedScores?.userScores) ? savedScores.userScores : null;
 
-      const transformedUsers = (users || []).map((u: any) => {
+      // Filter and enrich profiles: include if assigned to a team (profile or user_event_teams) or has points
+      const eligibleProfiles = (allProfiles || []).filter((p: any) => {
+        const uetTeam = p.steamid ? uetMap.get(String(p.steamid).trim()) : null;
+        const effectiveTeam = uetTeam || p.team;
+        const hasTeam = effectiveTeam && effectiveTeam !== 'none';
+        const livePts = profilePointsMap.get(p) || 0;
+        return hasTeam || livePts > 0;
+      });
+
+      const transformedUsers = eligibleProfiles.map((u: any) => {
         let finalAvatar = u.steam_avatar;
         if (u.active_avatar === 'discord' && u.discord_avatar) {
           finalAvatar = u.discord_avatar;
         }
+
+        const uetTeam = u.steamid ? uetMap.get(String(u.steamid).trim()) : null;
+        const effectiveTeam = uetTeam || u.team;
 
         let userFinalPoints = profilePointsMap.get(u) || 0;
 
@@ -2709,6 +2784,7 @@ async function createServer() {
 
         return {
           ...u,
+          team: effectiveTeam,
           points: userFinalPoints,
           steam_avatar: finalAvatar
         };

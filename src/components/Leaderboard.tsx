@@ -529,19 +529,123 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase
+        const { data: profiles, error } = await supabase
           .from('profiles')
-          .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role')
-          .not('team', 'is', null)
-          .neq('team', 'none');
+          .select('steamid, steam_name, steam_avatar, discord_id, discord_name, discord_avatar, active_avatar, team, status, points, role, id');
 
         if (error) throw error;
 
-        const transformed = (data || []).map((u: any) => ({
-          ...u,
-          steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
-          points: u.points || 0
-        })).sort((a: any, b: any) => b.points - a.points);
+        // Fetch active event
+        const { data: activeEvents } = await supabase
+          .from('events')
+          .select('*')
+          .eq('is_active', true)
+          .limit(1);
+
+        const currentActive = activeEvents?.[0];
+
+        // Fetch user event teams
+        let uetMap = new Map<string, string>();
+        if (currentActive?.id) {
+          const { data: uets } = await supabase
+            .from('user_event_teams')
+            .select('steamid, team')
+            .eq('event_id', currentActive.id);
+          (uets || []).forEach((u: any) => {
+            if (u.steamid && u.team && u.team !== 'none') {
+              uetMap.set(String(u.steamid).trim(), u.team);
+            }
+          });
+        }
+
+        // Fetch verified submissions
+        const { data: allSubs } = await supabase
+          .from('submissions')
+          .select('user_id, points, calculated_score, game_name, status, platform, event_id');
+
+        const { data: allScreenshots } = await supabase
+          .from('screenshot_submissions')
+          .select('user_id, status')
+          .neq('status', 'rejected');
+
+        const validScreenshotsCount: Record<string, number> = {};
+        (allScreenshots || []).forEach((sc: any) => {
+          const rawId = String(sc.user_id || '').trim();
+          const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+          validScreenshotsCount[cleanId] = (validScreenshotsCount[cleanId] || 0) + 1;
+        });
+
+        const profilePoints = new Map<string, number>();
+        const screenshotPointsSeen: Record<string, number> = {};
+
+        (allSubs || []).forEach((sub: any) => {
+          if (!sub.user_id || sub.user_id === 'system_notification' || String(sub.user_id).startsWith('team_pts_')) return;
+          if (sub.game_name === 'Event Update') return;
+          const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+          if (!isVerified) return;
+          if (currentActive && sub.event_id && String(sub.event_id) !== String(currentActive.id)) return;
+
+          const rawId = String(sub.user_id || '').trim();
+          const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+
+          const isScreenshot = sub.platform === 'Screenshot Event' || 
+            (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+            (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+
+          if (isScreenshot) {
+            const allowed = validScreenshotsCount[cleanId] || 0;
+            const seen = screenshotPointsSeen[cleanId] || 0;
+            if (seen >= allowed) return;
+            screenshotPointsSeen[cleanId] = seen + 1;
+          }
+
+          const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
+          profilePoints.set(cleanId, (profilePoints.get(cleanId) || 0) + pts);
+          profilePoints.set(rawId, (profilePoints.get(rawId) || 0) + pts);
+        });
+
+        // Fetch team adjustments
+        const { data: adjs } = await supabase
+          .from('team_adjustments')
+          .select('user_id, points, event_id');
+
+        (adjs || []).forEach((adj: any) => {
+          if (!adj.user_id || String(adj.user_id).startsWith('team_pts_')) return;
+          if (currentActive && adj.event_id && String(adj.event_id) !== String(currentActive.id)) return;
+          const pts = Math.round(Number(adj.points) || 0);
+          const rawId = String(adj.user_id || '').trim();
+          const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+          profilePoints.set(cleanId, (profilePoints.get(cleanId) || 0) + pts);
+          profilePoints.set(rawId, (profilePoints.get(rawId) || 0) + pts);
+        });
+
+        const transformed = (profiles || []).map((u: any) => {
+          const uetTeam = u.steamid ? uetMap.get(String(u.steamid).trim()) : null;
+          const effectiveTeam = uetTeam || u.team;
+
+          const sid = u.steamid ? String(u.steamid).trim() : null;
+          const did = u.discord_id ? String(u.discord_id).trim() : null;
+          const cleanDid = did ? did.replace('discord_', '') : null;
+          const uid = u.id ? String(u.id).trim() : null;
+
+          const candidatePoints = [
+            sid ? profilePoints.get(sid) : undefined,
+            did ? profilePoints.get(did) : undefined,
+            cleanDid ? profilePoints.get(cleanDid) : undefined,
+            cleanDid ? profilePoints.get(`discord_${cleanDid}`) : undefined,
+            uid ? profilePoints.get(uid) : undefined
+          ].filter((p): p is number => p !== undefined);
+
+          const livePts = candidatePoints.length > 0 ? candidatePoints[0] : (u.points || 0);
+
+          return {
+            ...u,
+            team: effectiveTeam,
+            steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
+            points: livePts
+          };
+        }).filter((u: any) => (u.team && u.team !== 'none') || u.points > 0)
+        .sort((a: any, b: any) => b.points - a.points);
 
         setUsers(transformed);
         setLoading(false);
@@ -647,12 +751,6 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     fetchUsers();
     fetchAdjustments();
 
-    const handleLeaderboardUpdate = () => {
-      fetchUsers();
-      fetchAdjustments();
-    };
-    window.addEventListener('leaderboard-updated', handleLeaderboardUpdate);
-
     // Fetch all events for active check & previous events list
     const loadEvents = async () => {
       if (isSupabaseConfigured && supabase) {
@@ -712,9 +810,21 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
     loadEvents();
 
-    if (!isSupabaseConfigured) return;
+    const handleLeaderboardUpdate = () => {
+      fetchUsers();
+      fetchAdjustments();
+      loadEvents();
+    };
 
-    // Subscribe to real-time updates for profiles, submissions, screenshot_submissions, and adjustments
+    window.addEventListener('leaderboard-updated', handleLeaderboardUpdate);
+
+    if (!isSupabaseConfigured) {
+      return () => {
+        window.removeEventListener('leaderboard-updated', handleLeaderboardUpdate);
+      };
+    }
+
+    // Subscribe to real-time updates for profiles, submissions, screenshot_submissions, adjustments, and events
     const channel = supabase
       .channel('leaderboard-realtime')
       .on('postgres_changes', { 
@@ -748,9 +858,19 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         fetchUsers();
         fetchAdjustments();
       })
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'events' 
+      }, () => {
+        loadEvents();
+        fetchUsers();
+        fetchAdjustments();
+      })
       .subscribe();
 
     return () => {
+      window.removeEventListener('leaderboard-updated', handleLeaderboardUpdate);
       supabase.removeChannel(channel);
     };
   }, []); // Run once on component mount

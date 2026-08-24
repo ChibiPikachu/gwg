@@ -310,7 +310,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           const { data: activeEvent } = await supabase
             .from('events')
-            .select('id')
+            .select('id, description')
             .eq('is_active', true)
             .maybeSingle();
 
@@ -361,7 +361,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await supabase
             .from('profiles')
             .update({ points: totalPts })
-            .or(`steamid.eq.${rawUid},steamid.eq.${cleanUid},discord_id.eq.${cleanUid},id.eq.${cleanUid}`);
+            .or(`steamid.eq.${rawUid},steamid.eq.${cleanUid},discord_id.eq.${rawUid},discord_id.eq.${cleanUid},id.eq.${cleanUid},id.eq.${rawUid}`);
+
+          if (activeEvent?.id && activeEvent?.description) {
+            try {
+              let savedScores: any = null;
+              const match = activeEvent.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+              if (match && match[1]) {
+                savedScores = JSON.parse(match[1]);
+              }
+              if (savedScores && savedScores.userScores) {
+                savedScores.userScores[rawUid] = totalPts;
+                savedScores.userScores[cleanUid] = totalPts;
+                const newSnapStr = `<!--EVENT_SCORES:${JSON.stringify(savedScores)}-->`;
+                const updatedDesc = activeEvent.description.replace(/<!--EVENT_SCORES:.*?-->/s, newSnapStr);
+                await supabase.from('events').update({ description: updatedDesc }).eq('id', activeEvent.id);
+              }
+            } catch (snapErr) {
+              console.warn('Post-deletion event scores update warning:', snapErr);
+            }
+          }
         } catch (syncErr) {
           console.warn('Post-deletion profile points sync warning:', syncErr);
         }
