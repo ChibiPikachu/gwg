@@ -1267,17 +1267,25 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                   });
 
                   const hasScreenshotPoints = userAdjs.some(adj => {
-                    const g = (adj.game_name || '').toLowerCase();
-                    const p = (adj.platform || '').toLowerCase();
-                    const n = (adj.notes || adj.reason || '').toLowerCase();
-                    return g.includes('screenshot') || p.includes('screenshot') || n.includes('screenshot');
+                    const g = (adj.game_name || '').toLowerCase().trim();
+                    const p = (adj.platform || '').toLowerCase().trim();
+                    return g === 'screenshot points' || 
+                           p === 'screenshot points' || 
+                           g.startsWith('screenshot contest') || 
+                           p === 'screenshot event' ||
+                           g.includes('screenshot contest submission') ||
+                           g.includes('screenshot submission');
                   });
 
                   const hasBingoPoints = userAdjs.some(adj => {
-                    const g = (adj.game_name || '').toLowerCase();
-                    const p = (adj.platform || '').toLowerCase();
-                    const n = (adj.notes || adj.reason || '').toLowerCase();
-                    return g.includes('bingo') || p.includes('bingo') || n.includes('bingo');
+                    const g = (adj.game_name || '').toLowerCase().trim();
+                    const p = (adj.platform || '').toLowerCase().trim();
+                    return g === 'bingo points' || 
+                           p === 'bingo points' || 
+                           g.startsWith('bingo contest') || 
+                           p === 'bingo event' ||
+                           g.includes('bingo submission') ||
+                           g.includes('bingo contest submission');
                   });
 
                   return (
@@ -1379,11 +1387,20 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     : `Team ${adj.user_id.replace('team_pts_', '').toUpperCase()}`;
                   const teamName = isUserAdj ? (targetUser?.team || 'none') : adj.user_id.replace('team_pts_', '');
                   const cleanReason = meta.userNotes || (isUserAdj ? 'No description provided.' : (adj.notes && !adj.notes.startsWith('__META_START__') ? adj.notes : 'Bonus points awarded by Admin'));
-                  const gName = (adj.game_name || '').toLowerCase();
-                  const pName = (adj.platform || '').toLowerCase();
-                  const nNotes = (adj.notes || '').toLowerCase();
-                  const isScreenshot = gName.includes('screenshot') || pName.includes('screenshot') || nNotes.includes('screenshot');
-                  const isBingo = gName.includes('bingo') || pName.includes('bingo') || nNotes.includes('bingo');
+                  const gName = (adj.game_name || '').toLowerCase().trim();
+                  const pName = (adj.platform || '').toLowerCase().trim();
+                  const isScreenshot = gName === 'screenshot points' || 
+                                       pName === 'screenshot points' || 
+                                       gName.startsWith('screenshot contest') || 
+                                       pName === 'screenshot event' ||
+                                       gName.includes('screenshot contest submission') ||
+                                       gName.includes('screenshot submission');
+                  const isBingo = gName === 'bingo points' || 
+                                  pName === 'bingo points' || 
+                                  gName.startsWith('bingo contest') || 
+                                  pName === 'bingo event' ||
+                                  gName.includes('bingo submission') ||
+                                  gName.includes('bingo contest submission');
 
                   return (
                     <div key={adj.id} className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 shadow-sm">

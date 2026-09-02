@@ -5604,9 +5604,24 @@ async function createServer() {
 
       const filteredSubs = rawSubs.filter((sub: any) =>
         (sub.user_id && String(sub.user_id).startsWith('team_pts_')) ||
-        (sub.game_name && (sub.game_name.includes('Points') || sub.game_name.includes('Award') || sub.game_name.includes('Bingo') || sub.game_name.includes('Screenshot'))) ||
-        (sub.platform && (sub.platform.includes('Points') || sub.platform.includes('Award') || sub.platform.includes('Bingo') || sub.platform.includes('Screenshot'))) ||
-        (sub.notes && (sub.notes.includes('Bingo') || sub.notes.includes('Screenshot')))
+        (sub.game_name && (
+          sub.game_name === 'Screenshot Points' ||
+          sub.game_name === 'Bingo Points' ||
+          sub.game_name === 'Team Award' ||
+          sub.game_name.startsWith('Screenshot Contest') ||
+          sub.game_name.startsWith('Bingo Contest') ||
+          sub.game_name.includes('Screenshot Contest Submission') ||
+          sub.game_name.includes('Screenshot Submission') ||
+          sub.game_name.includes('Bingo Contest Submission') ||
+          sub.game_name.includes('Bingo Submission')
+        )) ||
+        (sub.platform && (
+          sub.platform === 'Screenshot Points' ||
+          sub.platform === 'Bingo Points' ||
+          sub.platform === 'Screenshot Event' ||
+          sub.platform === 'Bingo Event' ||
+          sub.platform === 'System'
+        ))
       );
 
       const combined = [...filteredSubs, ...rawTeamAdj];

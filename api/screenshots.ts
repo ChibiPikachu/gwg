@@ -47,16 +47,23 @@ function saveSubmissionPointsLocally(points: number) {
 }
 
 function extractSubmissionPoints(evt: any): number {
-  if (evt?.submission_points !== undefined && evt?.submission_points !== null && !isNaN(Number(evt.submission_points))) {
-    return Math.max(0, Number(evt.submission_points));
-  }
+  // 1. Check description tag in evt
   if (evt?.description && typeof evt.description === 'string') {
     const match = evt.description.match(/<!--SUBMISSION_POINTS:(\d+)-->/);
     if (match && match[1]) {
       return Math.max(0, Number(match[1]));
     }
   }
-  return getSavedSubmissionPoints();
+  // 2. Check local saved file
+  const localSaved = getSavedSubmissionPoints();
+  if (localSaved !== 20) {
+    return localSaved;
+  }
+  // 3. Check evt.submission_points
+  if (evt?.submission_points !== undefined && evt?.submission_points !== null && !isNaN(Number(evt.submission_points))) {
+    return Math.max(0, Number(evt.submission_points));
+  }
+  return localSaved;
 }
 
 let persistentDefaultSubmissionPoints = getSavedSubmissionPoints();
@@ -132,10 +139,11 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
 
     const userScreenshotPointRows = userAllSubs.filter((sub: any) => {
       const isScreenshot = sub.platform === 'Screenshot Event' ||
+        sub.platform === 'Screenshot Points' ||
+        sub.game_name === 'Screenshot Points' ||
         (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
         (sub.game_name && sub.game_name.includes('Screenshot Submission')) ||
-        (sub.notes && sub.notes.includes('screenshot contest submission')) ||
-        (sub.notes && sub.notes.includes('Screenshot'));
+        (sub.game_name && sub.game_name.startsWith('Screenshot Contest'));
       return isScreenshot;
     });
 
@@ -211,10 +219,11 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     let screenshotCountSeen = 0;
     for (const s of remainingUserSubs) {
       const isScreenshot = s.platform === 'Screenshot Event' ||
+        s.platform === 'Screenshot Points' ||
+        s.game_name === 'Screenshot Points' ||
         (s.game_name && s.game_name.includes('Screenshot Contest Submission')) ||
         (s.game_name && s.game_name.includes('Screenshot Submission')) ||
-        (s.notes && s.notes.includes('screenshot contest submission')) ||
-        (s.notes && s.notes.includes('Screenshot'));
+        (s.game_name && s.game_name.startsWith('Screenshot Contest'));
 
       if (isScreenshot) {
         if (screenshotCountSeen >= validCount) continue;

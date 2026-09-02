@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: subData } = await supabase
       .from('submissions')
       .select('*')
-      .or('user_id.ilike.team_pts_%,game_name.ilike.%Bingo%,game_name.ilike.%Screenshot%,game_name.ilike.%Award%,platform.ilike.%Bingo%,platform.ilike.%Screenshot%')
+      .or('user_id.ilike.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points,game_name.eq.Team Award,game_name.ilike.Screenshot Contest%,game_name.ilike.Bingo Contest%,platform.eq.Screenshot Points,platform.eq.Bingo Points,platform.eq.Screenshot Event,platform.eq.Bingo Event,platform.eq.System')
       .order('created_at', { ascending: false });
 
     const combined = [...(Array.isArray(subData) ? subData : []), ...(Array.isArray(teamAdj) ? teamAdj : [])];
