@@ -111,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 2. Mass Accept: POST /api/admin/submissions/mass-accept
     if (path.includes('mass-accept')) {
-      const { submissionIds, ids: legacyIds, eventId } = req.body || {};
+      const { submissionIds, ids: legacyIds, eventId, acceptAll } = req.body || {};
       const targetIds = submissionIds || legacyIds;
 
       let query = supabase.from('submissions').select('*').eq('status', 'pending');
@@ -119,6 +119,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         query = query.in('id', targetIds);
       } else if (eventId) {
         query = query.eq('event_id', eventId);
+      } else if (acceptAll === true) {
+        // Accept all pending submissions
+      } else {
+        return res.status(400).json({ error: 'No submission IDs selected. Please select specific submissions to accept.' });
       }
 
       const { data: pendingSubs } = await query;

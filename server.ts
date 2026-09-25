@@ -4592,15 +4592,20 @@ async function createServer() {
 
     const currentUser = (req as any).user;
     const adminSteamId = String(currentUser?.id || currentUser?.steamid || currentUser?.steam_id || 'admin');
-    const { submissionIds, ids: legacyIds, eventId } = req.body;
+    const { submissionIds, ids: legacyIds, eventId, acceptAll } = req.body || {};
     const targetIds = submissionIds || legacyIds;
 
     try {
       let query = supabase.from('submissions').select('*').eq('status', 'pending');
       if (Array.isArray(targetIds) && targetIds.length > 0) {
+        // Filter strictly to the provided submission IDs
         query = query.in('id', targetIds);
       } else if (eventId) {
         query = query.eq('event_id', eventId);
+      } else if (acceptAll === true) {
+        // Only accept all pending submissions if explicitly flagged
+      } else {
+        return res.status(400).json({ error: 'No submission IDs selected. Please select specific submissions to accept.' });
       }
 
       const { data: pendingSubs, error: fetchErr } = await query;

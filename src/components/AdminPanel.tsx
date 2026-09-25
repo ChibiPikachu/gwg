@@ -1123,8 +1123,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   };
 
-  const handleMassAccept = async (idsToAccept?: string[]) => {
-    let finalIds = idsToAccept || selectedSubIds;
+  const handleMassAccept = async (idsToAccept?: string[] | unknown) => {
+    // 1. Determine the exact target IDs
+    let finalIds: string[] = [];
+    if (Array.isArray(idsToAccept) && idsToAccept.length > 0) {
+      finalIds = idsToAccept.map(String);
+    } else if (selectedSubIds.length > 0) {
+      finalIds = [...selectedSubIds];
+    }
+
+    let isAcceptingAll = false;
     if (finalIds.length === 0) {
       const pendingFiltered = filteredSubmissions.filter(s => s.status === 'pending').map(s => s.id);
       if (pendingFiltered.length === 0) {
@@ -1135,10 +1143,25 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         return;
       }
       finalIds = pendingFiltered;
+      isAcceptingAll = true;
     } else {
-      if (!window.confirm(`Are you sure you want to accept ${finalIds.length} selected submission(s)?`)) {
+      // Only accept the pending submissions among the selected ones
+      const pendingSelected = submissions.filter(s => finalIds.includes(s.id) && s.status === 'pending');
+      const alreadyReviewedCount = finalIds.length - pendingSelected.length;
+
+      if (pendingSelected.length === 0) {
+        alert('All selected submissions have already been verified or rejected.');
         return;
       }
+
+      const confirmMsg = alreadyReviewedCount > 0
+        ? `Are you sure you want to accept the ${pendingSelected.length} pending submission(s) among your ${finalIds.length} selected (${alreadyReviewedCount} already processed will be skipped)?`
+        : `Are you sure you want to accept the ${pendingSelected.length} selected submission(s)?`;
+
+      if (!window.confirm(confirmMsg)) {
+        return;
+      }
+      finalIds = pendingSelected.map(s => s.id);
     }
 
     setIsProcessingBulk(true);
@@ -1149,9 +1172,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
       const res = await fetch('/api/admin/submissions/mass-accept', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers
+        },
         body: JSON.stringify({
           submissionIds: finalIds,
+          acceptAll: isAcceptingAll,
           userId: currentAdminId,
           adminId: currentAdminId,
           adminName: currentAdminName
@@ -2103,6 +2130,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
                 onClick={() => {
                   const allFilteredIds = filteredSubmissions.map(s => s.id);
                   if (selectedSubIds.length === allFilteredIds.length && allFilteredIds.length > 0) {
@@ -2118,13 +2146,36 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
               {activeTab === 'submissions' && (
                 <button
+                  type="button"
+                  onClick={() => {
+                    const pendingIds = filteredSubmissions.filter(s => s.status === 'pending').map(s => s.id);
+                    const allPendingSelected = pendingIds.length > 0 && pendingIds.every(id => selectedSubIds.includes(id));
+                    if (allPendingSelected) {
+                      setSelectedSubIds(prev => prev.filter(id => !pendingIds.includes(id)));
+                    } else {
+                      setSelectedSubIds(prev => Array.from(new Set([...prev, ...pendingIds])));
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all border dark:bg-white/5 bg-white hover:bg-slate-100 dark:hover:bg-white/10 dark:text-white text-slate-700 border-black/10 dark:border-white/10"
+                  title="Toggle selection of pending submissions in current view"
+                >
+                  {filteredSubmissions.filter(s => s.status === 'pending').length > 0 && 
+                   filteredSubmissions.filter(s => s.status === 'pending').every(s => selectedSubIds.includes(s.id))
+                    ? 'Deselect Pending' 
+                    : `Select Pending (${filteredSubmissions.filter(s => s.status === 'pending').length})`}
+                </button>
+              )}
+
+              {activeTab === 'submissions' && (
+                <button
+                  type="button"
                   onClick={() => handleMassAccept()}
                   disabled={isProcessingBulk}
-                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 flex items-center gap-1.5 disabled:opacity-50"
-                  title="Mass accept selected submissions or all pending submissions in current view"
+                  className="px-3.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition-all bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  title={selectedSubIds.length > 0 ? `Mass accept ${selectedSubIds.length} selected submission(s)` : "Mass accept all pending submissions in current view"}
                 >
                   <CheckCircle2 size={13} />
-                  {selectedSubIds.length > 0 ? `Mass Accept Selected (${selectedSubIds.length})` : 'Mass Accept Pending'}
+                  {selectedSubIds.length > 0 ? `Mass Accept Selected (${selectedSubIds.length})` : 'Mass Accept All Pending'}
                 </button>
               )}
 
