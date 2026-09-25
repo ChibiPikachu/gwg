@@ -428,7 +428,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           eventId: forceModalEventId,
           teamTotals: cleanedTeamTotals,
           userScores: cleanedUserScores,
-          winnerTeam: calculatedWinner
+          winnerTeam: calculatedWinner,
+          userId: userIdHeader,
+          adminId: userIdHeader
         })
       });
 

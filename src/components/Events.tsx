@@ -325,10 +325,20 @@ export default function EventsPanel() {
     }
 
     try {
+      const userIdHeader = user?.steamId || user?.uid || user?.id || user?.discordId || '';
       const res = await fetch('/api/admin/close-event', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: currentEvent.id })
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userIdHeader,
+          'x-steam-id': user?.steamId || '',
+          'x-discord-id': user?.discordId || ''
+        },
+        body: JSON.stringify({
+          id: currentEvent.id,
+          userId: userIdHeader,
+          adminId: userIdHeader
+        })
       });
 
       if (res.ok) {

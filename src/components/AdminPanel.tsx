@@ -176,6 +176,30 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     rejectionReason?: string;
   } | null>(null);
 
+  const getAdminHeaders = React.useCallback(async (extraHeaders?: Record<string, string>) => {
+    const userIdHeader = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-user-id': userIdHeader,
+      'x-steam-id': currentUser?.steamId || '',
+      'x-discord-id': currentUser?.discordId || '',
+      ...extraHeaders
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    return headers;
+  }, [currentUser]);
+
   const fetchBulkEventData = React.useCallback(async (eventId: string) => {
     if (!eventId) return;
     setBulkLoading(true);
@@ -225,19 +249,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     setBulkSaving(true);
     setBulkSuccessMsg(null);
     try {
-      const userIdHeader = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+      const headers = await getAdminHeaders();
       const res = await fetch('/api/admin/force-event-scores', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userIdHeader,
-          'x-steam-id': currentUser?.steamId || '',
-          'x-discord-id': currentUser?.discordId || ''
-        },
+        headers,
         body: JSON.stringify({
           eventId: bulkEditEventId,
           userScores: bulkUserScores,
-          teamAdjustments: bulkTeamAdjustments
+          teamAdjustments: bulkTeamAdjustments,
+          adminId: currentAdminId,
+          userId: currentAdminId
         })
       });
       const data = await res.json();
@@ -362,7 +384,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
 
     try {
-      const res = await fetch('/api/admin/activity-log');
+      const headers = await getAdminHeaders();
+      const res = await fetch('/api/admin/activity-log', { headers });
       if (res.ok) {
         const data = await res.json();
         setActivityLogs(Array.isArray(data) ? data : []);
@@ -372,7 +395,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     } finally {
       setLoadingActivityLogs(false);
     }
-  }, []);
+  }, [getAdminHeaders]);
 
   const fetchTeamAdjustments = React.useCallback(async () => {
     if (isSupabaseConfigured && supabase) {
@@ -488,11 +511,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     try {
       const teamToSend = isUser ? 'mixed' : awardTeam;
       const currentAdminName = currentUser?.steamName || currentUser?.discordName || currentUser?.steam_name || currentUser?.discord_name || currentUser?.displayName || 'Admin';
-      const currentAdminId = currentUser?.steamId || currentUser?.steamid || currentUser?.id;
+      const currentAdminId = currentUser?.steamId || currentUser?.steamid || currentUser?.id || currentUser?.uid || currentUser?.discordId || '';
 
+      const headers = await getAdminHeaders();
       const res = await fetch('/api/admin/team-adjustments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           team: teamToSend,
           points: parseInt(awardPoints),
@@ -500,7 +524,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           userIds: isUser ? selectedUserIds : null,
           adjustmentType: isUser ? awardAdjustmentType : 'screenshot',
           adminName: currentAdminName,
-          adminId: currentAdminId
+          adminId: currentAdminId,
+          userId: currentAdminId
         })
       });
       if (res.ok) {
@@ -529,10 +554,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
     setIsCleaningUp(true);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/audit-logs/cleanup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: cleanupDays })
+        headers,
+        body: JSON.stringify({
+          days: cleanupDays,
+          adminId: currentAdminId,
+          userId: currentAdminId
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -553,8 +584,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const handleDeleteAdjustment = async (id: string) => {
     if (!window.confirm('Are you sure you want to remove this point adjustment?')) return;
     try {
+      const headers = await getAdminHeaders();
       const res = await fetch(`/api/admin/submissions/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers
       });
       if (res.ok) {
         await Promise.all([fetchTeamAdjustments(), fetchUsers(), fetchActivityLogs()]);
@@ -611,7 +644,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
 
     try {
-      const res = await fetch('/api/admin/users');
+      const headers = await getAdminHeaders();
+      const res = await fetch('/api/admin/users', { headers });
       const contentType = res.headers.get('content-type');
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
@@ -620,7 +654,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     } catch (err) {
       console.warn('Failed to fetch users:', err);
     } 
-  }, []);
+  }, [getAdminHeaders]);
 
   const getSubmissionUserTeam = React.useCallback((sub: any): string => {
     if (sub.userTeam && sub.userTeam !== 'none') return sub.userTeam;
@@ -690,7 +724,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
 
     try {
-      const res = await fetch('/api/admin/submissions');
+      const headers = await getAdminHeaders();
+      const res = await fetch('/api/admin/submissions', { headers });
       const contentType = res.headers.get('content-type');
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
@@ -699,7 +734,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     } catch (err) {
       console.warn('Failed to fetch submissions:', err);
     }
-  }, []);
+  }, [getAdminHeaders]);
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -744,10 +779,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const assignTeam = async (targetSteamId: string, team: Team) => {
     setUpdating(targetSteamId);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/update-user-team', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetSteamId, team })
+        headers,
+        body: JSON.stringify({
+          targetSteamId,
+          team,
+          adminId: currentAdminId,
+          userId: currentAdminId
+        })
       });
       
       const data = await res.json();
@@ -770,10 +812,18 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const assignEventTeam = async (targetSteamId: string, eventId: string, team: Team | 'none') => {
     setUpdating(targetSteamId);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/update-user-team', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetSteamId, team, eventId })
+        headers,
+        body: JSON.stringify({
+          targetSteamId,
+          team,
+          eventId,
+          adminId: currentAdminId,
+          userId: currentAdminId
+        })
       });
       
       const data = await res.json();
@@ -825,8 +875,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
     setUpdating(steamId);
     try {
+      const headers = await getAdminHeaders();
       const res = await fetch(`/api/admin/users/${steamId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers
       });
 
       if (res.ok) {
@@ -849,10 +901,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   const handleUpdateRole = async (targetSteamId: string, role: 'admin' | 'member') => {
     setUpdating(targetSteamId);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/update-user-role', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetSteamId, role })
+        headers,
+        body: JSON.stringify({
+          targetSteamId,
+          role,
+          adminId: currentAdminId,
+          userId: currentAdminId
+        })
       });
       
       if (res.ok) {
@@ -965,15 +1024,11 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         updatedNotes = serializeNotesMeta(true, selectedLevel, meta.userNotes);
       }
 
-      const userIdHeader = currentUser?.steamId || currentUser?.uid || currentUser?.discordId || '';
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+      const headers = await getAdminHeaders();
       const res = await fetch('/api/admin/verify-submission', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': userIdHeader,
-          'x-steam-id': currentUser?.steamId || '',
-          'x-discord-id': currentUser?.discordId || ''
-        },
+        headers,
         body: JSON.stringify({
           submissionId: reviewingId,
           status,
@@ -982,7 +1037,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           hours: parseFloat(editHours),
           achievements: parseInt(editAchievements),
           multiplier: editMultiplier,
-          notes: updatedNotes
+          notes: updatedNotes,
+          adminId: currentAdminId,
+          userId: currentAdminId
         })
       });
 
@@ -1044,8 +1101,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
     setUpdating(id);
     try {
+      const headers = await getAdminHeaders();
       const res = await fetch(`/api/admin/submissions/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers
       });
 
       if (res.ok) {
@@ -1084,10 +1143,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
     setIsProcessingBulk(true);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+      const currentAdminName = currentUser?.steamName || currentUser?.discordName || currentUser?.displayName || 'Admin';
+
       const res = await fetch('/api/admin/submissions/mass-accept', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionIds: finalIds })
+        headers,
+        body: JSON.stringify({
+          submissionIds: finalIds,
+          userId: currentAdminId,
+          adminId: currentAdminId,
+          adminName: currentAdminName
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -1120,10 +1188,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
     setIsProcessingBulk(true);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/submissions/delete-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionIds: selectedSubIds })
+        headers,
+        body: JSON.stringify({
+          submissionIds: selectedSubIds,
+          userId: currentAdminId,
+          adminId: currentAdminId
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -1152,10 +1226,16 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
     setIsProcessingBulk(true);
     try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/submissions/delete-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId })
+        headers,
+        body: JSON.stringify({
+          eventId,
+          userId: currentAdminId,
+          adminId: currentAdminId
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -1312,13 +1392,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     setMassAssignSuccessMsg(null);
     try {
       const targetEvId = massTargetEventId === 'active' ? undefined : massTargetEventId;
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
       const res = await fetch('/api/admin/update-user-team', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           targetSteamIds: massSelectedUserIds,
           team: massTargetTeam,
-          eventId: targetEvId
+          eventId: targetEvId,
+          adminId: currentAdminId,
+          userId: currentAdminId
         })
       });
 
@@ -1521,7 +1605,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           onClick={async () => {
                             setIsAdminMenuOpen(false);
                             try {
-                              const res = await fetch('/api/screenshots?action=admin-toggle-voting', { method: 'POST' });
+                              const headers = await getAdminHeaders();
+                              const res = await fetch('/api/screenshots?action=admin-toggle-voting', { method: 'POST', headers });
                               const d = await res.json();
                               if (res.ok) {
                                 alert(`Screenshot Contest Voting Period is now ${d.is_voting_active ? 'ACTIVE (Open)' : 'PAUSED / CLOSED'}!`);
@@ -1542,7 +1627,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             setIsAdminMenuOpen(false);
                             setLoading(true);
                             try {
-                              const res = await fetch('/api/admin/repair-submissions', { method: 'POST' });
+                              const headers = await getAdminHeaders();
+                              const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+                              const res = await fetch('/api/admin/repair-submissions', {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({ userId: currentAdminId, adminId: currentAdminId })
+                              });
                               const result = await res.json();
                               alert(res.ok ? `Repair complete! Updated ${result.updatedCount} items.` : `Error: ${result.error}`);
                               fetchData();
@@ -1554,15 +1645,19 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                           Repair Missing IDs
                         </button>
 
-
-
                         <button 
                           onClick={async () => {
                             if (!window.confirm('Recalculate ALL points?')) return;
                             setIsAdminMenuOpen(false);
                             setLoading(true);
                             try {
-                              const res = await fetch('/api/admin/recalculate-all', { method: 'POST' });
+                              const headers = await getAdminHeaders();
+                              const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+                              const res = await fetch('/api/admin/recalculate-all', {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({ userId: currentAdminId, adminId: currentAdminId })
+                              });
                               if (res.ok) { alert('Recalculated successfully!'); fetchData(); }
                               else { const d = await res.json(); alert(`Error: ${d.error}`); }
                             } catch (err) { alert('Failed to recalculate'); } finally { setLoading(false); }

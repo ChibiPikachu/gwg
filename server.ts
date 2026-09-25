@@ -494,43 +494,138 @@ async function getAuthUser(req: any, supabase?: any) {
     return (req as any).user;
   }
 
+  // 1.5. Authorization header (Bearer Supabase access token)
+  if (req && req.headers) {
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+    if (authHeader && typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ') && supabase) {
+      try {
+        const token = authHeader.substring(7).trim();
+        const { data: { user: sbUser }, error: sbErr } = await supabase.auth.getUser(token);
+        if (sbUser && !sbErr) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(buildProfileOrFilter(sbUser.id))
+            .maybeSingle();
+
+          return {
+            id: sbUser.id,
+            steamid: profile?.steamid || null,
+            steamId: profile?.steamid || null,
+            steam_id: profile?.steamid || null,
+            discord_id: profile?.discord_id || sbUser.id,
+            role: profile?.role || 'member',
+            isAdmin: profile?.role === 'admin' || profile?.role === 'admins' || profile?.role === 'owner' || (profile as any)?.is_admin === true,
+            ...profile
+          };
+        }
+      } catch (tokenErr) {
+        // ignore invalid token
+      }
+    }
+  }
+
+  const isValidId = (val: any) => typeof val === 'string' && val.trim() !== '' && val.trim() !== 'null' && val.trim() !== 'undefined';
+
   // 2. Request headers sent by frontend
   if (req && req.headers) {
-    const rawUserId = req.headers['x-user-id'];
-    const rawSteamId = req.headers['x-steam-id'];
-    const rawDiscordId = req.headers['x-discord-id'];
+    const rawUserId = isValidId(req.headers['x-user-id']) ? String(req.headers['x-user-id']).trim() : null;
+    const rawSteamId = isValidId(req.headers['x-steam-id']) ? String(req.headers['x-steam-id']).trim() : null;
+    const rawDiscordId = isValidId(req.headers['x-discord-id']) ? String(req.headers['x-discord-id']).trim() : null;
 
-    const steamId = typeof rawSteamId === 'string' && /^\d{15,20}$/.test(rawSteamId.trim()) ? rawSteamId.trim() : null;
-    const discordId = typeof rawDiscordId === 'string' && rawDiscordId.trim() ? rawDiscordId.trim().replace('discord_', '') : null;
-    const userId = typeof rawUserId === 'string' && rawUserId.trim() ? rawUserId.trim() : (steamId || (discordId ? `discord_${discordId}` : null));
+    const steamId = rawSteamId && /^\d{15,20}$/.test(rawSteamId) ? rawSteamId : null;
+    const discordId = rawDiscordId ? rawDiscordId.replace('discord_', '') : null;
+    const userId = rawUserId ? rawUserId : (steamId || (discordId ? `discord_${discordId}` : null));
 
     if (userId || steamId || discordId) {
       const isUserIdSteam = typeof userId === 'string' && /^\d{15,20}$/.test(userId);
       const effectiveSteamId = steamId || (isUserIdSteam ? userId : null);
-      return {
-        id: userId,
+      const cleanDiscord = discordId || (!isUserIdSteam && userId ? userId.replace('discord_', '') : null);
+      const effectiveUserId = userId || effectiveSteamId || (cleanDiscord ? `discord_${cleanDiscord}` : null);
+
+      let userObj: any = {
+        id: effectiveUserId,
         steamid: effectiveSteamId,
         steamId: effectiveSteamId,
         steam_id: effectiveSteamId,
-        discord_id: discordId || (!isUserIdSteam && userId ? userId.replace('discord_', '') : null),
+        discord_id: cleanDiscord,
         provider: effectiveSteamId ? 'steam' : 'discord'
       };
+
+      if (supabase && effectiveUserId) {
+        try {
+          const { data: dbProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(buildProfileOrFilter(String(effectiveUserId)))
+            .maybeSingle();
+
+          if (dbProfile) {
+            userObj = {
+              ...dbProfile,
+              ...userObj,
+              id: dbProfile.id || effectiveUserId,
+              steamid: dbProfile.steamid || effectiveSteamId,
+              steamId: dbProfile.steamid || effectiveSteamId,
+              steam_id: dbProfile.steamid || effectiveSteamId,
+              role: dbProfile.role,
+              isAdmin: dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || (dbProfile as any)?.is_admin === true
+            };
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      return userObj;
     }
   }
 
   // 3. Query params or body
   if (req) {
-    const paramId = req.query?.userId || req.query?.steamId || req.query?.discordId || req.body?.userId;
-    if (paramId && typeof paramId === 'string' && paramId.trim() !== '' && paramId !== 'null' && paramId !== 'undefined') {
-      const cleanId = paramId.trim();
+    const rawParam = (isValidId(req.query?.adminId) && req.query.adminId) ||
+                     (isValidId(req.query?.userId) && req.query.userId) ||
+                     (isValidId(req.query?.steamId) && req.query.steamId) ||
+                     (isValidId(req.query?.discordId) && req.query.discordId) ||
+                     (isValidId(req.body?.adminId) && req.body.adminId) ||
+                     (isValidId(req.body?.userId) && req.body.userId) ||
+                     (isValidId(req.body?.steamId) && req.body.steamId) ||
+                     (isValidId(req.body?.steamid) && req.body.steamid) ||
+                     (isValidId(req.body?.discordId) && req.body.discordId);
+
+    if (rawParam && typeof rawParam === 'string' && rawParam.trim() !== '') {
+      const cleanId = rawParam.trim();
       const isNumeric = /^\d{15,20}$/.test(cleanId);
-      return {
+      const discordClean = !isNumeric ? cleanId.replace('discord_', '') : null;
+      let userObj: any = {
         id: cleanId,
         steamid: isNumeric ? cleanId : null,
         steamId: isNumeric ? cleanId : null,
-        discord_id: !isNumeric ? cleanId.replace('discord_', '') : null,
+        discord_id: discordClean,
         provider: isNumeric ? 'steam' : 'discord'
       };
+
+      if (supabase) {
+        try {
+          const { data: dbProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(buildProfileOrFilter(cleanId))
+            .maybeSingle();
+
+          if (dbProfile) {
+            userObj = {
+              ...dbProfile,
+              ...userObj,
+              role: dbProfile.role,
+              isAdmin: dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || (dbProfile as any)?.is_admin === true
+            };
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return userObj;
     }
   }
 
@@ -540,7 +635,9 @@ async function getAuthUser(req: any, supabase?: any) {
       id: '76561198117650232',
       steamid: '76561198117650232',
       steamId: '76561198117650232',
-      displayName: 'Demo User'
+      displayName: 'Demo User',
+      isAdmin: true,
+      role: 'admin'
     };
   }
 
@@ -1910,7 +2007,7 @@ async function createServer() {
     }
 
     // Quick check if already marked as admin in session/user
-    if (currentUser.isAdmin || currentUser.role === 'admin' || currentUser.role === 'admins') {
+    if (currentUser.isAdmin || currentUser.role === 'admin' || currentUser.role === 'admins' || currentUser.role === 'owner' || (currentUser as any).is_admin === true) {
       return next();
     }
 
@@ -1919,21 +2016,38 @@ async function createServer() {
       return res.status(500).json({ error: 'Database unavailable' });
     }
 
-    const userId = String(currentUser.id || currentUser.steam_id || currentUser.steamid || currentUser.discord_id || '');
-    
-    // Check by id, steamid, and discord_id safely using buildProfileOrFilter
-    const { data: profile, error: profErr } = await supabase
-      .from('profiles')
-      .select('role')
-      .or(buildProfileOrFilter(userId))
-      .maybeSingle();
+    const idsToCheck = [
+      currentUser.id,
+      currentUser.steam_id,
+      currentUser.steamid,
+      currentUser.steamId,
+      currentUser.discord_id,
+      currentUser.discordId
+    ].filter(id => Boolean(id && String(id).trim() && String(id).trim() !== 'null' && String(id).trim() !== 'undefined'));
 
-    if (profErr) {
-      console.error('[Admin Auth] Supabase error verifying admin role:', profErr);
+    let foundAdmin = false;
+    for (const uid of idsToCheck) {
+      const { data: profile, error: profErr } = await supabase
+        .from('profiles')
+        .select('role, is_admin')
+        .or(buildProfileOrFilter(String(uid)))
+        .maybeSingle();
+
+      if (profErr) {
+        console.error('[Admin Auth] Supabase error verifying admin role:', profErr);
+      }
+
+      if (profile && (profile.role === 'admin' || profile.role === 'admins' || profile.role === 'owner' || (profile as any).is_admin === true)) {
+        foundAdmin = true;
+        currentUser.role = profile.role;
+        currentUser.isAdmin = true;
+        (req as any).user = currentUser;
+        break;
+      }
     }
 
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'admins')) {
-      console.log(`[Admin Auth] Denied: User ${userId} has role "${profile?.role || 'none'}"`);
+    if (!foundAdmin) {
+      console.log(`[Admin Auth] Denied: User ${idsToCheck.join(',')} has role "${currentUser?.role || 'none'}"`);
       return res.status(403).json({ error: 'Forbidden' });
     }
     
@@ -5322,7 +5436,7 @@ async function createServer() {
   });
 
   app.post('/api/admin/close-event', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+    if (!((req as any).user || ((req as any).isAuthenticated && (req as any).isAuthenticated()))) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const { id } = req.body;
@@ -5506,7 +5620,7 @@ async function createServer() {
 
   // Cleanup endpoint: purge or archive audit logs older than specified days (default 90 days)
   app.post(['/api/admin/activity-log/cleanup', '/api/admin/audit-logs/cleanup'], async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+    if (!((req as any).user || ((req as any).isAuthenticated && (req as any).isAuthenticated()))) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -5642,7 +5756,7 @@ async function createServer() {
   app.all('/api/screenshots', (req, res) => screenshotHandler(req, res));
 
   app.post('/api/admin/team-adjustments', async (req, res) => {
-    if (!(req as any).isAuthenticated || !(req as any).isAuthenticated()) {
+    if (!((req as any).user || ((req as any).isAuthenticated && (req as any).isAuthenticated()))) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
