@@ -177,12 +177,37 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
   } | null>(null);
 
   const getAdminHeaders = React.useCallback(async (extraHeaders?: Record<string, string>) => {
-    const userIdHeader = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+    let cachedParsed: any = null;
+    if (typeof window !== 'undefined') {
+      try {
+        cachedParsed = JSON.parse(localStorage.getItem('gamer_auth_user') || '{}');
+      } catch (e) {
+        // ignore
+      }
+    }
+    const userIdHeader = currentUser?.steamId || 
+                         currentUser?.uid || 
+                         currentUser?.id || 
+                         currentUser?.discordId || 
+                         cachedParsed?.steamId || 
+                         cachedParsed?.uid || 
+                         cachedParsed?.id || 
+                         '';
+    const adminNameHeader = currentUser?.steamName || 
+                            currentUser?.discordName || 
+                            currentUser?.displayName || 
+                            cachedParsed?.steamName || 
+                            cachedParsed?.discordName || 
+                            cachedParsed?.displayName || 
+                            'Admin';
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'x-user-id': userIdHeader,
-      'x-steam-id': currentUser?.steamId || '',
-      'x-discord-id': currentUser?.discordId || '',
+      'x-user-id': String(userIdHeader),
+      'x-steam-id': String(currentUser?.steamId || cachedParsed?.steamId || userIdHeader),
+      'x-discord-id': String(currentUser?.discordId || cachedParsed?.discordId || ''),
+      'x-admin-id': String(userIdHeader),
+      'x-admin-name': String(adminNameHeader),
       ...extraHeaders
     };
 
@@ -510,8 +535,14 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     setIsAwarding(true);
     try {
       const teamToSend = isUser ? 'mixed' : awardTeam;
-      const currentAdminName = currentUser?.steamName || currentUser?.discordName || currentUser?.steam_name || currentUser?.discord_name || currentUser?.displayName || 'Admin';
-      const currentAdminId = currentUser?.steamId || currentUser?.steamid || currentUser?.id || currentUser?.uid || currentUser?.discordId || '';
+      let cachedParsed: any = null;
+      if (typeof window !== 'undefined') {
+        try {
+          cachedParsed = JSON.parse(localStorage.getItem('gamer_auth_user') || '{}');
+        } catch (e) {}
+      }
+      const currentAdminName = currentUser?.steamName || currentUser?.discordName || currentUser?.steam_name || currentUser?.discord_name || currentUser?.displayName || cachedParsed?.steamName || cachedParsed?.displayName || 'Admin';
+      const currentAdminId = currentUser?.steamId || currentUser?.steamid || currentUser?.id || currentUser?.uid || currentUser?.discordId || cachedParsed?.steamId || cachedParsed?.uid || cachedParsed?.id || '';
 
       const headers = await getAdminHeaders();
       const res = await fetch('/api/admin/team-adjustments', {
@@ -1129,12 +1160,12 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     if (Array.isArray(idsToAccept) && idsToAccept.length > 0) {
       finalIds = idsToAccept.map(String);
     } else if (selectedSubIds.length > 0) {
-      finalIds = [...selectedSubIds];
+      finalIds = [...selectedSubIds].map(String);
     }
 
     let isAcceptingAll = false;
     if (finalIds.length === 0) {
-      const pendingFiltered = filteredSubmissions.filter(s => s.status === 'pending').map(s => s.id);
+      const pendingFiltered = filteredSubmissions.filter(s => s.status === 'pending').map(s => String(s.id));
       if (pendingFiltered.length === 0) {
         alert('No pending submissions found in current view.');
         return;
@@ -1146,7 +1177,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       isAcceptingAll = true;
     } else {
       // Only accept the pending submissions among the selected ones
-      const pendingSelected = submissions.filter(s => finalIds.includes(s.id) && s.status === 'pending');
+      const pendingSelected = submissions.filter(s => finalIds.includes(String(s.id)) && s.status === 'pending');
       const alreadyReviewedCount = finalIds.length - pendingSelected.length;
 
       if (pendingSelected.length === 0) {
@@ -1161,14 +1192,20 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       if (!window.confirm(confirmMsg)) {
         return;
       }
-      finalIds = pendingSelected.map(s => s.id);
+      finalIds = pendingSelected.map(s => String(s.id));
     }
 
     setIsProcessingBulk(true);
     try {
+      let cachedParsed: any = null;
+      if (typeof window !== 'undefined') {
+        try {
+          cachedParsed = JSON.parse(localStorage.getItem('gamer_auth_user') || '{}');
+        } catch (e) {}
+      }
       const headers = await getAdminHeaders();
-      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
-      const currentAdminName = currentUser?.steamName || currentUser?.discordName || currentUser?.displayName || 'Admin';
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || cachedParsed?.steamId || cachedParsed?.uid || cachedParsed?.id || '';
+      const currentAdminName = currentUser?.steamName || currentUser?.discordName || currentUser?.displayName || cachedParsed?.steamName || cachedParsed?.displayName || 'Admin';
 
       const res = await fetch('/api/admin/submissions/mass-accept', {
         method: 'POST',
