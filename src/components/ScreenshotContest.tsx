@@ -918,11 +918,11 @@ interface UserSubmissionStat {
                 value={editSubmissionPoints}
                 onChange={(e) => setEditSubmissionPoints(Number(e.target.value))}
                 onBlur={() => handleAdminUpdatePoints(editSubmissionPoints)}
-                className="w-14 bg-white/10 border border-white/20 rounded-lg px-1.5 py-0.5 text-center font-black text-amber-400 focus:outline-none focus:border-amber-400"
+                className="w-14 bg-white/10 border border-white/20 rounded-lg px-1.5 py-0.5 text-center font-black text-slate-400 focus:outline-none focus:border-slate-400"
               />
               <button
                 onClick={() => handleAdminUpdatePoints(editSubmissionPoints)}
-                className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-[10px] uppercase px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                className="bg-amber-500 hover:bg-slate-400 text-black font-extrabold text-[10px] uppercase px-2 py-1 rounded-lg transition-colors cursor-pointer"
               >
                 Save
               </button>
@@ -931,7 +931,7 @@ interface UserSubmissionStat {
             {/* Admin User Submissions Count Overview Button */}
             <button
               onClick={() => setAdminUserModalOpen(true)}
-              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+              className="bg-amber-500/20 hover:bg-slate-500/30 text-slate-300 border border-slate-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
             >
               <Users size={14} />
               User Submissions ({userSubmissionsList.length})
@@ -952,7 +952,7 @@ interface UserSubmissionStat {
             <select
               value={event?.status || 'submissions_open'}
               onChange={(e) => handleAdminUpdateStatus(e.target.value)}
-              className="bg-black/40 border border-amber-500/30 rounded-xl px-3 py-1.5 text-xs font-bold text-white focus:outline-none cursor-pointer hover:border-amber-400 transition-colors"
+              className="bg-black/40 border border-slate-500/30 rounded-xl px-3 py-1.5 text-xs font-bold text-white focus:outline-none cursor-pointer hover:border-slate-400 transition-colors"
             >
               <option value="draft">Phase: Draft</option>
               <option value="submissions_open">Phase: Submissions Open</option>
