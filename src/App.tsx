@@ -77,6 +77,7 @@ function AppContent() {
           setActiveTab={() => {}} 
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
+          isLanding
         />
         <div className="flex-1 flex flex-col min-w-0">
           <div className="h-16 flex items-center justify-between lg:justify-end px-4 md:px-8 gap-4 sticky top-0 bg-slate-50/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md z-50 border-b border-black/5 dark:border-white/5">
