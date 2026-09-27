@@ -931,10 +931,16 @@ interface UserSubmissionStat {
   // Filtered Submissions list
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(sub => {
-      // Non-admins cannot see rejected submissions
-      if (sub.status === 'rejected' && !user?.isAdmin) return false;
+      // Rejected submissions: only admins can see them, and ONLY in the 'rejected' panel
+      if (sub.status === 'rejected') {
+        if (!user?.isAdmin) return false;
+        if (activeTab !== 'rejected') return false;
+      } else {
+        // Non-rejected submissions never show in the 'rejected' panel
+        if (activeTab === 'rejected') return false;
+      }
+
       if (adminFilterUserId && sub.user_id !== adminFilterUserId) return false;
-      if (activeTab === 'rejected' && sub.status !== 'rejected') return false;
       if (activeTab === 'voting' && !sub.is_selected) return false;
       if (activeTab === 'mine' && sub.user_id !== currentUserId) return false;
       if (searchGame.trim()) {
@@ -1248,7 +1254,7 @@ interface UserSubmissionStat {
             )}
           >
             <Layers size={14} />
-            All Submissions ({user?.isAdmin ? submissions.length : submissions.filter(s => s.status !== 'rejected').length})
+            All Submissions ({submissions.filter(s => s.status !== 'rejected').length})
           </button>
 
           <button
@@ -1261,7 +1267,7 @@ interface UserSubmissionStat {
             )}
           >
             <ImageIcon size={14} />
-            My Screenshots ({mySubmissions.length}/10)
+            My Screenshots ({mySubmissions.filter(s => s.status !== 'rejected').length}/10)
           </button>
 
           <button
@@ -1274,7 +1280,7 @@ interface UserSubmissionStat {
             )}
           >
             <Star size={14} className="text-amber-400" />
-            For Voting ({submissions.filter(s => s.is_selected && (user?.isAdmin || s.status !== 'rejected')).length})
+            For Voting ({submissions.filter(s => s.is_selected && s.status !== 'rejected').length})
           </button>
 
           {user?.isAdmin && (

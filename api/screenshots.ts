@@ -120,6 +120,37 @@ function encodeSubmissionCaption(cleanCaption: string | null | undefined, meta: 
   return baseCaption ? `${baseCaption} ${metaTag}` : metaTag;
 }
 
+function parseCommentContent(rawContent: string | null | undefined): {
+  content: string;
+  is_edited: boolean;
+  edited_at: string | null;
+} {
+  const text = rawContent || '';
+  const match = text.match(/<!--EDITED:(\{.*?\})-->/);
+  if (match && match[1]) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      const cleanContent = text.replace(/<!--EDITED:\{.*?\}-->/g, '').trim();
+      return {
+        content: cleanContent,
+        is_edited: true,
+        edited_at: parsed.edited_at || null
+      };
+    } catch (e) {}
+  }
+  return {
+    content: text,
+    is_edited: false,
+    edited_at: null
+  };
+}
+
+function encodeCommentContent(cleanContent: string | null | undefined, meta: { edited_at: string }): string {
+  const baseContent = (cleanContent || '').replace(/<!--EDITED:\{.*?\}-->/g, '').trim();
+  const metaTag = `<!--EDITED:${JSON.stringify(meta)}-->`;
+  return `${baseContent} ${metaTag}`;
+}
+
 async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string) {
   if (!supabaseClient || !targetUserId) return;
   try {
@@ -357,15 +388,25 @@ export default async function handler(req: Request, res: Response) {
         const seenSelectedUsers = new Set<string>();
         const sanitizedSubs = (subs || []).map((sub: any) => {
           const parsed = parseSubmissionCaption(sub.caption);
+          const effectiveStatus = (parsed.status === 'rejected' || sub.status === 'rejected')
+            ? 'rejected'
+            : (parsed.status === 'approved' || sub.status === 'approved')
+              ? 'approved'
+              : 'pending';
+
           const processedSub = {
             ...sub,
             caption: parsed.caption,
-            status: parsed.status,
+            status: effectiveStatus,
             approved_by: parsed.approved_by,
             approved_at: parsed.approved_at
           };
 
           if (!processedSub.is_selected) return processedSub;
+          // If rejected, it cannot be selected for voting
+          if (effectiveStatus === 'rejected') {
+            return { ...processedSub, is_selected: false };
+          }
           const rawUid = String(processedSub.user_id || '').trim();
           const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
           if (seenSelectedUsers.has(rawUid) || seenSelectedUsers.has(cleanUid)) {
@@ -379,6 +420,16 @@ export default async function handler(req: Request, res: Response) {
           return processedSub;
         });
 
+        const sanitizedComments = (comments || []).map((c: any) => {
+          const parsed = parseCommentContent(c.content);
+          return {
+            ...c,
+            content: parsed.content,
+            is_edited: parsed.is_edited || Boolean(c.is_edited),
+            edited_at: parsed.edited_at || c.edited_at || null
+          };
+        });
+
         const eventData = evt || memoryEvent;
 
         return res.status(200).json({
@@ -389,7 +440,7 @@ export default async function handler(req: Request, res: Response) {
           },
           submissions: sanitizedSubs,
           votes: votes || [],
-          comments: comments || []
+          comments: sanitizedComments
         });
       } else {
         const currentPoints = extractSubmissionPoints(memoryEvent);
@@ -403,6 +454,16 @@ export default async function handler(req: Request, res: Response) {
           approved_at: s.approved_at || null
         }));
 
+        const memoryCommentsProcessed = memoryComments.map(c => {
+          const parsed = parseCommentContent(c.content);
+          return {
+            ...c,
+            content: parsed.content,
+            is_edited: parsed.is_edited || Boolean(c.is_edited),
+            edited_at: parsed.edited_at || c.edited_at || null
+          };
+        });
+
         return res.status(200).json({
           event: {
             ...memoryEvent,
@@ -411,7 +472,7 @@ export default async function handler(req: Request, res: Response) {
           },
           submissions: memorySubsProcessed,
           votes: memoryVotes,
-          comments: memoryComments
+          comments: memoryCommentsProcessed
         });
       }
     }
@@ -479,28 +540,9 @@ export default async function handler(req: Request, res: Response) {
           const { data: inserted, error } = await supabase.from('screenshot_submissions').insert([newSub]).select().single();
           if (error) throw error;
 
-          // Fetch current event submission points
-          let ptsToAward = getSavedSubmissionPoints();
-          if (supabase) {
-            const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
-            if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
-              ptsToAward = Number(currentEvt.submission_points);
-            }
-          }
-
-          // Insert point row in submissions table with status 'pending' (awarded only when an admin approves it)
-          if (userTeam && userTeam !== 'none' && ptsToAward > 0) {
-            await supabase.from('submissions').insert([{
-              user_id: userId,
-              game_name: `Screenshot Contest Submission (+${ptsToAward} pts)`,
-              platform: 'Screenshot Event',
-              points: ptsToAward,
-              calculated_score: ptsToAward,
-              status: 'pending',
-              notes: `__META_START__${JSON.stringify({ screenshotId: inserted.id, gameName: gameName || 'Game', userNotes: `Submitted screenshot for ${gameName || 'Game'}` })}__META_END__`,
-              created_at: new Date().toISOString()
-            }]);
-          }
+          // Screenshot contest submissions live exclusively in screenshot_submissions table.
+          // Points are only awarded if and when an admin approves the submission.
+          // Do NOT insert a pending entry into the submissions table on upload so it does not pollute My Submissions.
 
           return res.status(200).json({
             success: true,
@@ -634,16 +676,42 @@ export default async function handler(req: Request, res: Response) {
           const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
 
           if (validStatus === 'rejected') {
-            await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
-            await supabase.from('screenshot_comments').delete().eq('submission_id', submissionId);
-            await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
+            const newCaption = encodeSubmissionCaption(parsed.caption, {
+              status: 'rejected',
+              approved_by: effectiveAdmin,
+              approved_at: effectiveApprovedAt
+            });
+
+            await supabase
+              .from('screenshot_submissions')
+              .update({ caption: newCaption, is_selected: false })
+              .eq('id', submissionId);
+
+            // Remove linked submission points in submissions table if previously approved
             try {
               await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`);
             } catch (e) {}
+
+            // Remove votes for this submission if any
+            try {
+              await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
+            } catch (e) {}
+
             if (targetSub.user_id) {
               await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
             }
-            return res.status(200).json({ success: true, rejected: true, message: 'Screenshot rejected and removed' });
+
+            return res.status(200).json({
+              success: true,
+              submission: {
+                ...targetSub,
+                caption: parsed.caption,
+                status: 'rejected',
+                is_selected: false,
+                approved_by: effectiveAdmin,
+                approved_at: effectiveApprovedAt
+              }
+            });
           }
 
           const newCaption = encodeSubmissionCaption(parsed.caption, {
@@ -709,6 +777,7 @@ export default async function handler(req: Request, res: Response) {
           memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
             ...s,
             status: validStatus,
+            is_selected: validStatus === 'rejected' ? false : s.is_selected,
             approved_by: effectiveAdmin,
             approved_at: effectiveApprovedAt
           } : s);
@@ -873,12 +942,125 @@ export default async function handler(req: Request, res: Response) {
         if (supabase) {
           const { data: inserted, error } = await supabase.from('screenshot_comments').insert([newComment]).select().single();
           if (error) throw error;
-          return res.status(200).json({ success: true, comment: inserted });
+          const parsed = parseCommentContent(inserted.content);
+          return res.status(200).json({
+            success: true,
+            comment: {
+              ...inserted,
+              content: parsed.content,
+              is_edited: parsed.is_edited,
+              edited_at: parsed.edited_at
+            }
+          });
         } else {
-          const item = { id: 'cmt_' + Date.now(), ...newComment };
+          const item = { id: 'cmt_' + Date.now(), ...newComment, is_edited: false, edited_at: null };
           memoryComments.push(item);
           return res.status(200).json({ success: true, comment: item });
         }
+      }
+
+      // EDIT COMMENT
+      if (action === 'edit-comment') {
+        const { commentId, userId, content, isAdmin } = req.body;
+        if (!commentId || !content?.trim()) {
+          return res.status(400).json({ error: 'Comment ID and non-empty content are required' });
+        }
+
+        let existingComment: any = null;
+        if (supabase) {
+          const { data } = await supabase.from('screenshot_comments').select('*').eq('id', commentId).maybeSingle();
+          existingComment = data;
+        } else {
+          existingComment = memoryComments.find(c => String(c.id) === String(commentId));
+        }
+
+        if (!existingComment) {
+          return res.status(404).json({ error: 'Comment not found' });
+        }
+
+        const rawReqUid = String(userId || '').trim();
+        const cleanReqUid = rawReqUid.replace('discord_', '');
+        const rawCmtUid = String(existingComment.user_id || '').trim();
+        const cleanCmtUid = rawCmtUid.replace('discord_', '');
+
+        const isOwner = Boolean(cleanReqUid && (cleanReqUid === cleanCmtUid || rawReqUid === rawCmtUid));
+        const userIsAdmin = Boolean(isAdmin || (req as any).user?.is_admin || (req as any).user?.isAdmin);
+
+        if (!isOwner && !userIsAdmin) {
+          return res.status(403).json({ error: 'You are not authorized to edit this comment' });
+        }
+
+        const editedAt = new Date().toISOString();
+        const newEncodedContent = encodeCommentContent(content.trim(), { edited_at: editedAt });
+
+        if (supabase) {
+          const { data: updated, error } = await supabase
+            .from('screenshot_comments')
+            .update({ content: newEncodedContent })
+            .eq('id', commentId)
+            .select()
+            .single();
+          if (error) throw error;
+          return res.status(200).json({
+            success: true,
+            comment: {
+              ...updated,
+              content: content.trim(),
+              is_edited: true,
+              edited_at: editedAt
+            }
+          });
+        } else {
+          memoryComments = memoryComments.map(c => String(c.id) === String(commentId) ? {
+            ...c,
+            content: content.trim(),
+            is_edited: true,
+            edited_at: editedAt
+          } : c);
+          const updated = memoryComments.find(c => String(c.id) === String(commentId));
+          return res.status(200).json({ success: true, comment: updated });
+        }
+      }
+
+      // DELETE COMMENT
+      if (action === 'delete-comment') {
+        const { commentId, userId, isAdmin } = req.body;
+        if (!commentId) {
+          return res.status(400).json({ error: 'Comment ID is required' });
+        }
+
+        let existingComment: any = null;
+        if (supabase) {
+          const { data } = await supabase.from('screenshot_comments').select('*').eq('id', commentId).maybeSingle();
+          existingComment = data;
+        } else {
+          existingComment = memoryComments.find(c => String(c.id) === String(commentId));
+        }
+
+        if (!existingComment) {
+          return res.status(404).json({ error: 'Comment not found' });
+        }
+
+        const rawReqUid = String(userId || '').trim();
+        const cleanReqUid = rawReqUid.replace('discord_', '');
+        const rawCmtUid = String(existingComment.user_id || '').trim();
+        const cleanCmtUid = rawCmtUid.replace('discord_', '');
+
+        const isOwner = Boolean(cleanReqUid && (cleanReqUid === cleanCmtUid || rawReqUid === rawCmtUid));
+        const userIsAdmin = Boolean(isAdmin || (req as any).user?.is_admin || (req as any).user?.isAdmin);
+
+        if (!isOwner && !userIsAdmin) {
+          return res.status(403).json({ error: 'You are not authorized to delete this comment' });
+        }
+
+        if (supabase) {
+          const { error } = await supabase.from('screenshot_comments').delete().eq('id', commentId);
+          if (error) throw error;
+        } else {
+          memoryComments = memoryComments.filter(c => String(c.id) !== String(commentId));
+        }
+
+        return res.status(200).json({ success: true, message: 'Comment deleted successfully' });
       }
 
       // ADMIN: UPDATE SUBMISSION (edit caption, game_name, is_spoiler, status)
@@ -912,6 +1094,11 @@ export default async function handler(req: Request, res: Response) {
           });
 
           const dbFields: any = { caption: updatedCaption };
+          if (effectiveStatus === 'rejected') {
+            dbFields.is_selected = false;
+            try { await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId); } catch (e) {}
+            try { await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`); } catch (e) {}
+          }
           if (gameName !== undefined) dbFields.game_name = gameName;
           if (isSpoiler !== undefined) dbFields.is_spoiler = Boolean(isSpoiler);
 

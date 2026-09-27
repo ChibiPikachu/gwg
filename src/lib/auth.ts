@@ -6,7 +6,15 @@ export interface RequestWithHeaders {
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl!, supabaseKey!);
+const supabase = createClient(supabaseUrl!, supabaseKey!, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    lock: async <R>(_name: string, _acquireTimeout: number, fn: () => Promise<R>): Promise<R> => {
+      return await fn();
+    },
+  }
+});
 
 export interface AuthUser {
   id: string;

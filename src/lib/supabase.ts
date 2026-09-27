@@ -10,7 +10,15 @@ if (!isSupabaseConfigured) {
 }
 
 export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        lock: async <R>(_name: string, _acquireTimeout: number, fn: () => Promise<R>): Promise<R> => {
+          return await fn();
+        },
+      }
+    })
   : null as any;
 
 export const isUuid = (val: string): boolean => {

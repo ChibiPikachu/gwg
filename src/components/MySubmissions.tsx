@@ -57,6 +57,19 @@ export function serializeNotesMeta(
   return userNotes;
 }
 
+export function isScreenshotEntry(s: any): boolean {
+  if (!s) return false;
+  const platform = String(s.platform || '').toLowerCase();
+  const gameName = String(s.game_name || '').toLowerCase();
+  const notes = String(s.notes || '').toLowerCase();
+  return (
+    platform.includes('screenshot') ||
+    gameName.includes('screenshot') ||
+    notes.includes('screenshotid') ||
+    notes.includes('screenshot')
+  );
+}
+
 export function calculateNonAchievementPoints(level: number, hoursPlayed: number, hltb: { hltb_main?: number, hltb_extras?: number }, completionStatus: string): number {
   let basePoints = 20;
   if (hoursPlayed >= 50) {
@@ -201,7 +214,7 @@ export default function MySubmissions() {
   const filteredSubmissions = React.useMemo(() => {
     const currentUserIdCandidates = [user?.steamId, user?.uid, user?.discordId, user?.discordId ? `discord_${user.discordId}` : null].filter(Boolean);
 
-    // Filter out system notifications and team point adjustments from entries
+    // Filter out system notifications, screenshot contest entries, and team point adjustments from entries
     let result = submissions.filter(s => 
       (currentUserIdCandidates.length === 0 || currentUserIdCandidates.includes(s.user_id)) &&
       s.game_name !== 'Event Update' && 
@@ -210,7 +223,8 @@ export default function MySubmissions() {
       s.game_name !== 'Team Award' &&
       s.platform !== 'System' &&
       s.user_id !== 'system_notification' &&
-      !String(s.user_id || '').startsWith('team_pts_')
+      !String(s.user_id || '').startsWith('team_pts_') &&
+      !isScreenshotEntry(s)
     );
     if (completionFilter !== 'all') {
       if (completionFilter === 'pending') {
@@ -304,7 +318,7 @@ export default function MySubmissions() {
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          setSubmissions(data);
+          setSubmissions(data.filter((s: any) => !isScreenshotEntry(s)));
           setLoading(false);
           return;
         }
@@ -321,7 +335,7 @@ export default function MySubmissions() {
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         const subArray = Array.isArray(data) ? data : [];
-        setSubmissions(subArray);
+        setSubmissions(subArray.filter((s: any) => !isScreenshotEntry(s)));
       }
     } catch (err) {
       console.warn('Failed to fetch submissions:', err);
@@ -347,12 +361,20 @@ export default function MySubmissions() {
         console.log('Real-time submission update:', payload);
         if (payload.eventType === 'INSERT') {
           const newSub = payload.new as Submission;
+          if (isScreenshotEntry(newSub)) {
+            return;
+          }
           setSubmissions(prev => {
             if (prev.some(s => s.id === newSub.id)) return prev;
             return [newSub, ...prev];
           });
         } else if (payload.eventType === 'UPDATE') {
-          setSubmissions(prev => prev.map(s => s.id === (payload.new as Submission).id ? (payload.new as Submission) : s));
+          const updatedSub = payload.new as Submission;
+          if (isScreenshotEntry(updatedSub)) {
+            setSubmissions(prev => prev.filter(s => s.id !== updatedSub.id));
+            return;
+          }
+          setSubmissions(prev => prev.map(s => s.id === updatedSub.id ? updatedSub : s));
         } else if (payload.eventType === 'DELETE') {
           setSubmissions(prev => prev.filter(s => s.id !== (payload.old as any).id));
         }

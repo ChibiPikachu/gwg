@@ -1,14 +1,9 @@
-import { Request, Response } from 'express';
+import type { Request as VercelRequest, Response as VercelResponse } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-const supabase = (supabaseUrl && supabaseServiceKey)
-  ? createClient(supabaseUrl, supabaseServiceKey)
-  : null;
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 function isUuid(val: string): boolean {
   if (!val || typeof val !== 'string') return false;
@@ -25,1379 +20,383 @@ function buildProfileOrFilter(key: string): string {
   return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
 }
 
-const SETTINGS_FILE_PATH = path.join(process.cwd(), '.screenshot_settings.json');
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Extract ID if provided in query or URL parameter
+  const rawId = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
+  const strId = typeof rawId === 'string' ? rawId.trim() : '';
+  const id = strId && strId !== 'undefined' && strId !== 'null'
+    ? (!isNaN(Number(strId)) ? Number(strId) : strId)
+    : null;
 
-function getSavedSubmissionPoints(): number {
-  try {
-    if (fs.existsSync(SETTINGS_FILE_PATH)) {
-      const raw = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed.submission_points !== undefined && !isNaN(Number(parsed.submission_points))) {
-        return Math.max(0, Number(parsed.submission_points));
-      }
-    }
-  } catch (e) {}
-  return 20;
-}
-
-function saveSubmissionPointsLocally(points: number) {
-  try {
-    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify({ submission_points: Math.max(0, points) }), 'utf8');
-  } catch (e) {}
-}
-
-function extractSubmissionPoints(evt: any): number {
-  // 1. Check description tag in evt
-  if (evt?.description && typeof evt.description === 'string') {
-    const match = evt.description.match(/<!--SUBMISSION_POINTS:(\d+)-->/);
-    if (match && match[1]) {
-      return Math.max(0, Number(match[1]));
-    }
-  }
-  // 2. Check local saved file
-  const localSaved = getSavedSubmissionPoints();
-  if (localSaved !== 20) {
-    return localSaved;
-  }
-  // 3. Check evt.submission_points
-  if (evt?.submission_points !== undefined && evt?.submission_points !== null && !isNaN(Number(evt.submission_points))) {
-    return Math.max(0, Number(evt.submission_points));
-  }
-  return localSaved;
-}
-
-let persistentDefaultSubmissionPoints = getSavedSubmissionPoints();
-
-// In-memory fallback for local dev when Supabase is not connected
-let memoryEvent: any = {
-  id: 'evt_screenshot_01',
-  title: 'Screenshot Showcase & Contest',
-  description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${persistentDefaultSubmissionPoints}-->`,
-  status: 'submissions_open', // 'draft' | 'submissions_open' | 'voting_active' | 'concluded'
-  is_voting_active: false,
-  is_admin_only: true,
-  max_submissions_per_user: 10,
-  submission_points: persistentDefaultSubmissionPoints,
-  created_at: new Date().toISOString()
-};
-
-let memorySubmissions: any[] = [];
-let memoryVotes: any[] = [];
-let memoryComments: any[] = [];
-let memoryNotifications: any[] = [];
-
-function parseSubmissionCaption(rawCaption: string | null | undefined): {
-  caption: string;
-  status: 'pending' | 'approved' | 'rejected';
-  approved_by: string | null;
-  approved_at: string | null;
-} {
-  const text = rawCaption || '';
-  const match = text.match(/<!--APPROVAL:(\{.*?\})-->/);
-  if (match && match[1]) {
+  // 1. Handle POST: Create a brand-new submission
+  if (req.method === 'POST') {
     try {
-      const parsed = JSON.parse(match[1]);
-      const cleanCaption = text.replace(/<!--APPROVAL:\{.*?\}-->/g, '').trim();
-      return {
-        caption: cleanCaption,
-        status: (parsed.status === 'approved' || parsed.status === 'rejected') ? parsed.status : 'pending',
-        approved_by: parsed.approved_by || null,
-        approved_at: parsed.approved_at || null
-      };
-    } catch (e) {}
+      const body = req.body || {};
+      const userId = req.headers['x-user-id'] || req.headers['x-steam-id'] || body.userId || body.user_id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized: Missing user ID' });
+      }
+
+      const { data, error } = await supabase
+        .from('submissions')
+        .insert([
+          {
+            user_id: userId,
+            game_id: body.gameId || body.game_id,
+            game_name: body.gameTitle || body.game_name,
+            game_image: body.gameImage || body.game_image,
+            achievements_during: body.achievements || body.achievements_during,
+            hours_during: body.hours || body.hours_during,
+            achievements_before: body.achievementsBefore || body.achievements_before,
+            hours_before: body.hoursBefore || body.hours_before,
+            multiplier: body.multiplier,
+            completion_status: body.completionStatus || body.completion_status,
+            beaten_previous: body.beatenPrevious || body.beaten_previous,
+            platform: body.platform,
+            points: body.calculatedScore || body.points,
+            calculated_score: body.calculatedScore || body.points || 0,
+            notes: body.notes,
+            steam_appid: body.steam_appid,
+            status: 'pending'
+          }
+        ])
+        .select();
+
+      if (error) throw error;
+
+      return res.status(201).json(data[0]);
+    } catch (error: any) {
+      console.error('Error creating submission:', error);
+      return res.status(500).json({ error: error.message || 'Failed to create submission' });
+    }
   }
-  return {
-    caption: text,
-    status: 'pending',
-    approved_by: null,
-    approved_at: null
-  };
-}
 
-function encodeSubmissionCaption(cleanCaption: string | null | undefined, meta: { status: string; approved_by: string | null; approved_at?: string | null }): string {
-  const baseCaption = (cleanCaption || '').replace(/<!--APPROVAL:\{.*?\}-->/g, '').trim();
-  const metaTag = `<!--APPROVAL:${JSON.stringify(meta)}-->`;
-  return baseCaption ? `${baseCaption} ${metaTag}` : metaTag;
-}
-
-function parseCommentContent(rawContent: string | null | undefined): {
-  content: string;
-  is_edited: boolean;
-  edited_at: string | null;
-} {
-  const text = rawContent || '';
-  const match = text.match(/<!--EDITED:(\{.*?\})-->/);
-  if (match && match[1]) {
+  // 2. Handle GET: Fetch single submission by ID, list submissions, or sync Steam stats
+  if (req.method === 'GET') {
     try {
-      const parsed = JSON.parse(match[1]);
-      const cleanContent = text.replace(/<!--EDITED:\{.*?\}-->/g, '').trim();
-      return {
-        content: cleanContent,
-        is_edited: true,
-        edited_at: parsed.edited_at || null
-      };
-    } catch (e) {}
-  }
-  return {
-    content: text,
-    is_edited: false,
-    edited_at: null
-  };
-}
+      const action = req.query.action;
+      const isSteamStatsRequest = action === 'steam-stats' || action === 'user-game-stats' || (!!req.query.appId && id === null) || !!req.query.steamAppId;
 
-function encodeCommentContent(cleanContent: string | null | undefined, meta: { edited_at: string }): string {
-  const baseContent = (cleanContent || '').replace(/<!--EDITED:\{.*?\}-->/g, '').trim();
-  const metaTag = `<!--EDITED:${JSON.stringify(meta)}-->`;
-  return `${baseContent} ${metaTag}`;
-}
+      if (isSteamStatsRequest) {
+        const rawUserId = req.headers['x-user-id'] as string | undefined;
+        const rawSteamId = req.headers['x-steam-id'] as string | undefined;
+        const appIdQuery = req.query.appId || req.query.steamAppId;
+        const gameTitleQuery = req.query.gameTitle || req.query.title;
 
-async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string) {
-  if (!supabaseClient || !targetUserId) return;
-  try {
-    const rawTarget = String(targetUserId).trim();
-    const cleanId = rawTarget.startsWith('discord_') ? rawTarget.replace('discord_', '') : rawTarget;
-    const prefixedDiscordId = `discord_${cleanId}`;
-    
-    // Fetch profile to find all associated ID variants (steamid, discord_id, id)
-    const { data: userProfiles } = await supabaseClient
-      .from('profiles')
-      .select('steamid, discord_id, id, team, points')
-      .or(`steamid.eq.${cleanId},discord_id.eq.${cleanId},discord_id.eq.${prefixedDiscordId},id.eq.${cleanId}`);
+        let steamId = typeof rawSteamId === 'string' && /^\d{15,20}$/.test(rawSteamId.trim()) ? rawSteamId.trim() : null;
+        let userId = typeof rawUserId === 'string' && rawUserId.trim() ? rawUserId.trim() : null;
 
-    const userProfile = (userProfiles && userProfiles.length > 0) ? userProfiles[0] : null;
-
-    const candidateIds = new Set<string>([
-      rawTarget,
-      cleanId,
-      prefixedDiscordId,
-      userProfile?.steamid ? String(userProfile.steamid) : null,
-      userProfile?.discord_id ? String(userProfile.discord_id) : null,
-      userProfile?.discord_id ? `discord_${userProfile.discord_id}` : null,
-      userProfile?.id ? String(userProfile.id) : null
-    ].filter(Boolean) as string[]);
-
-    // 1. Fetch current valid screenshot submissions for this user (only approved ones count toward verified points)
-    const { data: allScreenshots } = await supabaseClient
-      .from('screenshot_submissions')
-      .select('id, user_id, caption');
-    
-    const userValidScreenshots = (allScreenshots || []).filter((s: any) => {
-      const sUid = String(s.user_id || '').trim();
-      const sClean = sUid.startsWith('discord_') ? sUid.replace('discord_', '') : sUid;
-      if (!candidateIds.has(sUid) && !candidateIds.has(sClean)) return false;
-      const parsed = parseSubmissionCaption(s.caption);
-      return parsed.status === 'approved';
-    });
-
-    const validCount = userValidScreenshots.length;
-    const validScreenshotIds = new Set(userValidScreenshots.map((s: any) => String(s.id)));
-
-    // 2. Fetch all submissions for this user from submissions table
-    const { data: allSubmissions } = await supabaseClient
-      .from('submissions')
-      .select('id, user_id, points, calculated_score, notes, platform, game_name, status, created_at')
-      .order('created_at', { ascending: false });
-
-    const userAllSubs = (allSubmissions || []).filter((sub: any) => {
-      const subUid = String(sub.user_id || '').trim();
-      const subClean = subUid.startsWith('discord_') ? subUid.replace('discord_', '') : subUid;
-      return candidateIds.has(subUid) || candidateIds.has(subClean);
-    });
-
-    const userScreenshotPointRows = userAllSubs.filter((sub: any) => {
-      const isScreenshot = sub.platform === 'Screenshot Event' ||
-        sub.platform === 'Screenshot Points' ||
-        sub.game_name === 'Screenshot Points' ||
-        (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
-        (sub.game_name && sub.game_name.includes('Screenshot Submission')) ||
-        (sub.game_name && sub.game_name.startsWith('Screenshot Contest'));
-      return isScreenshot;
-    });
-
-    // If user has more point rows than valid screenshots, delete the excess or orphaned ones
-    if (userScreenshotPointRows.length > validCount) {
-      const orphanedRows: any[] = [];
-      const keptRows: any[] = [];
-
-      for (const row of userScreenshotPointRows) {
-        let isOrphan = false;
-        if (row.notes) {
-          let matchedValid = false;
-          for (const sId of Array.from(validScreenshotIds)) {
-            if (row.notes.includes(sId)) {
-              matchedValid = true;
-              break;
-            }
-          }
-          if (!matchedValid) {
-            isOrphan = true;
-          }
-        } else {
-          isOrphan = true;
-        }
-        if (isOrphan) {
-          orphanedRows.push(row);
-        } else {
-          keptRows.push(row);
-        }
-      }
-
-      const excessCount = (orphanedRows.length + keptRows.length) - validCount;
-      const toDelete = [...orphanedRows];
-      if (toDelete.length < excessCount) {
-        toDelete.push(...keptRows.slice(0, excessCount - toDelete.length));
-      }
-
-      const deleteIds = toDelete.map(r => r.id).filter(Boolean);
-      if (deleteIds.length > 0) {
-        await supabaseClient.from('submissions').delete().in('id', deleteIds);
-      }
-    }
-
-    // 3. Recalculate profile points from remaining verified submissions + adjustments
-    // Refetch verified subs to be 100% accurate
-    const { data: updatedSubmissions } = await supabaseClient
-      .from('submissions')
-      .select('id, user_id, points, calculated_score, notes, platform, game_name, status, created_at')
-      .order('created_at', { ascending: false });
-
-    const remainingUserSubs = (updatedSubmissions || []).filter((sub: any) => {
-      const subUid = String(sub.user_id || '').trim();
-      const subClean = subUid.startsWith('discord_') ? subUid.replace('discord_', '') : subUid;
-      const isApproved = sub.status === 'verified' || sub.status === 'approved';
-      return (candidateIds.has(subUid) || candidateIds.has(subClean)) && isApproved && sub.game_name !== 'Event Update';
-    });
-
-    // 4. Also fetch adjustments
-    const { data: adjustments } = await supabaseClient
-      .from('team_adjustments')
-      .select('points, user_id');
-
-    let userAdjPoints = 0;
-    (adjustments || []).forEach((adj: any) => {
-      const adjUid = String(adj.user_id || '').trim();
-      const adjClean = adjUid.startsWith('discord_') ? adjUid.replace('discord_', '') : adjUid;
-      if (candidateIds.has(adjUid) || candidateIds.has(adjClean)) {
-        userAdjPoints += Math.round(Number(adj.points) || 0);
-      }
-    });
-
-    let newTotal = userAdjPoints;
-    let screenshotCountSeen = 0;
-    for (const s of remainingUserSubs) {
-      const isScreenshot = s.platform === 'Screenshot Event' ||
-        s.platform === 'Screenshot Points' ||
-        s.game_name === 'Screenshot Points' ||
-        (s.game_name && s.game_name.includes('Screenshot Contest Submission')) ||
-        (s.game_name && s.game_name.includes('Screenshot Submission')) ||
-        (s.game_name && s.game_name.startsWith('Screenshot Contest'));
-
-      if (isScreenshot) {
-        if (screenshotCountSeen >= validCount) continue;
-        screenshotCountSeen++;
-      }
-
-      const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
-      newTotal += Math.round(pts);
-    }
-
-    // Update profiles table for all candidate IDs
-    if (userProfile?.id) {
-      await supabaseClient.from('profiles').update({ points: newTotal }).eq('id', userProfile.id);
-    }
-    if (userProfile?.steamid) {
-      await supabaseClient.from('profiles').update({ points: newTotal }).eq('steamid', userProfile.steamid);
-    }
-    if (userProfile?.discord_id) {
-      await supabaseClient.from('profiles').update({ points: newTotal }).eq('discord_id', userProfile.discord_id);
-    }
-    if (cleanId) {
-      await supabaseClient.from('profiles').update({ points: newTotal }).eq('steamid', cleanId);
-      await supabaseClient.from('profiles').update({ points: newTotal }).eq('discord_id', cleanId);
-    }
-  } catch (err) {
-    console.warn('[Screenshot API] Error reconciling user screenshot points:', err);
-  }
-}
-
-export default async function handler(req: Request, res: Response) {
-  const method = req.method;
-  const action = req.query.action || req.body?.action || 'get';
-
-  try {
-    if (method === 'GET') {
-      if (action === 'notifications' || req.query.notifications === 'true') {
-        const queryUserId = (req.query.userId || req.query.user_id) as string;
-        if (supabase && queryUserId) {
-          const { data: dbNotifs } = await supabase
-            .from('notifications')
-            .select('*')
-            .eq('user_id', queryUserId)
-            .order('created_at', { ascending: false })
-            .limit(20);
-
-          if (dbNotifs && dbNotifs.length > 0) {
-            return res.status(200).json({ notifications: dbNotifs });
+        if (!steamId && userId && supabase) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('steamid')
+            .or(buildProfileOrFilter(userId))
+            .maybeSingle();
+          if (profile?.steamid) {
+            steamId = profile.steamid;
           }
         }
 
-        const filtered = queryUserId 
-          ? memoryNotifications.filter(n => n.user_id === queryUserId)
-          : memoryNotifications;
-        return res.status(200).json({ notifications: filtered });
-      }
+        if (!steamId && userId && /^\d{15,20}$/.test(userId.trim())) {
+          steamId = userId.trim();
+        }
 
-      // 1. Get Event, Submissions, Votes, Comments
-      if (supabase) {
-        let { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
-        const savedPts = getSavedSubmissionPoints();
+        if (!steamId) {
+          return res.status(400).json({
+            success: false,
+            error: 'No Steam ID found for your account. Please log in with Steam or connect your Steam ID in profile settings.'
+          });
+        }
 
-        if (!evt) {
-          // seed event with persistent points
-          const seedEvent = {
-            ...memoryEvent,
-            submission_points: savedPts,
-            description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${savedPts}-->`
-          };
+        let appId: number | null = appIdQuery && !isNaN(Number(appIdQuery)) ? Number(appIdQuery) : null;
+
+        if (!appId && gameTitleQuery && supabase) {
+          const { data: gameData } = await supabase
+            .from('games')
+            .select('steam_appid')
+            .ilike('title', `%${String(gameTitleQuery).trim()}%`)
+            .maybeSingle();
+
+          if (gameData?.steam_appid) {
+            appId = Number(gameData.steam_appid);
+          }
+        }
+
+        if (!appId && gameTitleQuery) {
           try {
-            const { data: newEvt } = await supabase.from('screenshot_events').insert([seedEvent]).select().single();
-            evt = newEvt || seedEvent;
+            const searchRes = await fetch(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(String(gameTitleQuery))}&l=english&cc=US`);
+            const searchData: any = await searchRes.json();
+            if (searchData?.items?.length > 0) {
+              appId = Number(searchData.items[0].id);
+            }
           } catch (e) {
-            evt = seedEvent;
+            // ignore
           }
         }
 
-        const currentPoints = extractSubmissionPoints(evt);
-        persistentDefaultSubmissionPoints = currentPoints;
-        saveSubmissionPointsLocally(currentPoints);
-
-        if (evt) {
-          memoryEvent = {
-            ...memoryEvent,
-            ...evt,
-            submission_points: currentPoints
-          };
-        }
-
-        const { data: subs } = await supabase.from('screenshot_submissions').select('*').order('created_at', { ascending: false });
-        const { data: votes } = await supabase.from('screenshot_votes').select('*');
-        const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
-
-        // Ensure at most ONE submission per user has is_selected: true (self-heal any past duplicates)
-        // and parse approval metadata from caption
-        const seenSelectedUsers = new Set<string>();
-        const sanitizedSubs = (subs || []).map((sub: any) => {
-          const parsed = parseSubmissionCaption(sub.caption);
-          const processedSub = {
-            ...sub,
-            caption: parsed.caption,
-            status: parsed.status,
-            approved_by: parsed.approved_by,
-            approved_at: parsed.approved_at
-          };
-
-          if (!processedSub.is_selected) return processedSub;
-          const rawUid = String(processedSub.user_id || '').trim();
-          const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
-          if (seenSelectedUsers.has(rawUid) || seenSelectedUsers.has(cleanUid)) {
-            if (supabase && processedSub.id) {
-              supabase.from('screenshot_submissions').update({ is_selected: false }).eq('id', processedSub.id).then();
-            }
-            return { ...processedSub, is_selected: false };
-          }
-          seenSelectedUsers.add(rawUid);
-          seenSelectedUsers.add(cleanUid);
-          return processedSub;
-        });
-
-        const sanitizedComments = (comments || []).map((c: any) => {
-          const parsed = parseCommentContent(c.content);
-          return {
-            ...c,
-            content: parsed.content,
-            is_edited: parsed.is_edited || Boolean(c.is_edited),
-            edited_at: parsed.edited_at || c.edited_at || null
-          };
-        });
-
-        const eventData = evt || memoryEvent;
-
-        return res.status(200).json({
-          event: {
-            ...eventData,
-            submission_points: currentPoints,
-            is_voting_active: eventData.status === 'voting_active'
-          },
-          submissions: sanitizedSubs,
-          votes: votes || [],
-          comments: sanitizedComments
-        });
-      } else {
-        const currentPoints = extractSubmissionPoints(memoryEvent);
-        persistentDefaultSubmissionPoints = currentPoints;
-        saveSubmissionPointsLocally(currentPoints);
-
-        const memorySubsProcessed = memorySubmissions.map(s => ({
-          ...s,
-          status: s.status || 'pending',
-          approved_by: s.approved_by || null,
-          approved_at: s.approved_at || null
-        }));
-
-        const memoryCommentsProcessed = memoryComments.map(c => {
-          const parsed = parseCommentContent(c.content);
-          return {
-            ...c,
-            content: parsed.content,
-            is_edited: parsed.is_edited || Boolean(c.is_edited),
-            edited_at: parsed.edited_at || c.edited_at || null
-          };
-        });
-
-        return res.status(200).json({
-          event: {
-            ...memoryEvent,
-            submission_points: currentPoints,
-            is_voting_active: memoryEvent.status === 'voting_active'
-          },
-          submissions: memorySubsProcessed,
-          votes: memoryVotes,
-          comments: memoryCommentsProcessed
-        });
-      }
-    }
-
-    if (method === 'POST') {
-      // SUBMIT SCREENSHOT (+pts to user's team)
-      if (action === 'submit') {
-        const { userId, userName, userAvatar, userTeam, imageUrl, caption, gameName, isSpoiler, isSelected } = req.body;
-
-        if (!imageUrl) {
-          return res.status(400).json({ error: 'Image URL or file is required' });
-        }
-
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-
-        const rawUid = String(userId).trim();
-        const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
-        const candidateIds = Array.from(new Set([rawUid, cleanUid, `discord_${cleanUid}`]));
-
-        // Check submission count for this user
-        let userSubCount = 0;
-        if (supabase) {
-          const { data: existing } = await supabase
-            .from('screenshot_submissions')
-            .select('id, is_selected')
-            .in('user_id', candidateIds);
-
-          userSubCount = (existing || []).length;
-          if (userSubCount >= 10) {
-            return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions!' });
-          }
-
-          const shouldBeSelected = Boolean(isSelected);
-
-          // If user specifically marked this as for voting, unselect all other submissions by this user
-          if (shouldBeSelected) {
-            await supabase
-              .from('screenshot_submissions')
-              .update({ is_selected: false })
-              .in('user_id', candidateIds);
-          }
-
-          const initialCaption = encodeSubmissionCaption(caption || '', {
-            status: 'pending',
-            approved_by: null,
-            approved_at: null
-          });
-
-          const newSub: Record<string, any> = {
-            event_id: memoryEvent.id,
-            user_id: userId,
-            user_name: userName || 'Anonymous User',
-            user_avatar: userAvatar || '',
-            user_team: userTeam || 'none',
-            image_url: imageUrl,
-            caption: initialCaption,
-            game_name: gameName || 'Steam Game',
-            is_spoiler: Boolean(isSpoiler),
-            is_selected: shouldBeSelected, // Strictly follow user's choice: only selected if user marked it!
-            created_at: new Date().toISOString()
-          };
-
-          const { data: inserted, error } = await supabase.from('screenshot_submissions').insert([newSub]).select().single();
-          if (error) throw error;
-
-          // Fetch current event submission points
-          let ptsToAward = getSavedSubmissionPoints();
-          if (supabase) {
-            const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
-            if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
-              ptsToAward = Number(currentEvt.submission_points);
-            }
-          }
-
-          // Insert point row in submissions table with status 'pending' (awarded only when an admin approves it)
-          if (userTeam && userTeam !== 'none' && ptsToAward > 0) {
-            await supabase.from('submissions').insert([{
-              user_id: userId,
-              game_name: `Screenshot Contest Submission (+${ptsToAward} pts)`,
-              platform: 'Screenshot Event',
-              points: ptsToAward,
-              calculated_score: ptsToAward,
-              status: 'pending',
-              notes: `__META_START__${JSON.stringify({ screenshotId: inserted.id, gameName: gameName || 'Game', userNotes: `Submitted screenshot for ${gameName || 'Game'}` })}__META_END__`,
-              created_at: new Date().toISOString()
-            }]);
-          }
-
-          return res.status(200).json({
-            success: true,
-            submission: {
-              ...inserted,
-              caption: caption || '',
-              status: 'pending',
-              approved_by: null,
-              approved_at: null
-            }
-          });
-        } else {
-          userSubCount = memorySubmissions.filter(s => candidateIds.includes(String(s.user_id))).length;
-          if (userSubCount >= 10) {
-            return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions!' });
-          }
-
-          const shouldBeSelected = Boolean(isSelected);
-
-          if (shouldBeSelected) {
-            memorySubmissions = memorySubmissions.map(s => candidateIds.includes(String(s.user_id)) ? { ...s, is_selected: false } : s);
-          }
-
-          const newSub = {
-            id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-            event_id: memoryEvent.id,
-            user_id: userId,
-            user_name: userName || 'Anonymous User',
-            user_avatar: userAvatar || '',
-            user_team: userTeam || 'none',
-            image_url: imageUrl,
-            caption: caption || '',
-            game_name: gameName || 'Steam Game',
-            is_spoiler: Boolean(isSpoiler),
-            is_selected: shouldBeSelected,
-            status: 'pending',
-            approved_by: null,
-            approved_at: null,
-            created_at: new Date().toISOString()
-          };
-
-          memorySubmissions.unshift(newSub);
-          return res.status(200).json({ success: true, submission: newSub });
-        }
-      }
-
-      // SELECT FOR VOTING (toggle is_selected)
-      if (action === 'select-voting') {
-        const { submissionId, userId } = req.body;
-        if (!submissionId || !userId) {
-          return res.status(400).json({ error: 'Missing submissionId or userId' });
-        }
-
-        const rawUid = String(userId).trim();
-        const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
-        const candidateIds = [rawUid, cleanUid, `discord_${cleanUid}`];
-
-        if (supabase) {
-          const { data: targetSub } = await supabase
-            .from('screenshot_submissions')
-            .select('id, user_id, is_selected')
-            .eq('id', submissionId)
-            .maybeSingle();
-
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-
-          if (targetSub.user_id) {
-            candidateIds.push(String(targetSub.user_id).trim());
-            const tClean = String(targetSub.user_id).replace('discord_', '');
-            candidateIds.push(tClean, `discord_${tClean}`);
-          }
-          const uniqueCandidateIds = Array.from(new Set(candidateIds.filter(Boolean)));
-
-          const willSelect = !targetSub.is_selected;
-
-          // Always unselect ALL existing submissions for this user first
-          await supabase
-            .from('screenshot_submissions')
-            .update({ is_selected: false })
-            .in('user_id', uniqueCandidateIds);
-
-          let updated = null;
-          if (willSelect) {
-            // Set ONLY this specific submission to true
-            const { data, error } = await supabase
-              .from('screenshot_submissions')
-              .update({ is_selected: true })
-              .eq('id', submissionId)
-              .select()
-              .single();
-            if (error) throw error;
-            updated = data;
-          } else {
-            updated = { ...targetSub, is_selected: false };
-          }
-          return res.status(200).json({ success: true, submission: updated, is_selected: willSelect });
-        } else {
-          const targetSub = memorySubmissions.find(s => s.id === submissionId);
-          const willSelect = targetSub ? !targetSub.is_selected : true;
-          memorySubmissions = memorySubmissions.map(s => {
-            if (candidateIds.includes(String(s.user_id))) {
-              return { ...s, is_selected: (s.id === submissionId && willSelect) };
-            }
-            return s;
-          });
-          return res.status(200).json({ success: true, is_selected: willSelect });
-        }
-      }
-
-      // ADMIN: SET STATUS (Approved, Pending, Rejected)
-      if (action === 'admin-set-status') {
-        const { submissionId, status } = req.body;
-        const adminName = req.body.adminName || req.headers['x-admin-name'] || (req as any).user?.steam_name || (req as any).user?.displayName || 'Admin';
-        if (!submissionId || !status) {
-          return res.status(400).json({ error: 'Missing submissionId or status' });
-        }
-
-        const validStatus: 'approved' | 'pending' | 'rejected' = ['approved', 'pending', 'rejected'].includes(status) ? status : 'approved';
-
-        if (supabase) {
-          const { data: targetSub } = await supabase
-            .from('screenshot_submissions')
-            .select('*')
-            .eq('id', submissionId)
-            .maybeSingle();
-
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-
-          const parsed = parseSubmissionCaption(targetSub.caption);
-          const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
-          const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
-
-          if (validStatus === 'rejected') {
-            const newCaption = encodeSubmissionCaption(parsed.caption, {
-              status: 'rejected',
-              approved_by: effectiveAdmin,
-              approved_at: effectiveApprovedAt
-            });
-
-            await supabase
-              .from('screenshot_submissions')
-              .update({ caption: newCaption, is_selected: false })
-              .eq('id', submissionId);
-
-            // Remove linked submission points in submissions table if previously approved
-            try {
-              await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`);
-            } catch (e) {}
-
-            // Remove votes for this submission if any
-            try {
-              await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
-            } catch (e) {}
-
-            if (targetSub.user_id) {
-              await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
-            }
-
-            return res.status(200).json({
-              success: true,
-              submission: {
-                ...targetSub,
-                caption: parsed.caption,
-                status: 'rejected',
-                is_selected: false,
-                approved_by: effectiveAdmin,
-                approved_at: effectiveApprovedAt
-              }
-            });
-          }
-
-          const newCaption = encodeSubmissionCaption(parsed.caption, {
-            status: validStatus,
-            approved_by: effectiveAdmin,
-            approved_at: effectiveApprovedAt
-          });
-
-          await supabase
-            .from('screenshot_submissions')
-            .update({ caption: newCaption })
-            .eq('id', submissionId);
-
-          let ptsToAward = getSavedSubmissionPoints();
-          const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
-          if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
-            ptsToAward = Number(currentEvt.submission_points);
-          }
-
-          if (validStatus === 'approved') {
-            // Verify linked submission points in submissions table
-            const { data: existingPoints } = await supabase
-              .from('submissions')
-              .select('id, status')
-              .ilike('notes', `%${submissionId}%`);
-
-            if (existingPoints && existingPoints.length > 0) {
-              await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${submissionId}%`);
-            } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
-              await supabase.from('submissions').insert([{
-                user_id: targetSub.user_id,
-                game_name: `Screenshot Contest Submission (+${ptsToAward} pts)`,
-                platform: 'Screenshot Event',
-                points: ptsToAward,
-                calculated_score: ptsToAward,
-                status: 'verified',
-                notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${targetSub.game_name || 'Game'}` })}__META_END__`,
-                created_at: new Date().toISOString()
-              }]);
-            }
-          } else if (validStatus === 'pending') {
-            // Revert linked points in submissions table to pending
-            await supabase.from('submissions').update({ status: 'pending' }).ilike('notes', `%${submissionId}%`);
-          }
-
-          if (targetSub.user_id) {
-            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
-          }
-
-          return res.status(200).json({
-            success: true,
-            submission: {
-              ...targetSub,
-              caption: parsed.caption,
-              status: validStatus,
-              approved_by: effectiveAdmin,
-              approved_at: effectiveApprovedAt
-            }
-          });
-        } else {
-          const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
-          const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
-          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
-            ...s,
-            status: validStatus,
-            is_selected: validStatus === 'rejected' ? false : s.is_selected,
-            approved_by: effectiveAdmin,
-            approved_at: effectiveApprovedAt
-          } : s);
-          return res.status(200).json({
-            success: true,
-            status: validStatus,
-            approved_by: effectiveAdmin,
-            approved_at: effectiveApprovedAt
-          });
-        }
-      }
-
-      // VOTE FOR SCREENSHOT
-      if (action === 'vote') {
-        const { submissionId, userId, eventStatus } = req.body;
-        
-        let currentStatus = memoryEvent.status;
-        if (supabase) {
-          const { data: evt } = await supabase.from('screenshot_events').select('status').eq('id', memoryEvent.id).maybeSingle();
-          if (evt) currentStatus = evt.status;
-        }
-
-        if (currentStatus !== 'voting_active' && eventStatus !== 'voting_active') {
-          return res.status(400).json({ error: "You can't vote yet!" });
-        }
-
-        if (!submissionId || !userId) {
-          return res.status(400).json({ error: 'Missing submissionId or userId' });
-        }
-
-        if (supabase) {
-          // Check if submission belongs to user
-          const { data: targetSub } = await supabase.from('screenshot_submissions').select('user_id, is_selected').eq('id', submissionId).single();
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-
-          if (targetSub.user_id === userId) {
-            return res.status(400).json({ error: "You can't vote for yourself, silly!" });
-          }
-
-          if (!targetSub.is_selected) {
-            return res.status(400).json({ error: 'This screenshot is not up for voting!' });
-          }
-
-          // Check user's current votes count (max 5)
-          const { data: userVotes } = await supabase.from('screenshot_votes').select('id, submission_id').eq('user_id', userId);
-          const existingVote = (userVotes || []).find(v => v.submission_id === submissionId);
-
-          if (existingVote) {
-            // Unvote
-            await supabase.from('screenshot_votes').delete().eq('id', existingVote.id);
-            return res.status(200).json({ success: true, voted: false, message: 'Vote removed' });
-          } else {
-            if ((userVotes || []).length >= 5) {
-              return res.status(400).json({ error: 'You have used all 5 of your votes!' });
-            }
-            await supabase.from('screenshot_votes').insert([{
-              event_id: memoryEvent.id,
-              submission_id: submissionId,
-              user_id: userId,
-              created_at: new Date().toISOString()
-            }]);
-            return res.status(200).json({ success: true, voted: true, message: 'Vote submitted!' });
-          }
-        } else {
-          const targetSub = memorySubmissions.find(s => s.id === submissionId);
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-          if (targetSub.user_id === userId) return res.status(400).json({ error: "You can't vote for yourself, silly!" });
-
-          const existingIndex = memoryVotes.findIndex(v => v.user_id === userId && v.submission_id === submissionId);
-          if (existingIndex >= 0) {
-            memoryVotes.splice(existingIndex, 1);
-            return res.status(200).json({ success: true, voted: false, message: 'Vote removed' });
-          } else {
-            const userVotesCount = memoryVotes.filter(v => v.user_id === userId).length;
-            if (userVotesCount >= 5) {
-              return res.status(400).json({ error: 'You have used all 5 of your votes!' });
-            }
-            memoryVotes.push({
-              id: 'vote_' + Date.now(),
-              event_id: memoryEvent.id,
-              submission_id: submissionId,
-              user_id: userId,
-              created_at: new Date().toISOString()
-            });
-            return res.status(200).json({ success: true, voted: true, message: 'Vote submitted!' });
-          }
-        }
-      }
-
-      // ADD COMMENT
-      if (action === 'comment') {
-        const { submissionId, userId, userName, userAvatar, content } = req.body;
-
-        if (!submissionId || !content?.trim()) {
-          return res.status(400).json({ error: 'Comment content cannot be empty' });
-        }
-
-        const newComment = {
-          submission_id: submissionId,
-          user_id: userId || 'anon',
-          user_name: userName || 'Anonymous',
-          user_avatar: userAvatar || '',
-          content: content.trim(),
-          created_at: new Date().toISOString()
-        };
-
-        // Find screenshot creator to notify
-        let creatorId: string | null = null;
-        let gameName = '';
-        if (supabase) {
-          const { data: subData } = await supabase
-            .from('screenshot_submissions')
-            .select('user_id, game_name')
-            .eq('id', submissionId)
-            .maybeSingle();
-          if (subData) {
-            creatorId = subData.user_id;
-            gameName = subData.game_name || 'Screenshot';
-          }
-        } else {
-          const subData = memorySubmissions.find(s => s.id === submissionId);
-          if (subData) {
-            creatorId = subData.user_id;
-            gameName = subData.game_name || 'Screenshot';
-          }
-        }
-
-        // Send alert if commenter is not the creator
-        if (creatorId && creatorId !== userId) {
-          const notifObj = {
-            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-            user_id: creatorId,
-            actor_name: userName || 'Someone',
-            actor_avatar: userAvatar || '',
-            game_name: gameName,
-            submission_id: submissionId,
-            content: content.trim(),
-            title: 'New Comment on your Screenshot',
-            message: `${userName || 'Someone'} commented on your ${gameName} screenshot: "${content.trim()}"`,
-            created_at: new Date().toISOString(),
-            is_read: false
-          };
-
-          if (supabase) {
-            try {
-              await supabase.from('notifications').insert([{
-                user_id: creatorId,
-                title: notifObj.title,
-                message: notifObj.message,
-                type: 'screenshot_comment',
-                data: JSON.stringify({ submissionId, gameName, userName, content: content.trim() }),
-                created_at: notifObj.created_at,
-                is_read: false
-              }]);
-            } catch (err) {
-              console.warn('Could not insert into Supabase notifications table, using fallback:', err);
-            }
-          }
-          memoryNotifications.unshift(notifObj);
-        }
-
-        if (supabase) {
-          const { data: inserted, error } = await supabase.from('screenshot_comments').insert([newComment]).select().single();
-          if (error) throw error;
-          const parsed = parseCommentContent(inserted.content);
-          return res.status(200).json({
-            success: true,
-            comment: {
-              ...inserted,
-              content: parsed.content,
-              is_edited: parsed.is_edited,
-              edited_at: parsed.edited_at
-            }
-          });
-        } else {
-          const item = { id: 'cmt_' + Date.now(), ...newComment, is_edited: false, edited_at: null };
-          memoryComments.push(item);
-          return res.status(200).json({ success: true, comment: item });
-        }
-      }
-
-      // EDIT COMMENT
-      if (action === 'edit-comment') {
-        const { commentId, userId, content, isAdmin } = req.body;
-        if (!commentId || !content?.trim()) {
-          return res.status(400).json({ error: 'Comment ID and non-empty content are required' });
-        }
-
-        let existingComment: any = null;
-        if (supabase) {
-          const { data } = await supabase.from('screenshot_comments').select('*').eq('id', commentId).maybeSingle();
-          existingComment = data;
-        } else {
-          existingComment = memoryComments.find(c => String(c.id) === String(commentId));
-        }
-
-        if (!existingComment) {
-          return res.status(404).json({ error: 'Comment not found' });
-        }
-
-        const rawReqUid = String(userId || '').trim();
-        const cleanReqUid = rawReqUid.replace('discord_', '');
-        const rawCmtUid = String(existingComment.user_id || '').trim();
-        const cleanCmtUid = rawCmtUid.replace('discord_', '');
-
-        const isOwner = Boolean(cleanReqUid && (cleanReqUid === cleanCmtUid || rawReqUid === rawCmtUid));
-        const userIsAdmin = Boolean(isAdmin || (req as any).user?.is_admin || (req as any).user?.isAdmin);
-
-        if (!isOwner && !userIsAdmin) {
-          return res.status(403).json({ error: 'You are not authorized to edit this comment' });
-        }
-
-        const editedAt = new Date().toISOString();
-        const newEncodedContent = encodeCommentContent(content.trim(), { edited_at: editedAt });
-
-        if (supabase) {
-          const { data: updated, error } = await supabase
-            .from('screenshot_comments')
-            .update({ content: newEncodedContent })
-            .eq('id', commentId)
-            .select()
-            .single();
-          if (error) throw error;
-          return res.status(200).json({
-            success: true,
-            comment: {
-              ...updated,
-              content: content.trim(),
-              is_edited: true,
-              edited_at: editedAt
-            }
-          });
-        } else {
-          memoryComments = memoryComments.map(c => String(c.id) === String(commentId) ? {
-            ...c,
-            content: content.trim(),
-            is_edited: true,
-            edited_at: editedAt
-          } : c);
-          const updated = memoryComments.find(c => String(c.id) === String(commentId));
-          return res.status(200).json({ success: true, comment: updated });
-        }
-      }
-
-      // DELETE COMMENT
-      if (action === 'delete-comment') {
-        const { commentId, userId, isAdmin } = req.body;
-        if (!commentId) {
-          return res.status(400).json({ error: 'Comment ID is required' });
-        }
-
-        let existingComment: any = null;
-        if (supabase) {
-          const { data } = await supabase.from('screenshot_comments').select('*').eq('id', commentId).maybeSingle();
-          existingComment = data;
-        } else {
-          existingComment = memoryComments.find(c => String(c.id) === String(commentId));
-        }
-
-        if (!existingComment) {
-          return res.status(404).json({ error: 'Comment not found' });
-        }
-
-        const rawReqUid = String(userId || '').trim();
-        const cleanReqUid = rawReqUid.replace('discord_', '');
-        const rawCmtUid = String(existingComment.user_id || '').trim();
-        const cleanCmtUid = rawCmtUid.replace('discord_', '');
-
-        const isOwner = Boolean(cleanReqUid && (cleanReqUid === cleanCmtUid || rawReqUid === rawCmtUid));
-        const userIsAdmin = Boolean(isAdmin || (req as any).user?.is_admin || (req as any).user?.isAdmin);
-
-        if (!isOwner && !userIsAdmin) {
-          return res.status(403).json({ error: 'You are not authorized to delete this comment' });
-        }
-
-        if (supabase) {
-          const { error } = await supabase.from('screenshot_comments').delete().eq('id', commentId);
-          if (error) throw error;
-        } else {
-          memoryComments = memoryComments.filter(c => String(c.id) !== String(commentId));
-        }
-
-        return res.status(200).json({ success: true, message: 'Comment deleted successfully' });
-      }
-
-      // ADMIN: UPDATE SUBMISSION (edit caption, game_name, is_spoiler, status)
-      if (action === 'admin-update-submission') {
-        const { submissionId, caption, gameName, isSpoiler, status } = req.body;
-
-        const updateFields: any = {};
-        if (caption !== undefined) updateFields.caption = caption;
-        if (gameName !== undefined) updateFields.game_name = gameName;
-        if (isSpoiler !== undefined) updateFields.is_spoiler = Boolean(isSpoiler);
-        if (status !== undefined) updateFields.status = status;
-
-        if (supabase) {
-          const { data: targetSub } = await supabase
-            .from('screenshot_submissions')
-            .select('*')
-            .eq('id', submissionId)
-            .maybeSingle();
-
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-
-          const parsed = parseSubmissionCaption(targetSub.caption);
-          const effectiveStatus = (status !== undefined) ? status : parsed.status;
-          const effectiveAdmin = (effectiveStatus === 'approved') ? (req.body.adminName || parsed.approved_by || 'Admin') : (effectiveStatus === 'pending' ? null : parsed.approved_by);
-          const effectiveCaption = (caption !== undefined) ? caption : parsed.caption;
-
-          const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
-            status: effectiveStatus,
-            approved_by: effectiveAdmin,
-            approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null)
-          });
-
-          const dbFields: any = { caption: updatedCaption };
-          if (gameName !== undefined) dbFields.game_name = gameName;
-          if (isSpoiler !== undefined) dbFields.is_spoiler = Boolean(isSpoiler);
-
-          const { data: updated, error } = await supabase
-            .from('screenshot_submissions')
-            .update(dbFields)
-            .eq('id', submissionId)
-            .select()
-            .single();
-
-          if (error) throw error;
-
-          if (targetSub?.user_id) {
-            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
-          }
-
-          return res.status(200).json({
-            success: true,
-            submission: {
-              ...updated,
-              caption: effectiveCaption,
-              status: effectiveStatus,
-              approved_by: effectiveAdmin
-            }
-          });
-        } else {
-          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
-            ...s,
-            ...updateFields
-          } : s);
-          return res.status(200).json({ success: true });
-        }
-      }
-
-      // ADMIN OR USER: DELETE SUBMISSION (removes points awarded & updates leaderboard)
-      if (action === 'admin-delete-submission' || action === 'delete-submission') {
-        const { submissionId } = req.body;
-
-        if (supabase) {
-          // Fetch target submission details to identify user
-          const { data: targetSub } = await supabase
-            .from('screenshot_submissions')
-            .select('*')
-            .eq('id', submissionId)
-            .maybeSingle();
-
-          const targetUserId = targetSub?.user_id;
-
-          await supabase.from('screenshot_comments').delete().eq('submission_id', submissionId);
-          await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
-          await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
-
-          // Clean up point row in submissions table matching this submission
+        const apiKey = process.env.STEAM_API_KEY;
+
+        let hoursPlayed = 0;
+        let achievementsEarned = 0;
+        let totalAchievements = 0;
+        let gameFoundInLibrary = false;
+        let hasNoAchievements = false;
+
+        let ownedGames: any[] = [];
+        if (apiKey) {
           try {
-            await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`);
-          } catch (e) {}
-
-          if (targetUserId) {
-            await reconcileUserScreenshotPoints(supabase, targetUserId);
-          }
-
-          return res.status(200).json({ success: true, message: 'Submission deleted and points reconciled' });
-        } else {
-          memorySubmissions = memorySubmissions.filter(s => s.id !== submissionId);
-          memoryVotes = memoryVotes.filter(v => v.submission_id !== submissionId);
-          memoryComments = memoryComments.filter(c => c.submission_id !== submissionId);
-          return res.status(200).json({ success: true, message: 'Submission deleted' });
-        }
-      }
-
-      // ADMIN: TOGGLE VOTING PERIOD
-      if (action === 'admin-toggle-voting') {
-        let targetId = memoryEvent.id;
-        let currentStatus = memoryEvent.status;
-        if (supabase) {
-          const { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
-          if (evt) {
-            targetId = evt.id;
-            currentStatus = evt.status;
-            memoryEvent = { ...memoryEvent, ...evt };
+            const ownedRes = await fetch(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=1&include_played_free_games=1`);
+            if (ownedRes.ok) {
+              const ownedData: any = await ownedRes.json();
+              ownedGames = ownedData.response?.games || [];
+            }
+          } catch (err) {
+            console.error('[Steam Stats API] Owned games fetch error:', err);
           }
         }
 
-        const newStatus = currentStatus === 'voting_active' ? 'submissions_open' : 'voting_active';
-
-        if (supabase) {
-          const { data: updated } = await supabase
-            .from('screenshot_events')
-            .update({ status: newStatus })
-            .eq('id', targetId)
-            .select()
-            .single();
-
-          if (updated) memoryEvent = { ...memoryEvent, ...updated };
-          else memoryEvent.status = newStatus;
-        } else {
-          memoryEvent.status = newStatus;
-        }
-
-        return res.status(200).json({
-          success: true,
-          status: memoryEvent.status,
-          is_voting_active: memoryEvent.status === 'voting_active',
-          event: {
-            ...memoryEvent,
-            submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : getSavedSubmissionPoints(),
-            is_voting_active: memoryEvent.status === 'voting_active'
+        let matchedGame = appId ? ownedGames.find(g => Number(g.appid) === Number(appId)) : null;
+        if (!matchedGame && gameTitleQuery && ownedGames.length > 0) {
+          const targetTitle = String(gameTitleQuery).toLowerCase().trim();
+          matchedGame = ownedGames.find(g => g.name && g.name.toLowerCase().trim() === targetTitle) ||
+                        ownedGames.find(g => g.name && g.name.toLowerCase().includes(targetTitle));
+          if (matchedGame && !appId) {
+            appId = Number(matchedGame.appid);
           }
-        });
-      }
-
-      // ADMIN: UPDATE EVENT STATUS & SETTINGS ('draft' | 'submissions_open' | 'voting_active' | 'concluded', submission_points)
-      if (action === 'admin-event-status' || action === 'admin-update-event') {
-        const { status, isAdminOnly, submissionPoints } = req.body;
-
-        const updateData: any = {};
-        if (status) {
-          updateData.status = status;
-          memoryEvent.status = status;
-        }
-        if (isAdminOnly !== undefined) {
-          updateData.is_admin_only = Boolean(isAdminOnly);
-          memoryEvent.is_admin_only = Boolean(isAdminOnly);
-        }
-        if (submissionPoints !== undefined && !isNaN(Number(submissionPoints))) {
-          const pts = Math.max(0, Number(submissionPoints));
-          persistentDefaultSubmissionPoints = pts;
-          saveSubmissionPointsLocally(pts);
-          updateData.submission_points = pts;
-          memoryEvent.submission_points = pts;
-
-          const baseDesc = (memoryEvent.description || 'Screenshot Showcase & Contest')
-            .replace(/<!--SUBMISSION_POINTS:\d+-->/g, '')
-            .trim();
-          updateData.description = `${baseDesc} <!--SUBMISSION_POINTS:${pts}-->`;
-          memoryEvent.description = updateData.description;
         }
 
-        if (supabase) {
+        if (matchedGame) {
+          gameFoundInLibrary = true;
+          const playtimeMinutes = matchedGame.playtime_forever || 0;
+          hoursPlayed = Math.round((playtimeMinutes / 60) * 10) / 10;
+        }
+
+        if (appId && apiKey) {
           try {
-            let targetId = memoryEvent.id;
-            const { data: existingEvt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
-            if (existingEvt) {
-              targetId = existingEvt.id;
-              if (updateData.description && existingEvt.description) {
-                const baseDesc = existingEvt.description.replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim();
-                const currentPts = updateData.submission_points !== undefined ? updateData.submission_points : persistentDefaultSubmissionPoints;
-                updateData.description = `${baseDesc} <!--SUBMISSION_POINTS:${currentPts}-->`;
-              }
-              memoryEvent = { ...memoryEvent, ...existingEvt, ...updateData };
-              
-              const { data: updated, error } = await supabase
-                .from('screenshot_events')
-                .update(updateData)
-                .eq('id', targetId)
-                .select()
-                .maybeSingle();
-
-              if (!error && updated) {
-                memoryEvent = { ...memoryEvent, ...updated };
-              } else if (error) {
-                // If update failed due to missing submission_points column, fallback to description-only update
-                const fallbackData = { ...updateData };
-                delete fallbackData.submission_points;
-                const { data: fallbackUpdated } = await supabase
-                  .from('screenshot_events')
-                  .update(fallbackData)
-                  .eq('id', targetId)
-                  .select()
-                  .maybeSingle();
-                if (fallbackUpdated) {
-                  memoryEvent = { ...memoryEvent, ...fallbackUpdated, submission_points: persistentDefaultSubmissionPoints };
-                }
-              }
-            } else {
-              // Insert seed record with updateData
-              const seedEvt = { ...memoryEvent, ...updateData };
-              const { data: inserted, error } = await supabase
-                .from('screenshot_events')
-                .insert([seedEvt])
-                .select()
-                .maybeSingle();
-
-              if (!error && inserted) {
-                memoryEvent = { ...memoryEvent, ...inserted };
-              } else if (error) {
-                const fallbackSeed = { ...seedEvt };
-                delete fallbackSeed.submission_points;
-                const { data: fallbackInserted } = await supabase
-                  .from('screenshot_events')
-                  .insert([fallbackSeed])
-                  .select()
-                  .maybeSingle();
-                if (fallbackInserted) {
-                  memoryEvent = { ...memoryEvent, ...fallbackInserted, submission_points: persistentDefaultSubmissionPoints };
+            const achRes = await fetch(`https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid=${appId}&key=${apiKey}&steamid=${steamId}`);
+            if (achRes.ok) {
+              const achData: any = await achRes.json();
+              if (achData.playerstats?.success) {
+                const achList = achData.playerstats.achievements || [];
+                totalAchievements = achList.length;
+                achievementsEarned = achList.filter((a: any) => a.achieved === 1).length;
+                if (totalAchievements === 0) {
+                  hasNoAchievements = true;
                 }
               }
             }
-          } catch (dbErr) {
-            console.warn('[Screenshot API] Supabase update failed, using in-memory state:', dbErr);
+          } catch (err) {
+            console.error('[Steam Stats API] Achievements fetch error:', err);
           }
-        }
-
-        const effectivePts = extractSubmissionPoints(memoryEvent);
-
-        return res.status(200).json({
-          success: true,
-          event: {
-            ...memoryEvent,
-            submission_points: effectivePts,
-            is_voting_active: memoryEvent.status === 'voting_active'
-          }
-        });
-      }
-
-      // ADMIN: TALLY VOTES & AWARD WINNER POINTS (+50, +40, +30, +20, +10)
-      if (action === 'admin-tally-points') {
-        const { adminName, adminId } = req.body;
-
-        let subs: any[] = [];
-        let votes: any[] = [];
-
-        if (supabase) {
-          const { data: s } = await supabase.from('screenshot_submissions').select('*').eq('is_selected', true);
-          const { data: v } = await supabase.from('screenshot_votes').select('*');
-          subs = s || [];
-          votes = v || [];
-        } else {
-          subs = memorySubmissions.filter(s => s.is_selected);
-          votes = memoryVotes;
-        }
-
-        // Count votes per submission
-        const voteMap: Record<string, number> = {};
-        votes.forEach(v => {
-          voteMap[v.submission_id] = (voteMap[v.submission_id] || 0) + 1;
-        });
-
-        const rankedSubs = subs.map(s => ({
-          ...s,
-          voteCount: voteMap[s.id] || 0
-        })).sort((a, b) => b.voteCount - a.voteCount);
-
-        const rewardScale = [50, 40, 30, 20, 10];
-        const awardedResults: any[] = [];
-
-        for (let i = 0; i < Math.min(5, rankedSubs.length); i++) {
-          const sub = rankedSubs[i];
-          const pts = rewardScale[i];
-          const rankName = i === 0 ? '1st Place' : i === 1 ? '2nd Place' : i === 2 ? '3rd Place' : i === 3 ? '4th Place' : '5th Place';
-
-          if (sub.user_team && sub.user_team !== 'none' && pts > 0) {
-            const notes = `__META_START__${JSON.stringify({ userNotes: `Bingo / Screenshot Contest ${rankName} Winner (${sub.user_name}) - ${sub.game_name}` })}__META_END__`;
-
-            if (supabase) {
-              await supabase.from('submissions').insert([{
-                user_id: sub.user_id,
-                game_name: `Screenshot Contest ${rankName} (+${pts} pts)`,
-                platform: 'Bingo Points',
-                points: pts,
-                calculated_score: pts,
-                status: 'verified',
-                notes: notes,
-                created_at: new Date().toISOString()
-              }]);
-            }
-
-            awardedResults.push({
-              rank: rankName,
-              user: sub.user_name,
-              team: sub.user_team,
-              votes: sub.voteCount,
-              points: pts
-            });
-          }
-        }
-
-        // Set event status to concluded
-        if (supabase) {
-          await supabase.from('screenshot_events').update({ status: 'concluded' }).eq('id', memoryEvent.id);
-        } else {
-          memoryEvent.status = 'concluded';
         }
 
         return res.status(200).json({
           success: true,
-          message: 'Points successfully awarded to top 5 winning teams!',
-          awardedResults
+          steamId,
+          appId,
+          hoursPlayed,
+          achievementsEarned,
+          totalAchievements,
+          hasNoAchievements,
+          gameFoundInLibrary,
+          message: gameFoundInLibrary 
+            ? `Synced ${hoursPlayed} hrs and ${achievementsEarned}${totalAchievements > 0 ? '/' + totalAchievements : ''} achievements from Steam.`
+            : `Game not found in user's Steam library (or profile is set to private). Defaulting to 0.`
         });
       }
+
+      if (id !== null) {
+        const { data, error } = await supabase
+          .from('submissions')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (error || !data) {
+          return res.status(404).json({ error: 'Submission not found' });
+        }
+        return res.status(200).json(data);
+      }
+
+      const userId = (req.query.userId || req.query.user_id || req.headers['x-user-id'] || req.headers['x-steam-id']) as string | undefined;
+
+      let query = supabase.from('submissions').select('*').order('created_at', { ascending: false });
+      if (userId) {
+        query = query.or(`user_id.eq.${userId},steamid.eq.${userId}`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const nonScreenshotSubs = (data || []).filter((s: any) => {
+        const platform = String(s.platform || '').toLowerCase();
+        const gameName = String(s.game_name || '').toLowerCase();
+        const notes = String(s.notes || '').toLowerCase();
+        return !(platform.includes('screenshot') || gameName.includes('screenshot') || notes.includes('screenshotid'));
+      });
+
+      return res.status(200).json(nonScreenshotSubs);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to fetch submissions' });
     }
-
-    return res.status(405).json({ error: 'Method not allowed' });
-  } catch (err: any) {
-    console.error('Error in /api/screenshots handler:', err);
-    return res.status(500).json({ error: err.message || 'Server error handling screenshot request' });
   }
+
+  // 3. Handle PUT: Update an existing submission by ID
+  if (req.method === 'PUT') {
+    if (id === null) {
+      return res.status(400).json({ error: 'Valid submission ID is required for update' });
+    }
+
+    try {
+      const body = req.body || {};
+
+      const { data, error } = await supabase
+        .from('submissions')
+        .update({
+          game_id: body.gameId || body.game_id,
+          game_name: body.gameTitle || body.game_name,
+          game_image: body.gameImage || body.game_image,
+          achievements_during: body.achievements || body.achievements_during,
+          hours_during: body.hours || body.hours_during,
+          achievements_before: body.achievementsBefore || body.achievements_before,
+          hours_before: body.hoursBefore || body.hours_before,
+          multiplier: body.multiplier,
+          completion_status: body.completionStatus || body.completion_status,
+          beaten_previous: body.beatenPrevious || body.beaten_previous,
+          platform: body.platform,
+          points: body.calculatedScore || body.points,
+          calculated_score: body.calculatedScore || body.points || 0,
+          notes: body.notes,
+          steam_appid: body.steam_appid,
+          status: 'pending',
+          rejection_reason: null,
+          verifier_id: null
+        })
+        .eq('id', id)
+        .select();
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        return res.status(404).json({ error: 'Submission not found' });
+      }
+
+      return res.status(200).json(data[0]);
+    } catch (error: any) {
+      console.error('Supabase PUT Error:', error);
+      return res.status(500).json({ error: error.message || 'Failed to update submission' });
+    }
+  }
+
+  // 4. Handle DELETE: Delete submission by ID
+  if (req.method === 'DELETE') {
+    if (id === null) {
+      return res.status(400).json({ error: 'Valid submission ID is required for deletion' });
+    }
+
+    try {
+      // Find user_id first so we can reconcile their profile points
+      const { data: existingSub } = await supabase
+        .from('submissions')
+        .select('user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      const { error } = await supabase
+        .from('submissions')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      if (existingSub?.user_id) {
+        try {
+          const rawUid = String(existingSub.user_id).trim();
+          const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
+          
+          const { data: activeEvent } = await supabase
+            .from('events')
+            .select('id, description')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          const { data: userSubs } = await supabase
+            .from('submissions')
+            .select('points, calculated_score, game_name, status, event_id, platform')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`);
+
+          const { data: allScreenshots } = await supabase
+            .from('screenshot_submissions')
+            .select('id, user_id')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`);
+
+          const validScreenshotsCount = (allScreenshots || []).length;
+          let screenshotPointsSeen = 0;
+          let totalPts = 0;
+
+          (userSubs || []).forEach((sub: any) => {
+            const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+            if (!isVerified) return;
+            if (activeEvent && sub.event_id && sub.event_id !== activeEvent.id) return;
+            if (sub.game_name === 'Event Update' || String(sub.user_id).startsWith('team_pts_')) return;
+
+            const isScreenshotPoint = sub.platform === 'Screenshot Event' || 
+              (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+              (sub.game_name && sub.game_name.includes('Screenshot Submission'));
+
+            if (isScreenshotPoint) {
+              if (screenshotPointsSeen >= validScreenshotsCount) return;
+              screenshotPointsSeen++;
+            }
+
+            const pts = Math.round(Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0);
+            totalPts += pts;
+          });
+
+          // Fetch adjustments
+          const { data: adjustments } = await supabase
+            .from('team_adjustments')
+            .select('points')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`);
+
+          (adjustments || []).forEach((adj: any) => {
+            totalPts += Math.round(Number(adj.points) || 0);
+          });
+
+          await supabase
+            .from('profiles')
+            .update({ points: totalPts })
+            .or(`steamid.eq.${rawUid},steamid.eq.${cleanUid},discord_id.eq.${rawUid},discord_id.eq.${cleanUid},id.eq.${cleanUid},id.eq.${rawUid}`);
+
+          if (activeEvent?.id && activeEvent?.description) {
+            try {
+              let savedScores: any = null;
+              const match = activeEvent.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+              if (match && match[1]) {
+                savedScores = JSON.parse(match[1]);
+              }
+              if (savedScores && savedScores.userScores) {
+                savedScores.userScores[rawUid] = totalPts;
+                savedScores.userScores[cleanUid] = totalPts;
+                const newSnapStr = `<!--EVENT_SCORES:${JSON.stringify(savedScores)}-->`;
+                const updatedDesc = activeEvent.description.replace(/<!--EVENT_SCORES:.*?-->/s, newSnapStr);
+                await supabase.from('events').update({ description: updatedDesc }).eq('id', activeEvent.id);
+              }
+            } catch (snapErr) {
+              console.warn('Post-deletion event scores update warning:', snapErr);
+            }
+          }
+        } catch (syncErr) {
+          console.warn('Post-deletion profile points sync warning:', syncErr);
+        }
+      }
+
+      return res.status(200).json({ success: true, message: 'Submission deleted' });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to delete submission' });
+    }
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
 }
