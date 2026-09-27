@@ -567,8 +567,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
         const { data: allScreenshots } = await supabase
           .from('screenshot_submissions')
-          .select('user_id, status')
-          .neq('status', 'rejected');
+          .select('user_id');
 
         const validScreenshotsCount: Record<string, number> = {};
         (allScreenshots || []).forEach((sc: any) => {

@@ -24,6 +24,8 @@ interface ScreenshotSubmission {
   is_spoiler: boolean;
   is_selected: boolean;
   status?: 'pending' | 'approved' | 'rejected' | 'verified';
+  approved_by?: string | null;
+  approved_at?: string | null;
   created_at: string;
 }
 
@@ -174,6 +176,15 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [editGameName, setEditGameName] = useState('');
   const [editIsSpoiler, setEditIsSpoiler] = useState(false);
   const [editStatus, setEditStatus] = useState<'pending' | 'approved' | 'rejected'>('approved');
+
+  // Single Voting Entry replacement confirmation modal
+  const [replaceVotingModal, setReplaceVotingModal] = useState<{
+    isOpen: boolean;
+    type: 'upload' | 'set_voting';
+    targetSubId?: string;
+    existingSub: ScreenshotSubmission;
+    targetGameName?: string;
+  } | null>(null);
 
   // Notice modal for voting inactive
   const [votingNoticeMessage, setVotingNoticeMessage] = useState<string | null>(null);
@@ -396,9 +407,31 @@ interface UserSubmissionStat {
     }
   };
 
-  // Submit Screenshot
-  const handleCreateSubmission = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Find current user's existing voting entry if any
+  const userExistingVotingEntry = useMemo(() => {
+    if (!currentUserId) return null;
+    const cleanCurrent = String(currentUserId).replace('discord_', '');
+    return submissions.find(s => {
+      const rawSubUid = String(s.user_id || '').trim();
+      const cleanSubUid = rawSubUid.replace('discord_', '');
+      return (rawSubUid === currentUserId || cleanSubUid === cleanCurrent) && s.is_selected;
+    }) || null;
+  }, [submissions, currentUserId]);
+
+  const openSubmitModal = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setImageUrlInput('');
+    setCaptionInput('');
+    setGameNameInput('');
+    setIsSpoilerInput(false);
+    setIsSelectedInput(false);
+    setSubmitError('');
+    setIsSubmitModalOpen(true);
+  };
+
+  // Execute Submit Screenshot
+  const executeSubmitSubmission = async (forceSelectedVoting?: boolean) => {
     const finalUrl = imagePreview || imageUrlInput;
     if (!finalUrl) {
       setSubmitError('Please select an image file or provide an image URL');
@@ -408,6 +441,8 @@ interface UserSubmissionStat {
       setSubmitError('Please enter the name of the game');
       return;
     }
+
+    const effectiveSelected = forceSelectedVoting !== undefined ? forceSelectedVoting : isSelectedInput;
 
     setSubmitting(true);
     setSubmitError('');
@@ -425,7 +460,7 @@ interface UserSubmissionStat {
           caption: captionInput.trim(),
           gameName: gameNameInput.trim(),
           isSpoiler: isSpoilerInput,
-          isSelected: isSelectedInput
+          isSelected: effectiveSelected
         })
       });
 
@@ -450,8 +485,35 @@ interface UserSubmissionStat {
     }
   };
 
-  // Toggle "Set for Voting"
-  const handleSetForVoting = async (subId: string) => {
+  // Submit Screenshot Form Handler with Single Voting Entry Check
+  const handleCreateSubmission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalUrl = imagePreview || imageUrlInput;
+    if (!finalUrl) {
+      setSubmitError('Please select an image file or provide an image URL');
+      return;
+    }
+    if (!gameNameInput.trim()) {
+      setSubmitError('Please enter the name of the game');
+      return;
+    }
+
+    // Single Voting Entry Guarantee: If user marked this as for voting and already has an entry marked, confirm first
+    if (isSelectedInput && userExistingVotingEntry) {
+      setReplaceVotingModal({
+        isOpen: true,
+        type: 'upload',
+        existingSub: userExistingVotingEntry,
+        targetGameName: gameNameInput.trim()
+      });
+      return;
+    }
+
+    await executeSubmitSubmission();
+  };
+
+  // Execute Toggle "Set for Voting"
+  const executeSetForVoting = async (subId: string) => {
     const currentSub = submissions.find(s => s.id === subId);
     const willSelect = currentSub ? !currentSub.is_selected : true;
     const cleanCurrent = String(currentUserId).replace('discord_', '');
@@ -485,6 +547,39 @@ interface UserSubmissionStat {
       console.error('Failed to set for voting:', err);
       fetchData();
     }
+  };
+
+  // Toggle "Set for Voting" with Single Voting Entry Replacement Check
+  const handleSetForVoting = (subId: string) => {
+    const currentSub = submissions.find(s => s.id === subId);
+    const willSelect = currentSub ? !currentSub.is_selected : true;
+
+    // If user is un-marking the current entry, no conflict/replacement prompt needed
+    if (!willSelect) {
+      executeSetForVoting(subId);
+      return;
+    }
+
+    // Check if user already has another submission marked as for voting
+    const cleanCurrent = String(currentUserId).replace('discord_', '');
+    const existingVotingEntry = submissions.find(s => {
+      const rawSubUid = String(s.user_id || '').trim();
+      const cleanSubUid = rawSubUid.replace('discord_', '');
+      return (rawSubUid === currentUserId || cleanSubUid === cleanCurrent) && s.is_selected && s.id !== subId;
+    });
+
+    if (existingVotingEntry) {
+      setReplaceVotingModal({
+        isOpen: true,
+        type: 'set_voting',
+        targetSubId: subId,
+        existingSub: existingVotingEntry,
+        targetGameName: currentSub?.game_name || 'this screenshot'
+      });
+      return;
+    }
+
+    executeSetForVoting(subId);
   };
 
   // Vote for Screenshot
@@ -648,13 +743,19 @@ interface UserSubmissionStat {
   };
 
   const handleAdminSetStatus = async (subId: string, newStatus: 'approved' | 'pending' | 'rejected') => {
+    const adminName = user?.steamName || user?.discordName || 'Admin';
     // Optimistic local update
-    setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, status: newStatus } : s));
+    setSubmissions(prev => prev.map(s => s.id === subId ? {
+      ...s,
+      status: newStatus,
+      approved_by: newStatus === 'approved' ? adminName : (newStatus === 'pending' ? null : s.approved_by),
+      approved_at: newStatus === 'approved' ? new Date().toISOString() : (newStatus === 'pending' ? null : s.approved_at)
+    } : s));
     try {
       const res = await fetch('/api/screenshots?action=admin-set-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId: subId, status: newStatus })
+        body: JSON.stringify({ submissionId: subId, status: newStatus, adminName })
       });
       if (res.ok) {
         fetchData();
@@ -686,6 +787,7 @@ interface UserSubmissionStat {
   const handleAdminSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSub) return;
+    const adminName = user?.steamName || user?.discordName || 'Admin';
 
     try {
       const res = await fetch('/api/screenshots?action=admin-update-submission', {
@@ -696,7 +798,8 @@ interface UserSubmissionStat {
           caption: editCaption,
           gameName: editGameName,
           isSpoiler: editIsSpoiler,
-          status: editStatus
+          status: editStatus,
+          adminName
         })
       });
       if (res.ok) {
@@ -735,7 +838,7 @@ interface UserSubmissionStat {
 
   // Featured Approved Screenshots for top showcase
   const featuredSubmissions = useMemo(() => {
-    return submissions.filter(s => (s.status === 'approved' || !s.status || s.status === 'verified')).slice(0, 6);
+    return submissions.filter(s => (s.status === 'approved' || s.status === 'verified')).slice(0, 6);
   }, [submissions]);
 
   // Filtered Submissions list
@@ -917,7 +1020,7 @@ interface UserSubmissionStat {
 
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <button
-              onClick={() => setIsSubmitModalOpen(true)}
+              onClick={openSubmitModal}
               className={cn("w-full sm:w-auto font-bold text-sm px-6 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer", teamSolidBtn)}
             >
               <Plus size={18} />
@@ -1152,7 +1255,7 @@ interface UserSubmissionStat {
             {searchGame ? 'Try clearing your search filter.' : 'Be the first to submit a screenshot for your team!'}
           </p>
           <button
-            onClick={() => setIsSubmitModalOpen(true)}
+            onClick={openSubmitModal}
             className={cn("mt-2 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer", teamSubtleBtn)}
           >
             + Upload Screenshot
@@ -1227,35 +1330,69 @@ interface UserSubmissionStat {
                     </span>
 
                     <div className="flex items-center gap-1.5 pointer-events-auto">
-                      {/* Color-Coded Status Badge matching Team Palette */}
+                      {/* Color-Coded Status Badge matching Team Palette with Tooltip */}
                       {(() => {
-                        const status = sub.status || 'approved';
+                        const status = sub.status || 'pending';
                         const team = sub.user_team || 'none';
                         const teamColor = TEAM_COLORS[team as Team] || TEAM_COLORS['none'];
+                        const approver = sub.approved_by || 'an Admin';
 
                         if (status === 'approved' || status === 'verified') {
                           return (
-                            <span className={cn(
-                              "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md",
-                              team !== 'none'
-                                ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
-                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                            )}>
-                              <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
-                              Approved
-                            </span>
+                            <div className="relative group/badge inline-flex items-center">
+                              <span
+                                title={`Approved by ${approver}${sub.approved_at ? ` (${new Date(sub.approved_at).toLocaleDateString()})` : ''}`}
+                                className={cn(
+                                  "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help transition-all",
+                                  team !== 'none'
+                                    ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
+                                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                )}
+                              >
+                                <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
+                                Approved
+                              </span>
+                              {/* Hover Tooltip showing Admin who approved */}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="bg-slate-950/95 text-slate-100 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shadow-2xl border border-emerald-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
+                                  <ShieldCheck size={13} className="text-emerald-400 shrink-0" />
+                                  <span>Approved by <span className="text-emerald-300 font-bold">{approver}</span></span>
+                                  {sub.approved_at && (
+                                    <span className="text-[10px] text-white/50 border-l border-white/20 pl-1.5">
+                                      {new Date(sub.approved_at).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-emerald-500/40 transform rotate-45 -mt-1" />
+                              </div>
+                            </div>
                           );
                         }
                         if (status === 'pending') {
                           return (
-                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md">
-                              <Clock size={10} className="text-amber-400 animate-pulse" />
-                              Pending
-                            </span>
+                            <div className="relative group/badge inline-flex items-center">
+                              <span
+                                title="Pending Admin Approval"
+                                className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help"
+                              >
+                                <Clock size={10} className="text-amber-400 animate-pulse" />
+                                Pending
+                              </span>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="bg-slate-950/95 text-amber-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-2xl border border-amber-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
+                                  <Clock size={12} className="text-amber-400 shrink-0" />
+                                  <span>Pending admin review</span>
+                                </div>
+                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-amber-500/40 transform rotate-45 -mt-1" />
+                              </div>
+                            </div>
                           );
                         }
                         return (
-                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md">
+                          <span
+                            title="Rejected"
+                            className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md"
+                          >
                             <XCircle size={10} className="text-rose-400" />
                             Rejected
                           </span>
@@ -1291,10 +1428,10 @@ interface UserSubmissionStat {
                           e.stopPropagation();
                           handleAdminSetStatus(sub.id, 'approved');
                         }}
-                        title="Mark as Approved"
+                        title={`Mark as Approved (Will record your approval as ${user?.steamName || user?.discordName || 'Admin'})`}
                         className={cn(
                           "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          (sub.status === 'approved' || !sub.status)
+                          (sub.status === 'approved' || sub.status === 'verified')
                             ? "bg-emerald-500 text-black border-emerald-400"
                             : "bg-black/80 hover:bg-black text-emerald-400 border-emerald-500/30"
                         )}
@@ -1309,7 +1446,7 @@ interface UserSubmissionStat {
                         title="Mark as Pending"
                         className={cn(
                           "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          sub.status === 'pending'
+                          (sub.status === 'pending' || !sub.status)
                             ? "bg-amber-500 text-black border-amber-400"
                             : "bg-black/80 hover:bg-black text-amber-400 border-amber-500/30"
                         )}
@@ -1590,35 +1727,69 @@ interface UserSubmissionStat {
 
                     {/* Status & Voting Badges */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {/* Color-coded status badge matching team color */}
+                      {/* Color-coded status badge matching team color with Tooltip */}
                       {(() => {
-                        const status = sub.status || 'approved';
+                        const status = sub.status || 'pending';
                         const team = sub.user_team || 'none';
                         const teamColor = TEAM_COLORS[team as Team] || TEAM_COLORS['none'];
+                        const approver = sub.approved_by || 'an Admin';
 
                         if (status === 'approved' || status === 'verified') {
                           return (
-                            <span className={cn(
-                              "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md",
-                              team !== 'none'
-                                ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
-                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                            )}>
-                              <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
-                              Approved
-                            </span>
+                            <div className="relative group/badge inline-flex items-center">
+                              <span
+                                title={`Approved by ${approver}${sub.approved_at ? ` (${new Date(sub.approved_at).toLocaleDateString()})` : ''}`}
+                                className={cn(
+                                  "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help transition-all",
+                                  team !== 'none'
+                                    ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
+                                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                )}
+                              >
+                                <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
+                                Approved
+                              </span>
+                              {/* Hover Tooltip showing Admin who approved */}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="bg-slate-950/95 text-slate-100 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shadow-2xl border border-emerald-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
+                                  <ShieldCheck size={13} className="text-emerald-400 shrink-0" />
+                                  <span>Approved by <span className="text-emerald-300 font-bold">{approver}</span></span>
+                                  {sub.approved_at && (
+                                    <span className="text-[10px] text-white/50 border-l border-white/20 pl-1.5">
+                                      {new Date(sub.approved_at).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-emerald-500/40 transform rotate-45 -mt-1" />
+                              </div>
+                            </div>
                           );
                         }
                         if (status === 'pending') {
                           return (
-                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md">
-                              <Clock size={10} className="text-amber-400 animate-pulse" />
-                              Pending
-                            </span>
+                            <div className="relative group/badge inline-flex items-center">
+                              <span
+                                title="Pending Admin Approval"
+                                className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help"
+                              >
+                                <Clock size={10} className="text-amber-400 animate-pulse" />
+                                Pending
+                              </span>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="bg-slate-950/95 text-amber-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-2xl border border-amber-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
+                                  <Clock size={12} className="text-amber-400 shrink-0" />
+                                  <span>Pending admin review</span>
+                                </div>
+                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-amber-500/40 transform rotate-45 -mt-1" />
+                              </div>
+                            </div>
                           );
                         }
                         return (
-                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md">
+                          <span
+                            title="Rejected"
+                            className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md"
+                          >
                             <XCircle size={10} className="text-rose-400" />
                             Rejected
                           </span>
@@ -1727,10 +1898,10 @@ interface UserSubmissionStat {
                           e.stopPropagation();
                           handleAdminSetStatus(sub.id, 'approved');
                         }}
-                        title="Approve"
+                        title={`Approve (Will record your approval as ${user?.steamName || user?.discordName || 'Admin'})`}
                         className={cn(
                           "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          (sub.status === 'approved' || !sub.status)
+                          (sub.status === 'approved' || sub.status === 'verified')
                             ? "bg-emerald-500 text-black border-emerald-400"
                             : "bg-black/5 dark:bg-white/5 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
                         )}
@@ -1745,7 +1916,7 @@ interface UserSubmissionStat {
                         title="Pending"
                         className={cn(
                           "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          sub.status === 'pending'
+                          (sub.status === 'pending' || !sub.status)
                             ? "bg-amber-500 text-black border-amber-400"
                             : "bg-black/5 dark:bg-white/5 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
                         )}
@@ -1946,6 +2117,15 @@ interface UserSubmissionStat {
                       Set as my official entry for Voting
                     </span>
                   </label>
+
+                  {isSelectedInput && userExistingVotingEntry && (
+                    <div className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2 ml-1">
+                      <AlertCircle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span>You already have an official voting entry: <strong>"{userExistingVotingEntry.game_name || 'Screenshot'}"</strong>. Submitting will confirm replacing it.</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 flex items-center justify-end gap-3">
@@ -2635,6 +2815,105 @@ interface UserSubmissionStat {
                   className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
                 >
                   Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* SINGLE VOTING ENTRY GUARANTEE: REPLACEMENT CONFIRMATION POPUP */}
+      <AnimatePresence>
+        {replaceVotingModal && replaceVotingModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-white"
+            >
+              <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 text-amber-400 shadow-inner">
+                  <Star size={22} className="fill-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <h3 className="text-base font-black text-white leading-tight">
+                    Replace Official Voting Entry?
+                  </h3>
+                  <p className="text-[11px] text-amber-400 font-semibold tracking-wide uppercase mt-0.5">
+                    Single Voting Entry Guarantee
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplaceVotingModal(null)}
+                  className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3">
+                <p className="text-xs text-white/90 leading-relaxed">
+                  You already have an entry marked as <strong className="text-amber-400">'For Voting'</strong>. Do you want to replace it with this one?
+                </p>
+
+                {/* Existing entry preview */}
+                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3">
+                  {replaceVotingModal.existingSub.image_url ? (
+                    <img
+                      src={replaceVotingModal.existingSub.image_url}
+                      alt=""
+                      className="w-12 h-12 rounded-lg object-cover border border-white/10 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-black/60 flex items-center justify-center text-white/30 shrink-0 border border-white/10">
+                      <Camera size={16} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Current Voting Entry</span>
+                    <h4 className="text-xs font-bold text-white truncate">
+                      {replaceVotingModal.existingSub.game_name || 'Screenshot'}
+                    </h4>
+                    {replaceVotingModal.existingSub.caption && (
+                      <p className="text-[11px] text-white/50 truncate italic">
+                        "{replaceVotingModal.existingSub.caption}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {replaceVotingModal.targetGameName && (
+                  <p className="text-[11px] text-emerald-400/90 font-medium">
+                    New entry: <strong>{replaceVotingModal.targetGameName}</strong> will become your one official voting entry.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReplaceVotingModal(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+                >
+                  No, go back
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const modalData = replaceVotingModal;
+                    setReplaceVotingModal(null);
+                    if (modalData.type === 'upload') {
+                      await executeSubmitSubmission(true);
+                    } else if (modalData.type === 'set_voting' && modalData.targetSubId) {
+                      await executeSetForVoting(modalData.targetSubId);
+                    }
+                  }}
+                  className="px-5 py-2.5 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-300 border border-amber-300 transition-all flex items-center gap-1.5 shadow-lg shadow-amber-500/25 active:scale-95 cursor-pointer"
+                >
+                  <Check size={14} />
+                  Yes, replace it
                 </button>
               </div>
             </motion.div>

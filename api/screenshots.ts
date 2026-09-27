@@ -86,6 +86,40 @@ let memoryVotes: any[] = [];
 let memoryComments: any[] = [];
 let memoryNotifications: any[] = [];
 
+function parseSubmissionCaption(rawCaption: string | null | undefined): {
+  caption: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_by: string | null;
+  approved_at: string | null;
+} {
+  const text = rawCaption || '';
+  const match = text.match(/<!--APPROVAL:(\{.*?\})-->/);
+  if (match && match[1]) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      const cleanCaption = text.replace(/<!--APPROVAL:\{.*?\}-->/g, '').trim();
+      return {
+        caption: cleanCaption,
+        status: (parsed.status === 'approved' || parsed.status === 'rejected') ? parsed.status : 'pending',
+        approved_by: parsed.approved_by || null,
+        approved_at: parsed.approved_at || null
+      };
+    } catch (e) {}
+  }
+  return {
+    caption: text,
+    status: 'pending',
+    approved_by: null,
+    approved_at: null
+  };
+}
+
+function encodeSubmissionCaption(cleanCaption: string | null | undefined, meta: { status: string; approved_by: string | null; approved_at?: string | null }): string {
+  const baseCaption = (cleanCaption || '').replace(/<!--APPROVAL:\{.*?\}-->/g, '').trim();
+  const metaTag = `<!--APPROVAL:${JSON.stringify(meta)}-->`;
+  return baseCaption ? `${baseCaption} ${metaTag}` : metaTag;
+}
+
 async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string) {
   if (!supabaseClient || !targetUserId) return;
   try {
@@ -111,15 +145,17 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
       userProfile?.id ? String(userProfile.id) : null
     ].filter(Boolean) as string[]);
 
-    // 1. Fetch current valid screenshot submissions for this user
+    // 1. Fetch current valid screenshot submissions for this user (only approved ones count toward verified points)
     const { data: allScreenshots } = await supabaseClient
       .from('screenshot_submissions')
-      .select('id, user_id');
+      .select('id, user_id, caption');
     
     const userValidScreenshots = (allScreenshots || []).filter((s: any) => {
       const sUid = String(s.user_id || '').trim();
       const sClean = sUid.startsWith('discord_') ? sUid.replace('discord_', '') : sUid;
-      return (candidateIds.has(sUid) || candidateIds.has(sClean));
+      if (!candidateIds.has(sUid) && !candidateIds.has(sClean)) return false;
+      const parsed = parseSubmissionCaption(s.caption);
+      return parsed.status === 'approved';
     });
 
     const validCount = userValidScreenshots.length;
@@ -317,20 +353,30 @@ export default async function handler(req: Request, res: Response) {
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
         // Ensure at most ONE submission per user has is_selected: true (self-heal any past duplicates)
+        // and parse approval metadata from caption
         const seenSelectedUsers = new Set<string>();
         const sanitizedSubs = (subs || []).map((sub: any) => {
-          if (!sub.is_selected) return sub;
-          const rawUid = String(sub.user_id || '').trim();
+          const parsed = parseSubmissionCaption(sub.caption);
+          const processedSub = {
+            ...sub,
+            caption: parsed.caption,
+            status: parsed.status,
+            approved_by: parsed.approved_by,
+            approved_at: parsed.approved_at
+          };
+
+          if (!processedSub.is_selected) return processedSub;
+          const rawUid = String(processedSub.user_id || '').trim();
           const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
           if (seenSelectedUsers.has(rawUid) || seenSelectedUsers.has(cleanUid)) {
-            if (supabase && sub.id) {
-              supabase.from('screenshot_submissions').update({ is_selected: false }).eq('id', sub.id).then();
+            if (supabase && processedSub.id) {
+              supabase.from('screenshot_submissions').update({ is_selected: false }).eq('id', processedSub.id).then();
             }
-            return { ...sub, is_selected: false };
+            return { ...processedSub, is_selected: false };
           }
           seenSelectedUsers.add(rawUid);
           seenSelectedUsers.add(cleanUid);
-          return sub;
+          return processedSub;
         });
 
         const eventData = evt || memoryEvent;
@@ -350,13 +396,20 @@ export default async function handler(req: Request, res: Response) {
         persistentDefaultSubmissionPoints = currentPoints;
         saveSubmissionPointsLocally(currentPoints);
 
+        const memorySubsProcessed = memorySubmissions.map(s => ({
+          ...s,
+          status: s.status || 'pending',
+          approved_by: s.approved_by || null,
+          approved_at: s.approved_at || null
+        }));
+
         return res.status(200).json({
           event: {
             ...memoryEvent,
             submission_points: currentPoints,
             is_voting_active: memoryEvent.status === 'voting_active'
           },
-          submissions: memorySubmissions,
+          submissions: memorySubsProcessed,
           votes: memoryVotes,
           comments: memoryComments
         });
@@ -403,6 +456,12 @@ export default async function handler(req: Request, res: Response) {
               .in('user_id', candidateIds);
           }
 
+          const initialCaption = encodeSubmissionCaption(caption || '', {
+            status: 'pending',
+            approved_by: null,
+            approved_at: null
+          });
+
           const newSub: Record<string, any> = {
             event_id: memoryEvent.id,
             user_id: userId,
@@ -410,7 +469,7 @@ export default async function handler(req: Request, res: Response) {
             user_avatar: userAvatar || '',
             user_team: userTeam || 'none',
             image_url: imageUrl,
-            caption: caption || '',
+            caption: initialCaption,
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
             is_selected: shouldBeSelected, // Strictly follow user's choice: only selected if user marked it!
@@ -429,7 +488,7 @@ export default async function handler(req: Request, res: Response) {
             }
           }
 
-          // Award submission points to user's team
+          // Insert point row in submissions table with status 'pending' (awarded only when an admin approves it)
           if (userTeam && userTeam !== 'none' && ptsToAward > 0) {
             await supabase.from('submissions').insert([{
               user_id: userId,
@@ -437,15 +496,22 @@ export default async function handler(req: Request, res: Response) {
               platform: 'Screenshot Event',
               points: ptsToAward,
               calculated_score: ptsToAward,
-              status: 'verified',
+              status: 'pending',
               notes: `__META_START__${JSON.stringify({ screenshotId: inserted.id, gameName: gameName || 'Game', userNotes: `Submitted screenshot for ${gameName || 'Game'}` })}__META_END__`,
               created_at: new Date().toISOString()
             }]);
-
-            await reconcileUserScreenshotPoints(supabase, userId);
           }
 
-          return res.status(200).json({ success: true, submission: { ...inserted, status: 'approved' } });
+          return res.status(200).json({
+            success: true,
+            submission: {
+              ...inserted,
+              caption: caption || '',
+              status: 'pending',
+              approved_by: null,
+              approved_at: null
+            }
+          });
         } else {
           userSubCount = memorySubmissions.filter(s => candidateIds.includes(String(s.user_id))).length;
           if (userSubCount >= 10) {
@@ -470,7 +536,9 @@ export default async function handler(req: Request, res: Response) {
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
             is_selected: shouldBeSelected,
-            status: 'approved',
+            status: 'pending',
+            approved_by: null,
+            approved_at: null,
             created_at: new Date().toISOString()
           };
 
@@ -545,11 +613,12 @@ export default async function handler(req: Request, res: Response) {
       // ADMIN: SET STATUS (Approved, Pending, Rejected)
       if (action === 'admin-set-status') {
         const { submissionId, status } = req.body;
+        const adminName = req.body.adminName || req.headers['x-admin-name'] || (req as any).user?.steam_name || (req as any).user?.displayName || 'Admin';
         if (!submissionId || !status) {
           return res.status(400).json({ error: 'Missing submissionId or status' });
         }
 
-        const validStatus = ['approved', 'pending', 'rejected'].includes(status) ? status : 'approved';
+        const validStatus: 'approved' | 'pending' | 'rejected' = ['approved', 'pending', 'rejected'].includes(status) ? status : 'approved';
 
         if (supabase) {
           const { data: targetSub } = await supabase
@@ -559,6 +628,10 @@ export default async function handler(req: Request, res: Response) {
             .maybeSingle();
 
           if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
+
+          const parsed = parseSubmissionCaption(targetSub.caption);
+          const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
+          const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
 
           if (validStatus === 'rejected') {
             await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
@@ -573,10 +646,78 @@ export default async function handler(req: Request, res: Response) {
             return res.status(200).json({ success: true, rejected: true, message: 'Screenshot rejected and removed' });
           }
 
-          return res.status(200).json({ success: true, submission: { ...targetSub, status: validStatus } });
+          const newCaption = encodeSubmissionCaption(parsed.caption, {
+            status: validStatus,
+            approved_by: effectiveAdmin,
+            approved_at: effectiveApprovedAt
+          });
+
+          await supabase
+            .from('screenshot_submissions')
+            .update({ caption: newCaption })
+            .eq('id', submissionId);
+
+          let ptsToAward = getSavedSubmissionPoints();
+          const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
+          if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
+            ptsToAward = Number(currentEvt.submission_points);
+          }
+
+          if (validStatus === 'approved') {
+            // Verify linked submission points in submissions table
+            const { data: existingPoints } = await supabase
+              .from('submissions')
+              .select('id, status')
+              .ilike('notes', `%${submissionId}%`);
+
+            if (existingPoints && existingPoints.length > 0) {
+              await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${submissionId}%`);
+            } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
+              await supabase.from('submissions').insert([{
+                user_id: targetSub.user_id,
+                game_name: `Screenshot Contest Submission (+${ptsToAward} pts)`,
+                platform: 'Screenshot Event',
+                points: ptsToAward,
+                calculated_score: ptsToAward,
+                status: 'verified',
+                notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${targetSub.game_name || 'Game'}` })}__META_END__`,
+                created_at: new Date().toISOString()
+              }]);
+            }
+          } else if (validStatus === 'pending') {
+            // Revert linked points in submissions table to pending
+            await supabase.from('submissions').update({ status: 'pending' }).ilike('notes', `%${submissionId}%`);
+          }
+
+          if (targetSub.user_id) {
+            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
+          }
+
+          return res.status(200).json({
+            success: true,
+            submission: {
+              ...targetSub,
+              caption: parsed.caption,
+              status: validStatus,
+              approved_by: effectiveAdmin,
+              approved_at: effectiveApprovedAt
+            }
+          });
         } else {
-          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? { ...s, status: validStatus } : s);
-          return res.status(200).json({ success: true });
+          const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
+          const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
+          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
+            ...s,
+            status: validStatus,
+            approved_by: effectiveAdmin,
+            approved_at: effectiveApprovedAt
+          } : s);
+          return res.status(200).json({
+            success: true,
+            status: validStatus,
+            approved_by: effectiveAdmin,
+            approved_at: effectiveApprovedAt
+          });
         }
       }
 
@@ -757,20 +898,29 @@ export default async function handler(req: Request, res: Response) {
             .eq('id', submissionId)
             .maybeSingle();
 
-          // Only send columns that actually exist in Supabase
-          const dbFields: any = {};
-          if (caption !== undefined) dbFields.caption = caption;
+          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
+
+          const parsed = parseSubmissionCaption(targetSub.caption);
+          const effectiveStatus = (status !== undefined) ? status : parsed.status;
+          const effectiveAdmin = (effectiveStatus === 'approved') ? (req.body.adminName || parsed.approved_by || 'Admin') : (effectiveStatus === 'pending' ? null : parsed.approved_by);
+          const effectiveCaption = (caption !== undefined) ? caption : parsed.caption;
+
+          const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
+            status: effectiveStatus,
+            approved_by: effectiveAdmin,
+            approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null)
+          });
+
+          const dbFields: any = { caption: updatedCaption };
           if (gameName !== undefined) dbFields.game_name = gameName;
           if (isSpoiler !== undefined) dbFields.is_spoiler = Boolean(isSpoiler);
 
-          const { data: updated, error } = Object.keys(dbFields).length > 0
-            ? await supabase
-                .from('screenshot_submissions')
-                .update(dbFields)
-                .eq('id', submissionId)
-                .select()
-                .single()
-            : { data: targetSub, error: null };
+          const { data: updated, error } = await supabase
+            .from('screenshot_submissions')
+            .update(dbFields)
+            .eq('id', submissionId)
+            .select()
+            .single();
 
           if (error) throw error;
 
@@ -778,7 +928,15 @@ export default async function handler(req: Request, res: Response) {
             await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
           }
 
-          return res.status(200).json({ success: true, submission: { ...updated, status: status || 'approved' } });
+          return res.status(200).json({
+            success: true,
+            submission: {
+              ...updated,
+              caption: effectiveCaption,
+              status: effectiveStatus,
+              approved_by: effectiveAdmin
+            }
+          });
         } else {
           memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
             ...s,
