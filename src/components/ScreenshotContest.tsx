@@ -900,7 +900,7 @@ interface UserSubmissionStat {
             </div>
             <div>
               <p className="text-sm font-bold text-slate-400 flex items-center gap-2">
-                Admin Controls & Event Settings
+                Admin Controls and Event Settings
               </p>
               <p className="text-xs text-slate-200/70">
                 Manage event phase, voting window, and global screenshot points.
