@@ -893,24 +893,24 @@ interface UserSubmissionStat {
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
       {/* Admin Early Access Lock Notice & Settings Box */}
       {user?.isAdmin && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="bg-slate-500/10 border border-slate-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl">
+            <div className="p-2.5 bg-slate-500/20 text-slate-400 rounded-xl">
               <Lock size={20} />
             </div>
             <div>
-              <p className="text-sm font-bold text-amber-400 flex items-center gap-2">
+              <p className="text-sm font-bold text-slate-400 flex items-center gap-2">
                 Admin Controls & Event Settings
               </p>
-              <p className="text-xs text-amber-200/70">
+              <p className="text-xs text-slate-200/70">
                 Manage event phase, voting window, and global screenshot points.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             {/* Global Screenshot Points Setting Box */}
-            <div className="flex items-center gap-1.5 bg-black/40 border border-amber-500/30 rounded-xl px-3 py-1 text-xs text-white">
-              <span className="font-bold text-amber-300">Points / Upload:</span>
+            <div className="flex items-center gap-1.5 bg-black/40 border border-slate-500/30 rounded-xl px-3 py-1 text-xs text-white">
+              <span className="font-bold text-slate-300">Points / Upload:</span>
               <input
                 type="number"
                 min="0"
