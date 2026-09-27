@@ -973,16 +973,16 @@ interface UserSubmissionStat {
 
       {/* Admin Active User Filter Banner */}
       {adminFilterUserId && (
-        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl p-3 px-4 flex items-center justify-between gap-3 text-xs text-amber-200">
+        <div className="bg-slate-500/15 border border-slate-500/30 rounded-2xl p-3 px-4 flex items-center justify-between gap-3 text-xs text-slate-200">
           <div className="flex items-center gap-2">
-            <Filter size={15} className="text-amber-400 shrink-0" />
+            <Filter size={15} className="text-slate-400 shrink-0" />
             <span>
               Admin Filter Active: Viewing screenshots submitted by <strong className="text-white font-bold">{userSubmissionCounts[adminFilterUserId]?.name || 'User'}</strong> ({userSubmissionCounts[adminFilterUserId]?.count || 0}/10 uploads)
             </span>
           </div>
           <button
             onClick={() => setAdminFilterUserId(null)}
-            className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-3 py-1 rounded-lg border border-amber-500/30 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+            className="text-[11px] font-bold bg-slate-500/20 hover:bg-slate-500/30 text-slate-200 px-3 py-1 rounded-lg border border-slate-500/30 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
           >
             <X size={12} /> Clear User Filter
           </button>
@@ -1166,7 +1166,7 @@ interface UserSubmissionStat {
             className={cn(
               "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
               activeTab === 'voting'
-                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm"
+                ? teamActiveTab
                 : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
@@ -1375,10 +1375,10 @@ interface UserSubmissionStat {
                                 title="Pending Admin Approval"
                                 className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help"
                               >
-                                <Clock size={10} className="text-amber-400 animate-pulse" />
+                                <Clock size={10} className="text-amber-400" />
                                 Pending
                               </span>
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-5000 animate-in fade-in zoom-in-95 duration-150">
                                 <div className="bg-slate-950/95 text-amber-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-2xl border border-amber-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
                                   <Clock size={12} className="text-amber-400 shrink-0" />
                                   <span>Pending admin review</span>
