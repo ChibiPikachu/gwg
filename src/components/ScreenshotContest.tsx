@@ -1252,19 +1252,6 @@ interface UserSubmissionStat {
           </button>
 
           <button
-            onClick={() => setActiveTab('voting')}
-            className={cn(
-              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
-              activeTab === 'voting'
-                ? teamActiveTab
-                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
-            )}
-          >
-            <Star size={14} className="text-amber-400" />
-            For Voting ({submissions.filter(s => s.is_selected && (user?.isAdmin || s.status !== 'rejected')).length})
-          </button>
-
-          <button
             onClick={() => setActiveTab('mine')}
             className={cn(
               "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
@@ -1275,6 +1262,19 @@ interface UserSubmissionStat {
           >
             <ImageIcon size={14} />
             My Screenshots ({mySubmissions.length}/10)
+          </button>
+
+          <button
+            onClick={() => setActiveTab('voting')}
+            className={cn(
+              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+              activeTab === 'voting'
+                ? teamActiveTab
+                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+            )}
+          >
+            <Star size={14} className="text-amber-400" />
+            For Voting ({submissions.filter(s => s.is_selected && (user?.isAdmin || s.status !== 'rejected')).length})
           </button>
 
           {user?.isAdmin && (
