@@ -111,15 +111,15 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
       userProfile?.id ? String(userProfile.id) : null
     ].filter(Boolean) as string[]);
 
-    // 1. Fetch current valid (non-rejected) screenshot submissions for this user
+    // 1. Fetch current valid screenshot submissions for this user
     const { data: allScreenshots } = await supabaseClient
       .from('screenshot_submissions')
-      .select('id, user_id, status');
+      .select('id, user_id');
     
     const userValidScreenshots = (allScreenshots || []).filter((s: any) => {
       const sUid = String(s.user_id || '').trim();
       const sClean = sUid.startsWith('discord_') ? sUid.replace('discord_', '') : sUid;
-      return (candidateIds.has(sUid) || candidateIds.has(sClean)) && s.status !== 'rejected';
+      return (candidateIds.has(sUid) || candidateIds.has(sClean));
     });
 
     const validCount = userValidScreenshots.length;
@@ -373,7 +373,7 @@ export default async function handler(req: Request, res: Response) {
             await supabase.from('screenshot_submissions').update({ is_selected: false }).eq('user_id', userId);
           }
 
-          const newSub = {
+          const newSub: Record<string, any> = {
             event_id: memoryEvent.id,
             user_id: userId,
             user_name: userName || 'Anonymous User',
@@ -384,7 +384,6 @@ export default async function handler(req: Request, res: Response) {
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
             is_selected: Boolean(isSelected || userSubCount === 0), // Default 1st upload to selected if none selected
-            status: 'approved',
             created_at: new Date().toISOString()
           };
 
@@ -416,7 +415,7 @@ export default async function handler(req: Request, res: Response) {
             await reconcileUserScreenshotPoints(supabase, userId);
           }
 
-          return res.status(200).json({ success: true, submission: inserted });
+          return res.status(200).json({ success: true, submission: { ...inserted, status: 'approved' } });
         } else {
           userSubCount = memorySubmissions.filter(s => s.user_id === userId).length;
           if (userSubCount >= 10) {
@@ -491,20 +490,20 @@ export default async function handler(req: Request, res: Response) {
 
           if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
 
-          const { data: updated, error } = await supabase
-            .from('screenshot_submissions')
-            .update({ status: validStatus })
-            .eq('id', submissionId)
-            .select()
-            .single();
-
-          if (error) throw error;
-
-          if (targetSub.user_id) {
-            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
+          if (validStatus === 'rejected') {
+            await supabase.from('screenshot_submissions').delete().eq('id', submissionId);
+            await supabase.from('screenshot_comments').delete().eq('submission_id', submissionId);
+            await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
+            try {
+              await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`);
+            } catch (e) {}
+            if (targetSub.user_id) {
+              await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
+            }
+            return res.status(200).json({ success: true, rejected: true, message: 'Screenshot rejected and removed' });
           }
 
-          return res.status(200).json({ success: true, submission: updated });
+          return res.status(200).json({ success: true, submission: { ...targetSub, status: validStatus } });
         } else {
           memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? { ...s, status: validStatus } : s);
           return res.status(200).json({ success: true });
@@ -688,12 +687,20 @@ export default async function handler(req: Request, res: Response) {
             .eq('id', submissionId)
             .maybeSingle();
 
-          const { data: updated, error } = await supabase
-            .from('screenshot_submissions')
-            .update(updateFields)
-            .eq('id', submissionId)
-            .select()
-            .single();
+          // Only send columns that actually exist in Supabase
+          const dbFields: any = {};
+          if (caption !== undefined) dbFields.caption = caption;
+          if (gameName !== undefined) dbFields.game_name = gameName;
+          if (isSpoiler !== undefined) dbFields.is_spoiler = Boolean(isSpoiler);
+
+          const { data: updated, error } = Object.keys(dbFields).length > 0
+            ? await supabase
+                .from('screenshot_submissions')
+                .update(dbFields)
+                .eq('id', submissionId)
+                .select()
+                .single()
+            : { data: targetSub, error: null };
 
           if (error) throw error;
 
@@ -701,7 +708,7 @@ export default async function handler(req: Request, res: Response) {
             await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
           }
 
-          return res.status(200).json({ success: true, submission: updated });
+          return res.status(200).json({ success: true, submission: { ...updated, status: status || 'approved' } });
         } else {
           memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
             ...s,

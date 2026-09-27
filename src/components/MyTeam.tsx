@@ -56,18 +56,16 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
 
           const { data: allScreenshots } = await supabase
             .from('screenshot_submissions')
-            .select('user_id, status');
+            .select('user_id');
 
-          // Count valid non-rejected screenshots per user
+          // Count valid screenshots per user
           const userScreenshotCount: Record<string, number> = {};
           (allScreenshots || []).forEach((sc: any) => {
-            if (sc.status !== 'rejected') {
-              const rawId = String(sc.user_id || '').trim();
-              const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
-              if (cleanId) {
-                userScreenshotCount[cleanId] = (userScreenshotCount[cleanId] || 0) + 1;
-                userScreenshotCount[rawId] = (userScreenshotCount[rawId] || 0) + 1;
-              }
+            const rawId = String(sc.user_id || '').trim();
+            const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+            if (cleanId) {
+              userScreenshotCount[cleanId] = (userScreenshotCount[cleanId] || 0) + 1;
+              userScreenshotCount[rawId] = (userScreenshotCount[rawId] || 0) + 1;
             }
           });
 

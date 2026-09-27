@@ -187,12 +187,27 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
 
+  const safeParseResponse = async (res: Response) => {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        return await res.json();
+      } catch (e) {}
+    }
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text?.slice(0, 300) || `Server responded with status ${res.status}` };
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/screenshots');
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseResponse(res);
         setEvent(data.event || null);
         if (data.event?.submission_points !== undefined && data.event?.submission_points !== null) {
           const pts = Number(data.event.submission_points);
@@ -292,23 +307,70 @@ interface UserSubmissionStat {
     return new Set(votes.filter(v => v.user_id === currentUserId).map(v => v.submission_id));
   }, [votes, currentUserId]);
 
+  // Helper to compress/resize image file using canvas to keep payload small and fast
+  const processImageFile = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawResult = (e.target?.result as string) || '';
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 1920;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              return resolve(rawResult);
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.85);
+            resolve(compressed && compressed.length < rawResult.length ? compressed : rawResult);
+          } catch {
+            resolve(rawResult);
+          }
+        };
+        img.onerror = () => resolve(rawResult);
+        img.src = rawResult;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Handle file select or drag
-  const handleFileChange = (file: File) => {
+  const handleFileChange = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setSubmitError('Please upload a valid image file (PNG, JPG, WEBP)');
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setSubmitError('File size must be under 8MB');
+    if (file.size > 15 * 1024 * 1024) {
+      setSubmitError('File size must be under 15MB');
       return;
     }
     setImageFile(file);
     setSubmitError('');
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const processed = await processImageFile(file);
+      setImagePreview(processed);
+    } catch {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -367,9 +429,9 @@ interface UserSubmissionStat {
         })
       });
 
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (!res.ok) {
-        setSubmitError(data.error || 'Failed to submit screenshot');
+        setSubmitError(data.error || `Failed to submit screenshot (HTTP ${res.status})`);
       } else {
         setIsSubmitModalOpen(false);
         setImageFile(null);
@@ -430,7 +492,7 @@ interface UserSubmissionStat {
           eventStatus: event?.status
         })
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (!res.ok) {
         setVotingNoticeMessage(data.error || "You can't vote yet!");
       } else {
@@ -487,7 +549,7 @@ interface UserSubmissionStat {
         body: JSON.stringify({ submissionPoints: validatedPoints })
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseResponse(res);
         if (data.event) {
           setEvent(data.event);
           if (data.event.submission_points !== undefined && data.event.submission_points !== null) {
@@ -537,7 +599,7 @@ interface UserSubmissionStat {
         body: JSON.stringify({ status: newStatus, submissionPoints: editSubmissionPoints })
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseResponse(res);
         if (data.event) {
           setEvent(data.event);
         } else {
@@ -641,7 +703,7 @@ interface UserSubmissionStat {
           adminId: currentUserId
         })
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (res.ok && data.awardedResults) {
         setTallyResults(data.awardedResults);
         fetchData();

@@ -938,7 +938,19 @@ async function createServer() {
 
   // Middleware
   app.set('trust proxy', 1);
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  // Graceful JSON & payload error handler - ensure we NEVER return raw HTML 413 or syntax error
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+      return res.status(413).json({ error: 'Image file is too large. Please select an image under 10MB.' });
+    }
+    if (err && err instanceof SyntaxError && 'body' in err) {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+    next(err);
+  });
   
   const isCloud = process.env.NODE_ENV === 'production' || 
                   process.env.VERCEL === '1' || 
@@ -2681,12 +2693,11 @@ async function createServer() {
           return !sub.event_id || String(sub.event_id) === String(targetEventId);
         });
 
-        // Fetch valid non-rejected screenshots count to guard against orphaned points
+        // Fetch valid screenshots count to guard against orphaned points
         const { data: validScreenshots } = await supabase
           .from('screenshot_submissions')
-          .select('id, user_id, status')
-          .in('user_id', candidateIds)
-          .neq('status', 'rejected');
+          .select('id, user_id')
+          .in('user_id', candidateIds);
 
         const validCount = (validScreenshots || []).length;
         let screenshotPointsSeen = 0;
@@ -2870,25 +2881,23 @@ async function createServer() {
         return true;
       });
 
-      // 4. Fetch valid (non-rejected) screenshot submissions to guard against orphaned screenshot points
-      const { data: allScreenshots } = await supabase.from('screenshot_submissions').select('user_id, status');
+      // 4. Fetch valid screenshot submissions to guard against orphaned screenshot points
+      const { data: allScreenshots } = await supabase.from('screenshot_submissions').select('user_id');
       const userScreenshotCount: Record<string, number> = {};
       (allScreenshots || []).forEach((sc: any) => {
-        if (sc.status !== 'rejected') {
-          const rawId = String(sc.user_id || '').trim();
-          const cleanUid = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
-          if (cleanUid) {
-            userScreenshotCount[cleanUid] = (userScreenshotCount[cleanUid] || 0) + 1;
-            const prof = profileMap.get(rawId) || profileMap.get(cleanUid);
-            if (prof) {
-              if (prof.steamid) userScreenshotCount[String(prof.steamid)] = (userScreenshotCount[String(prof.steamid)] || 0) + 1;
-              if (prof.discord_id) {
-                const dClean = String(prof.discord_id).replace('discord_', '');
-                userScreenshotCount[dClean] = (userScreenshotCount[dClean] || 0) + 1;
-                userScreenshotCount[`discord_${dClean}`] = (userScreenshotCount[`discord_${dClean}`] || 0) + 1;
-              }
-              if (prof.id) userScreenshotCount[String(prof.id)] = (userScreenshotCount[String(prof.id)] || 0) + 1;
+        const rawId = String(sc.user_id || '').trim();
+        const cleanUid = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
+        if (cleanUid) {
+          userScreenshotCount[cleanUid] = (userScreenshotCount[cleanUid] || 0) + 1;
+          const prof = profileMap.get(rawId) || profileMap.get(cleanUid);
+          if (prof) {
+            if (prof.steamid) userScreenshotCount[String(prof.steamid)] = (userScreenshotCount[String(prof.steamid)] || 0) + 1;
+            if (prof.discord_id) {
+              const dClean = String(prof.discord_id).replace('discord_', '');
+              userScreenshotCount[dClean] = (userScreenshotCount[dClean] || 0) + 1;
+              userScreenshotCount[`discord_${dClean}`] = (userScreenshotCount[`discord_${dClean}`] || 0) + 1;
             }
+            if (prof.id) userScreenshotCount[String(prof.id)] = (userScreenshotCount[String(prof.id)] || 0) + 1;
           }
         }
       });
@@ -5840,8 +5849,6 @@ async function createServer() {
       res.json([]);
     }
   });
-
-  app.all('/api/screenshots', (req, res) => screenshotHandler(req, res));
 
   app.post(['/api/admin/team-adjustments', '/api/team-adjustments'], adminOnly, async (req, res) => {
     const currentAdmin = (req as any).user;

@@ -321,9 +321,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const { data: allScreenshots } = await supabase
             .from('screenshot_submissions')
-            .select('id, user_id, status')
-            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`)
-            .neq('status', 'rejected');
+            .select('id, user_id')
+            .or(`user_id.eq.${rawUid},user_id.eq.${cleanUid},user_id.eq.discord_${cleanUid}`);
 
           const validScreenshotsCount = (allScreenshots || []).length;
           let screenshotPointsSeen = 0;
