@@ -2830,18 +2830,18 @@ interface UserSubmissionStat {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-white"
+              className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-white"
             >
               <div className="flex items-start gap-3.5">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 text-amber-400 shadow-inner">
-                  <Star size={22} className="fill-amber-400" />
+                <div className="w-11 h-11 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0 text-rose-400 shadow-inner">
+                  <Star size={22} className="fill-rose-400" />
                 </div>
                 <div className="flex-1 min-w-0 pt-0.5">
                   <h3 className="text-base font-black text-white leading-tight">
-                    Replace Official Voting Entry?
+                    Replace voting entry?
                   </h3>
-                  <p className="text-[11px] text-amber-400 font-semibold tracking-wide uppercase mt-0.5">
-                    Single Voting Entry Guarantee
+                  <p className="text-[11px] text-rose-400 font-semibold tracking-wide uppercase mt-0.5">
+                    Only one screenshot can be marked as 'For Voting' per event.
                   </p>
                 </div>
                 <button
@@ -2855,7 +2855,7 @@ interface UserSubmissionStat {
 
               <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3">
                 <p className="text-xs text-white/90 leading-relaxed">
-                  You already have an entry marked as <strong className="text-amber-400">'For Voting'</strong>. Do you want to replace it with this one?
+                  You already have an entry marked as <strong className="text-rose-400">'For Voting'</strong>. Do you want to replace it with this one?
                 </p>
 
                 {/* Existing entry preview */}
@@ -2872,7 +2872,7 @@ interface UserSubmissionStat {
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Current Voting Entry</span>
+                    <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Current Voting Entry</span>
                     <h4 className="text-xs font-bold text-white truncate">
                       {replaceVotingModal.existingSub.game_name || 'Screenshot'}
                     </h4>
@@ -2886,7 +2886,7 @@ interface UserSubmissionStat {
 
                 {replaceVotingModal.targetGameName && (
                   <p className="text-[11px] text-emerald-400/90 font-medium">
-                    New entry: <strong>{replaceVotingModal.targetGameName}</strong> will become your one official voting entry.
+                    New entry: <strong>{replaceVotingModal.targetGameName}</strong> will become your 'for voting' entry.
                   </p>
                 )}
               </div>
@@ -2910,7 +2910,7 @@ interface UserSubmissionStat {
                       await executeSetForVoting(modalData.targetSubId);
                     }
                   }}
-                  className="px-5 py-2.5 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-300 border border-amber-300 transition-all flex items-center gap-1.5 shadow-lg shadow-amber-500/25 active:scale-95 cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-xs font-black text-black bg-rose-400 hover:bg-rose-300 border border-rose-300 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
                 >
                   <Check size={14} />
                   Yes, replace it
