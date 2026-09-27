@@ -2830,17 +2830,25 @@ interface UserSubmissionStat {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-cyan-800/40 rounded-3xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-white"
+              className={cn(
+                "bg-slate-900 border rounded-3xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-white",
+                userTeamColors.border || "border-white/10"
+              )}
             >
               <div className="flex items-start gap-3.5">
-                <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center shrink-0 text-cyan-400 shadow-inner">
-                  <Star size={22} className="fill-cyan-400" />
+                <div className={cn(
+                  "w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 shadow-inner",
+                  userTeamColors.secondary,
+                  userTeamColors.border,
+                  teamTextAccent
+                )}>
+                  <Star size={22} className="fill-current" />
                 </div>
                 <div className="flex-1 min-w-0 pt-0.5">
                   <h3 className="text-base font-black text-white leading-tight">
                     Replace voting entry?
                   </h3>
-                  <p className="text-[11px] text-cyan-400 font-semibold tracking-wide uppercase mt-0.5">
+                  <p className={cn("text-[11px] font-semibold tracking-wide uppercase mt-0.5", teamTextAccent)}>
                     Only one screenshot can be marked as 'For Voting' per event.
                   </p>
                 </div>
@@ -2855,7 +2863,7 @@ interface UserSubmissionStat {
 
               <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3">
                 <p className="text-xs text-white/90 leading-relaxed">
-                  You already have an entry marked as <strong className="text-cyan-400">'For Voting'</strong>. Do you want to replace it with this one?
+                  You already have an entry marked as <strong className={teamTextAccent}>'For Voting'</strong>. Do you want to replace it with this one?
                 </p>
 
                 {/* Existing entry preview */}
@@ -2872,7 +2880,9 @@ interface UserSubmissionStat {
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">Current Voting Entry</span>
+                    <span className={cn("text-[10px] font-bold uppercase tracking-wider block", teamTextAccent)}>
+                      Current Voting Entry
+                    </span>
                     <h4 className="text-xs font-bold text-white truncate">
                       {replaceVotingModal.existingSub.game_name || 'Screenshot'}
                     </h4>
@@ -2910,7 +2920,10 @@ interface UserSubmissionStat {
                       await executeSetForVoting(modalData.targetSubId);
                     }
                   }}
-                  className="px-5 py-2.5 rounded-xl text-xs font-black text-black bg-cyan-400 hover:bg-cyan-300 border border-cyan-300 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                  className={cn(
+                    "px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer",
+                    teamSolidBtn
+                  )}
                 >
                   <Check size={14} />
                   Yes, replace it
