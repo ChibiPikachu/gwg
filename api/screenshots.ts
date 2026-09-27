@@ -316,6 +316,23 @@ export default async function handler(req: Request, res: Response) {
         const { data: votes } = await supabase.from('screenshot_votes').select('*');
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
+        // Ensure at most ONE submission per user has is_selected: true (self-heal any past duplicates)
+        const seenSelectedUsers = new Set<string>();
+        const sanitizedSubs = (subs || []).map((sub: any) => {
+          if (!sub.is_selected) return sub;
+          const rawUid = String(sub.user_id || '').trim();
+          const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
+          if (seenSelectedUsers.has(rawUid) || seenSelectedUsers.has(cleanUid)) {
+            if (supabase && sub.id) {
+              supabase.from('screenshot_submissions').update({ is_selected: false }).eq('id', sub.id).then();
+            }
+            return { ...sub, is_selected: false };
+          }
+          seenSelectedUsers.add(rawUid);
+          seenSelectedUsers.add(cleanUid);
+          return sub;
+        });
+
         const eventData = evt || memoryEvent;
 
         return res.status(200).json({
@@ -324,7 +341,7 @@ export default async function handler(req: Request, res: Response) {
             submission_points: currentPoints,
             is_voting_active: eventData.status === 'voting_active'
           },
-          submissions: subs || [],
+          submissions: sanitizedSubs,
           votes: votes || [],
           comments: comments || []
         });
@@ -359,18 +376,31 @@ export default async function handler(req: Request, res: Response) {
           return res.status(400).json({ error: 'User ID is required' });
         }
 
+        const rawUid = String(userId).trim();
+        const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
+        const candidateIds = Array.from(new Set([rawUid, cleanUid, `discord_${cleanUid}`]));
+
         // Check submission count for this user
         let userSubCount = 0;
         if (supabase) {
-          const { data: existing } = await supabase.from('screenshot_submissions').select('id, is_selected').eq('user_id', userId);
+          const { data: existing } = await supabase
+            .from('screenshot_submissions')
+            .select('id, is_selected')
+            .in('user_id', candidateIds);
+
           userSubCount = (existing || []).length;
           if (userSubCount >= 10) {
             return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions!' });
           }
 
-          // If isSelected is true, unselect other submissions by this user
-          if (isSelected) {
-            await supabase.from('screenshot_submissions').update({ is_selected: false }).eq('user_id', userId);
+          const shouldBeSelected = Boolean(isSelected);
+
+          // If user specifically marked this as for voting, unselect all other submissions by this user
+          if (shouldBeSelected) {
+            await supabase
+              .from('screenshot_submissions')
+              .update({ is_selected: false })
+              .in('user_id', candidateIds);
           }
 
           const newSub: Record<string, any> = {
@@ -383,7 +413,7 @@ export default async function handler(req: Request, res: Response) {
             caption: caption || '',
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
-            is_selected: Boolean(isSelected || userSubCount === 0), // Default 1st upload to selected if none selected
+            is_selected: shouldBeSelected, // Strictly follow user's choice: only selected if user marked it!
             created_at: new Date().toISOString()
           };
 
@@ -417,13 +447,15 @@ export default async function handler(req: Request, res: Response) {
 
           return res.status(200).json({ success: true, submission: { ...inserted, status: 'approved' } });
         } else {
-          userSubCount = memorySubmissions.filter(s => s.user_id === userId).length;
+          userSubCount = memorySubmissions.filter(s => candidateIds.includes(String(s.user_id))).length;
           if (userSubCount >= 10) {
             return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions!' });
           }
 
-          if (isSelected) {
-            memorySubmissions = memorySubmissions.map(s => s.user_id === userId ? { ...s, is_selected: false } : s);
+          const shouldBeSelected = Boolean(isSelected);
+
+          if (shouldBeSelected) {
+            memorySubmissions = memorySubmissions.map(s => candidateIds.includes(String(s.user_id)) ? { ...s, is_selected: false } : s);
           }
 
           const newSub = {
@@ -437,7 +469,7 @@ export default async function handler(req: Request, res: Response) {
             caption: caption || '',
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
-            is_selected: Boolean(isSelected || userSubCount === 0),
+            is_selected: shouldBeSelected,
             status: 'approved',
             created_at: new Date().toISOString()
           };
@@ -454,21 +486,59 @@ export default async function handler(req: Request, res: Response) {
           return res.status(400).json({ error: 'Missing submissionId or userId' });
         }
 
+        const rawUid = String(userId).trim();
+        const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
+        const candidateIds = [rawUid, cleanUid, `discord_${cleanUid}`];
+
         if (supabase) {
-          // Unselect all other submissions for this user
-          await supabase.from('screenshot_submissions').update({ is_selected: false }).eq('user_id', userId);
-          // Set this submission as selected
-          const { data: updated, error } = await supabase.from('screenshot_submissions').update({ is_selected: true }).eq('id', submissionId).select().single();
-          if (error) throw error;
-          return res.status(200).json({ success: true, submission: updated });
+          const { data: targetSub } = await supabase
+            .from('screenshot_submissions')
+            .select('id, user_id, is_selected')
+            .eq('id', submissionId)
+            .maybeSingle();
+
+          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
+
+          if (targetSub.user_id) {
+            candidateIds.push(String(targetSub.user_id).trim());
+            const tClean = String(targetSub.user_id).replace('discord_', '');
+            candidateIds.push(tClean, `discord_${tClean}`);
+          }
+          const uniqueCandidateIds = Array.from(new Set(candidateIds.filter(Boolean)));
+
+          const willSelect = !targetSub.is_selected;
+
+          // Always unselect ALL existing submissions for this user first
+          await supabase
+            .from('screenshot_submissions')
+            .update({ is_selected: false })
+            .in('user_id', uniqueCandidateIds);
+
+          let updated = null;
+          if (willSelect) {
+            // Set ONLY this specific submission to true
+            const { data, error } = await supabase
+              .from('screenshot_submissions')
+              .update({ is_selected: true })
+              .eq('id', submissionId)
+              .select()
+              .single();
+            if (error) throw error;
+            updated = data;
+          } else {
+            updated = { ...targetSub, is_selected: false };
+          }
+          return res.status(200).json({ success: true, submission: updated, is_selected: willSelect });
         } else {
+          const targetSub = memorySubmissions.find(s => s.id === submissionId);
+          const willSelect = targetSub ? !targetSub.is_selected : true;
           memorySubmissions = memorySubmissions.map(s => {
-            if (s.user_id === userId) {
-              return { ...s, is_selected: s.id === submissionId };
+            if (candidateIds.includes(String(s.user_id))) {
+              return { ...s, is_selected: (s.id === submissionId && willSelect) };
             }
             return s;
           });
-          return res.status(200).json({ success: true });
+          return res.status(200).json({ success: true, is_selected: willSelect });
         }
       }
 

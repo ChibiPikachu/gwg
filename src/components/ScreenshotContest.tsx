@@ -159,7 +159,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [gameNameInput, setGameNameInput] = useState<string>('');
   const [captionInput, setCaptionInput] = useState<string>('');
   const [isSpoilerInput, setIsSpoilerInput] = useState<boolean>(false);
-  const [isSelectedInput, setIsSelectedInput] = useState<boolean>(true);
+  const [isSelectedInput, setIsSelectedInput] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -440,7 +440,7 @@ interface UserSubmissionStat {
         setCaptionInput('');
         setGameNameInput('');
         setIsSpoilerInput(false);
-        setIsSelectedInput(true);
+        setIsSelectedInput(false);
         fetchData();
       }
     } catch (err: any) {
@@ -452,6 +452,21 @@ interface UserSubmissionStat {
 
   // Toggle "Set for Voting"
   const handleSetForVoting = async (subId: string) => {
+    const currentSub = submissions.find(s => s.id === subId);
+    const willSelect = currentSub ? !currentSub.is_selected : true;
+    const cleanCurrent = String(currentUserId).replace('discord_', '');
+
+    // Optimistically update: only at most ONE submission by this user can be selected
+    setSubmissions(prev => prev.map(s => {
+      const rawSubUid = String(s.user_id || '').trim();
+      const cleanSubUid = rawSubUid.replace('discord_', '');
+      const isMine = rawSubUid === currentUserId || cleanSubUid === cleanCurrent;
+      if (isMine) {
+        return { ...s, is_selected: (s.id === subId && willSelect) };
+      }
+      return s;
+    }));
+
     try {
       const res = await fetch('/api/screenshots?action=select-voting', {
         method: 'POST',
@@ -463,9 +478,12 @@ interface UserSubmissionStat {
       });
       if (res.ok) {
         fetchData();
+      } else {
+        fetchData();
       }
     } catch (err) {
       console.error('Failed to set for voting:', err);
+      fetchData();
     }
   };
 

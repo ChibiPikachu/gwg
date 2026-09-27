@@ -306,28 +306,6 @@ export default function MySubmissions() {
         if (!error && data) {
           setSubmissions(data);
           setLoading(false);
-
-          // Batch fetch HLTB data for these submissions (if available)
-          const uniqueTitles = Array.from(new Set(data.map((s: any) => s.game_name)));
-          if (uniqueTitles.length > 0) {
-            fetch('/api/hltb-batch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ titles: uniqueTitles })
-            })
-            .then(async r => {
-              if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
-                return r.json();
-              }
-              return {};
-            })
-            .then(hltb => {
-              if (hltb && typeof hltb === 'object') {
-                setHltbData(prev => ({ ...prev, ...hltb }));
-              }
-            })
-            .catch(() => {});
-          }
           return;
         }
       } catch (err) {
@@ -344,28 +322,6 @@ export default function MySubmissions() {
         const data = await res.json();
         const subArray = Array.isArray(data) ? data : [];
         setSubmissions(subArray);
-
-        // Batch fetch HLTB data for these submissions (if available)
-        const uniqueTitles = Array.from(new Set(subArray.map((s: any) => s.game_name)));
-        if (uniqueTitles.length > 0) {
-          fetch('/api/hltb-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ titles: uniqueTitles })
-          })
-          .then(async r => {
-            if (r.ok && r.headers.get('content-type')?.includes('application/json')) {
-              return r.json();
-            }
-            return {};
-          })
-          .then(hltb => {
-            if (hltb && typeof hltb === 'object') {
-              setHltbData(prev => ({ ...prev, ...hltb }));
-            }
-          })
-          .catch(() => {});
-        }
       }
     } catch (err) {
       console.warn('Failed to fetch submissions:', err);
