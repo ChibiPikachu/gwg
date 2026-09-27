@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Camera, Image as ImageIcon, Upload, Eye, EyeOff, Heart, MessageSquare, 
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
-  Trash2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
+  Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Users, BarChart3, UserCheck, Search, ListFilter,
   Clock, XCircle, Check, LayoutGrid, List
 } from 'lucide-react';
@@ -44,6 +44,8 @@ interface ScreenshotComment {
   user_name: string;
   user_avatar: string;
   content: string;
+  is_edited?: boolean;
+  edited_at?: string | null;
   created_at: string;
 }
 
@@ -135,7 +137,7 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [loading, setLoading] = useState(true);
 
   // Filter & view state
-  const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine' | 'rejected'>('all');
   const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
     const saved = localStorage.getItem('screenshot_view_mode');
     return saved === 'list' ? 'list' : 'gallery';
@@ -169,6 +171,9 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   const [activeCommentSubId, setActiveCommentSubId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [commenting, setCommenting] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [isSavingComment, setIsSavingComment] = useState(false);
 
   // Admin Edit Modal state
   const [editingSub, setEditingSub] = useState<ScreenshotSubmission | null>(null);
@@ -649,6 +654,88 @@ interface UserSubmissionStat {
     }
   };
 
+  // Helper to check comment edit/delete permission
+  const canModifyComment = (commentUserId: string) => {
+    if (user?.isAdmin) return true;
+    if (!currentUserId || !commentUserId) return false;
+    const rawCurrent = String(currentUserId).trim();
+    const cleanCurrent = rawCurrent.replace('discord_', '');
+    const rawCmt = String(commentUserId).trim();
+    const cleanCmt = rawCmt.replace('discord_', '');
+    return Boolean(cleanCurrent && (cleanCurrent === cleanCmt || rawCurrent === rawCmt));
+  };
+
+  const handleStartEditComment = (comment: ScreenshotComment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.content);
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
+  const handleSaveEditComment = async (commentId: string) => {
+    if (!editingCommentText.trim() || isSavingComment) return;
+    setIsSavingComment(true);
+    try {
+      const res = await fetch('/api/screenshots?action=edit-comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commentId,
+          userId: currentUserId,
+          content: editingCommentText.trim(),
+          isAdmin: user?.isAdmin
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.comment) {
+        setComments(prev => prev.map(c => c.id === commentId ? {
+          ...c,
+          content: data.comment.content,
+          is_edited: true,
+          edited_at: data.comment.edited_at || new Date().toISOString()
+        } : c));
+        setEditingCommentId(null);
+        setEditingCommentText('');
+      } else {
+        alert(data.error || 'Failed to edit comment');
+      }
+    } catch (err) {
+      console.error('Failed to edit comment:', err);
+    } finally {
+      setIsSavingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm('Delete this comment?')) return;
+    try {
+      const res = await fetch('/api/screenshots?action=delete-comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commentId,
+          userId: currentUserId,
+          isAdmin: user?.isAdmin
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setComments(prev => prev.filter(c => c.id !== commentId));
+        if (editingCommentId === commentId) {
+          setEditingCommentId(null);
+          setEditingCommentText('');
+        }
+      } else {
+        alert(data.error || 'Failed to delete comment');
+      }
+    } catch (err) {
+      console.error('Failed to delete comment:', err);
+    }
+  };
+
   // Admin Actions
   const handleAdminUpdatePoints = async (points: number) => {
     const validatedPoints = Math.max(0, Number(points));
@@ -844,7 +931,10 @@ interface UserSubmissionStat {
   // Filtered Submissions list
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(sub => {
+      // Non-admins cannot see rejected submissions
+      if (sub.status === 'rejected' && !user?.isAdmin) return false;
       if (adminFilterUserId && sub.user_id !== adminFilterUserId) return false;
+      if (activeTab === 'rejected' && sub.status !== 'rejected') return false;
       if (activeTab === 'voting' && !sub.is_selected) return false;
       if (activeTab === 'mine' && sub.user_id !== currentUserId) return false;
       if (searchGame.trim()) {
@@ -856,7 +946,7 @@ interface UserSubmissionStat {
       }
       return true;
     });
-  }, [submissions, activeTab, currentUserId, searchGame, adminFilterUserId]);
+  }, [submissions, activeTab, currentUserId, searchGame, adminFilterUserId, user?.isAdmin]);
 
   // Lightbox Navigation Handlers
   const handlePrevLightbox = () => {
@@ -922,7 +1012,7 @@ interface UserSubmissionStat {
               />
               <button
                 onClick={() => handleAdminUpdatePoints(editSubmissionPoints)}
-                className="bg-amber-500 hover:bg-slate-400 text-black font-extrabold text-[10px] uppercase px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                className="bg-slate-700 hover:bg-slate-600 text-white font-extrabold text-[10px] uppercase px-2 py-1 rounded-lg transition-colors cursor-pointer border border-slate-600"
               >
                 Save
               </button>
@@ -931,7 +1021,7 @@ interface UserSubmissionStat {
             {/* Admin User Submissions Count Overview Button */}
             <button
               onClick={() => setAdminUserModalOpen(true)}
-              className="bg-amber-500/20 hover:bg-slate-500/30 text-slate-300 border border-slate-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+              className="bg-slate-500/20 hover:bg-slate-500/30 text-slate-300 border border-slate-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
             >
               <Users size={14} />
               User Submissions ({userSubmissionsList.length})
@@ -942,11 +1032,11 @@ interface UserSubmissionStat {
               className={cn(
                 "font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer border",
                 (event?.status === 'voting_active' || event?.is_voting_active)
-                  ? "bg-amber-500 text-black border-amber-400 hover:bg-amber-400"
+                  ? "bg-slate-700 text-white border-slate-600 hover:bg-slate-600"
                   : teamSolidBtn
               )}
             >
-              <Star size={14} className={(event?.status === 'voting_active' || event?.is_voting_active) ? "fill-black" : ""} />
+              <Star size={14} className={(event?.status === 'voting_active' || event?.is_voting_active) ? "fill-white text-white" : ""} />
               {(event?.status === 'voting_active' || event?.is_voting_active) ? "Voting Period: Active (Click to Pause)" : "Toggle Voting Period"}
             </button>
             <select
@@ -1158,7 +1248,7 @@ interface UserSubmissionStat {
             )}
           >
             <Layers size={14} />
-            All Submissions ({submissions.length})
+            All Submissions ({user?.isAdmin ? submissions.length : submissions.filter(s => s.status !== 'rejected').length})
           </button>
 
           <button
@@ -1171,7 +1261,7 @@ interface UserSubmissionStat {
             )}
           >
             <Star size={14} className="text-amber-400" />
-            For Voting ({submissions.filter(s => s.is_selected).length})
+            For Voting ({submissions.filter(s => s.is_selected && (user?.isAdmin || s.status !== 'rejected')).length})
           </button>
 
           <button
@@ -1186,6 +1276,21 @@ interface UserSubmissionStat {
             <ImageIcon size={14} />
             My Screenshots ({mySubmissions.length}/10)
           </button>
+
+          {user?.isAdmin && (
+            <button
+              onClick={() => setActiveTab('rejected')}
+              className={cn(
+                "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+                activeTab === 'rejected'
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
+                  : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+              )}
+            >
+              <XCircle size={14} className="text-rose-400" />
+              Rejected ({submissions.filter(s => s.status === 'rejected').length})
+            </button>
+          )}
         </div>
 
         {/* Right Controls: View Switcher & Search Bar */}
@@ -1375,10 +1480,10 @@ interface UserSubmissionStat {
                                 title="Pending Admin Approval"
                                 className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help"
                               >
-                                <Clock size={10} className="text-amber-400" />
+                                <Clock size={10} className="text-amber-400 animate-pulse" />
                                 Pending
                               </span>
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-5000 animate-in fade-in zoom-in-95 duration-150">
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
                                 <div className="bg-slate-950/95 text-amber-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-2xl border border-amber-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
                                   <Clock size={12} className="text-amber-400 shrink-0" />
                                   <span>Pending admin review</span>
@@ -1447,8 +1552,8 @@ interface UserSubmissionStat {
                         className={cn(
                           "p-1.5 rounded-lg border transition-colors cursor-pointer",
                           (sub.status === 'pending' || !sub.status)
-                            ? "bg-amber-500 text-black border-amber-400"
-                            : "bg-black/80 hover:bg-black text-amber-400 border-amber-500/30"
+                            ? "bg-slate-600 text-white border-slate-500"
+                            : "bg-black/80 hover:bg-black text-slate-400 border-slate-700"
                         )}
                       >
                         <Clock size={12} />
@@ -1475,7 +1580,7 @@ interface UserSubmissionStat {
                           handleAdminToggleSpoiler(sub);
                         }}
                         title={sub.is_spoiler ? "Unmark Spoiler" : "Force Spoiler"}
-                        className="p-1.5 bg-black/80 hover:bg-black text-amber-400 rounded-lg border border-amber-500/30 transition-colors cursor-pointer"
+                        className="p-1.5 bg-black/80 hover:bg-black text-slate-400 rounded-lg border border-slate-700 transition-colors cursor-pointer"
                       >
                         <Eye size={12} />
                       </button>
@@ -1917,8 +2022,8 @@ interface UserSubmissionStat {
                         className={cn(
                           "p-1.5 rounded-lg border transition-colors cursor-pointer",
                           (sub.status === 'pending' || !sub.status)
-                            ? "bg-amber-500 text-black border-amber-400"
-                            : "bg-black/5 dark:bg-white/5 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                            ? "bg-slate-600 text-white border-slate-500"
+                            : "bg-black/5 dark:bg-white/5 text-slate-400 border-slate-700 hover:bg-slate-800/50"
                         )}
                       >
                         <Clock size={11} />
@@ -2181,18 +2286,86 @@ interface UserSubmissionStat {
                   </p>
                 ) : (
                   activeCommentsForSub.map((cmt) => (
-                    <div key={cmt.id} className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1">
+                    <div key={cmt.id} className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1.5 group">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold text-white/90">
-                          {cmt.user_name}
-                        </span>
-                        <span className="text-[9px] text-white/30">
-                          {new Date(cmt.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {cmt.user_avatar ? (
+                            <img src={cmt.user_avatar} alt="" className="w-4 h-4 rounded-full object-cover shrink-0" />
+                          ) : null}
+                          <span className="text-[11px] font-bold text-white/90 truncate">
+                            {cmt.user_name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[9px] text-white/30">
+                            {new Date(cmt.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {canModifyComment(cmt.user_id) && editingCommentId !== cmt.id && (
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditComment(cmt)}
+                                title="Edit comment"
+                                className="p-1 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                              >
+                                <Edit2 size={11} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteComment(cmt.id)}
+                                title="Delete comment"
+                                className="p-1 rounded text-rose-400/60 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-white/80 leading-relaxed">
-                        {cmt.content}
-                      </p>
+
+                      {editingCommentId === cmt.id ? (
+                        <div className="space-y-1.5 pt-1">
+                          <input
+                            type="text"
+                            value={editingCommentText}
+                            onChange={(e) => setEditingCommentText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEditComment(cmt.id);
+                              if (e.key === 'Escape') handleCancelEditComment();
+                            }}
+                            autoFocus
+                            className={cn("w-full bg-black/50 border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none", teamFocusBorder)}
+                          />
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={handleCancelEditComment}
+                              className="px-2 py-1 rounded text-[10px] font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSavingComment || !editingCommentText.trim()}
+                              onClick={() => handleSaveEditComment(cmt.id)}
+                              className={cn("px-2.5 py-1 rounded text-[10px] font-bold text-white transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40", teamSolidBtn)}
+                            >
+                              <Check size={11} /> Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-xs text-white/80 leading-relaxed break-words">
+                            {cmt.content}
+                          </p>
+                          {cmt.is_edited && (
+                            <span className="text-[10px] text-white/40 italic block mt-0.5">
+                              (edited)
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -2228,9 +2401,9 @@ interface UserSubmissionStat {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl"
+              className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl"
             >
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-300 border border-slate-700 mx-auto flex items-center justify-center">
                 <AlertCircle size={28} />
               </div>
               <h3 className="text-base font-bold text-white">Voting Period Information</h3>
@@ -2239,7 +2412,7 @@ interface UserSubmissionStat {
               </p>
               <button
                 onClick={() => setVotingNoticeMessage(null)}
-                className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs py-2.5 rounded-xl transition-colors cursor-pointer"
+                className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs py-2.5 rounded-xl transition-colors cursor-pointer border border-slate-600"
               >
                 Got It
               </button>
@@ -2527,9 +2700,9 @@ interface UserSubmissionStat {
 
                     {/* Admin User Submission Stats Pill in Lightbox */}
                     {user?.isAdmin && (
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-300">
+                      <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs text-slate-300">
                         <div className="flex items-center gap-1.5">
-                          <Camera size={13} className="text-amber-400" />
+                          <Camera size={13} className="text-slate-400" />
                           <span>
                             Admin: <strong>{userSubmissionCounts[currentSub.user_id]?.count || 1} / 10</strong> uploaded ({userSubmissionCounts[currentSub.user_id]?.selectedCount || 0} voting entry)
                           </span>
@@ -2539,10 +2712,28 @@ interface UserSubmissionStat {
                             setAdminFilterUserId(currentSub.user_id);
                             setLightboxSubId(null);
                           }}
-                          className="text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 px-2 py-0.5 rounded text-amber-200 transition-colors cursor-pointer"
+                          className="text-[10px] font-bold bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded text-slate-200 border border-slate-600 transition-colors cursor-pointer"
                         >
                           Filter by user
                         </button>
+                      </div>
+                    )}
+
+                    {/* Status Badge in Lightbox if Rejected */}
+                    {currentSub.status === 'rejected' && (
+                      <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between text-xs text-rose-300">
+                        <span className="flex items-center gap-1 font-bold">
+                          <XCircle size={14} className="text-rose-400" />
+                          Rejected Submission
+                        </span>
+                        {user?.isAdmin && (
+                          <button
+                            onClick={() => handleAdminSetStatus(currentSub.id, 'approved')}
+                            className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-400 text-black px-2 py-0.5 rounded transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <Check size={11} /> Approve (Un-reject)
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -2609,12 +2800,80 @@ interface UserSubmissionStat {
                           <p className="text-xs italic text-white/40 text-center py-4">No comments yet. Be the first!</p>
                         ) : (
                           subComments.map(c => (
-                            <div key={c.id} className="p-2.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
+                            <div key={c.id} className="p-2.5 rounded-xl bg-white/5 border border-white/5 space-y-1.5 group">
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-bold text-white/90">{c.user_name}</span>
-                                <span className="text-[9px] text-white/30">{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {c.user_avatar ? (
+                                    <img src={c.user_avatar} alt="" className="w-4 h-4 rounded-full object-cover shrink-0" />
+                                  ) : null}
+                                  <span className="font-bold text-white/90 truncate">{c.user_name}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[9px] text-white/30">{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  {canModifyComment(c.user_id) && editingCommentId !== c.id && (
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEditComment(c)}
+                                        title="Edit comment"
+                                        className="p-1 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                      >
+                                        <Edit2 size={11} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteComment(c.id)}
+                                        title="Delete comment"
+                                        className="p-1 rounded text-rose-400/60 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                      >
+                                        <Trash2 size={11} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                              <p className="text-xs text-white/80 leading-normal">{c.content}</p>
+
+                              {editingCommentId === c.id ? (
+                                <div className="space-y-1.5 pt-1">
+                                  <input
+                                    type="text"
+                                    value={editingCommentText}
+                                    onChange={(e) => setEditingCommentText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleSaveEditComment(c.id);
+                                      if (e.key === 'Escape') handleCancelEditComment();
+                                    }}
+                                    autoFocus
+                                    className={cn("w-full bg-black/50 border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none", teamFocusBorder)}
+                                  />
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={handleCancelEditComment}
+                                      className="px-2 py-1 rounded text-[10px] font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isSavingComment || !editingCommentText.trim()}
+                                      onClick={() => handleSaveEditComment(c.id)}
+                                      className={cn("px-2.5 py-1 rounded text-[10px] font-bold text-white transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40", teamSolidBtn)}
+                                    >
+                                      <Check size={11} /> Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="text-xs text-white/80 leading-normal break-words">{c.content}</p>
+                                  {c.is_edited && (
+                                    <span className="text-[10px] text-white/40 italic block mt-0.5">
+                                      (edited)
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))
                         )}
@@ -2650,7 +2909,7 @@ interface UserSubmissionStat {
                   {/* Admin Delete Action inside Lightbox */}
                   {user?.isAdmin && (
                     <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-                      <span className="text-[10px] text-amber-400 font-mono">Admin Action</span>
+                      <span className="text-[10px] text-slate-400 font-mono">Admin Action</span>
                       <button
                         onClick={() => {
                           handleAdminDelete(currentSub.id);
@@ -2676,18 +2935,18 @@ interface UserSubmissionStat {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 md:p-8 max-w-2xl w-full space-y-6 shadow-2xl overflow-y-auto max-h-[85vh]"
+              className="bg-slate-900 border border-slate-700 rounded-3xl p-6 md:p-8 max-w-2xl w-full space-y-6 shadow-2xl overflow-y-auto max-h-[85vh]"
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-2xl">
+                  <div className="p-2.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-2xl">
                     <Users size={24} />
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
                       User Screenshot Submissions
-                      <span className="bg-amber-500/20 text-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-500/30">
+                      <span className="bg-slate-800 text-slate-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-slate-700">
                         Admin Overview
                       </span>
                     </h3>
@@ -2712,7 +2971,7 @@ interface UserSubmissionStat {
                 </div>
                 <div className="bg-white/5 rounded-2xl p-3 border border-white/5 text-center">
                   <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Active Users</span>
-                  <span className="text-lg font-black text-amber-400">{userSubmissionsList.length}</span>
+                  <span className="text-lg font-black text-slate-200">{userSubmissionsList.length}</span>
                 </div>
                 <div className="bg-white/5 rounded-2xl p-3 border border-white/5 text-center">
                   <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Voting Entries</span>
@@ -2728,7 +2987,7 @@ interface UserSubmissionStat {
                   placeholder="Search user name, team, or game..."
                   value={userSearchTerm}
                   onChange={(e) => setUserSearchTerm(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-amber-400"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-slate-500"
                 />
               </div>
 
@@ -2778,7 +3037,7 @@ interface UserSubmissionStat {
                       <div className="flex items-center gap-3 justify-between sm:justify-end">
                         <div className="text-right">
                           <div className="flex items-center gap-1.5 justify-end">
-                            <span className="text-xs font-black text-amber-400">{usr.count} / 10</span>
+                            <span className="text-xs font-black text-slate-300">{usr.count} / 10</span>
                             <span className="text-[10px] text-white/50 font-medium">uploads</span>
                           </div>
                           {usr.selectedCount > 0 ? (
@@ -2795,7 +3054,7 @@ interface UserSubmissionStat {
                             setAdminFilterUserId(usr.userId);
                             setAdminUserModalOpen(false);
                           }}
-                          className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
                         >
                           View Screenshots
                         </button>
