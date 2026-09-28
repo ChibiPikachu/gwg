@@ -59,6 +59,20 @@ const getWinnerTeamForEvent = (evt: any): string | null => {
   return null;
 };
 
+export const isScreenshotSubmission = (s: any) => {
+  if (!s) return false;
+  const platform = String(s.platform || '').toLowerCase();
+  const gameName = String(s.game_name || '').toLowerCase();
+  const notes = String(s.notes || '').toLowerCase();
+  return (
+    platform.includes('screenshot') ||
+    gameName.includes('screenshot') ||
+    notes.includes('screenshotid') ||
+    Boolean(s.is_screenshot) ||
+    Boolean(s.isScreenshot)
+  );
+};
+
 export default function Profile({ steamId }: { steamId?: string }) {
   const { user: currentUser, theme, syncWithDiscord, loginWithSteam, loginWithDiscord, updateProfile } = useAuth();
 
@@ -88,6 +102,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
   // Real-time screenshot notifications state
   const [screenshotNotifs, setScreenshotNotifs] = useState<any[]>([]);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
+  const [screenshotContestSubs, setScreenshotContestSubs] = useState<any[]>([]);
+  const [screenshotContestEvent, setScreenshotContestEvent] = useState<any>(null);
 
   const hasDiscord = !!targetUser?.discordId;
   const hasRealSteam = targetUser?.steamId && !String(targetUser.steamId).startsWith('discord_');
@@ -128,17 +144,38 @@ export default function Profile({ steamId }: { steamId?: string }) {
     });
   }, [events]);
 
+  const currentEvent = React.useMemo(() => {
+    return (events || []).find((e: any) => Boolean(e.is_active) || Boolean(e.isActive) || String(e.is_active) === 'true') || sortedEvents[0] || null;
+  }, [events, sortedEvents]);
+
+  const activeEvent = currentEvent;
+  const hideScores = !!activeEvent?.hide_scores;
+  const hideUserScores = hideScores && !isOwnProfile;
+
+  const displayedEvent = React.useMemo(() => {
+    if (selectedEventId !== 'all') {
+      const found = (events || []).find((e: any) => e.id === selectedEventId);
+      if (found) return found;
+    }
+    return currentEvent;
+  }, [selectedEventId, events, currentEvent]);
+
   const userGameSubmissions = React.useMemo(() => {
     const candidateOwnerIds = isOwnProfile
-      ? [currentUser?.steamId, currentUser?.uid, currentUser?.discordId, currentUser?.discordId ? `discord_${currentUser.discordId}` : null].filter(Boolean)
-      : [steamId, targetUser?.steamId, targetUser?.discordId, targetUser?.discordId ? `discord_${targetUser.discordId}` : null].filter(Boolean);
+      ? [currentUser?.steamId, currentUser?.uid, currentUser?.discordId, currentUser?.discordId ? `discord_${currentUser.discordId}` : null, currentUser?.id].filter(Boolean).map(String)
+      : [steamId, targetUser?.steamId, targetUser?.discordId, targetUser?.discordId ? `discord_${targetUser.discordId}` : null, targetUser?.id, targetUser?.uid].filter(Boolean).map(String);
 
-    return (submissions || []).filter((s: any) => {
-      const isOwner = candidateOwnerIds.length === 0 || candidateOwnerIds.includes(s.user_id);
+    const baseSubs = (submissions || []).filter((s: any) => {
+      const sUid = String(s.user_id || s.steamid || '').trim();
+      const isOwner = candidateOwnerIds.length === 0 || candidateOwnerIds.some(cid => {
+        const cStr = String(cid).trim();
+        const cClean = cStr.startsWith('discord_') ? cStr.replace('discord_', '') : cStr;
+        const sClean = sUid.startsWith('discord_') ? sUid.replace('discord_', '') : sUid;
+        return sUid === cStr || sClean === cClean;
+      });
       return (
         isOwner &&
         s.game_name !== 'Event Update' && 
-        s.game_name !== 'Screenshot Points' && 
         s.game_name !== 'Bingo Points' &&
         s.game_name !== 'Team Award' &&
         s.platform !== 'System' &&
@@ -146,7 +183,64 @@ export default function Profile({ steamId }: { steamId?: string }) {
         !String(s.user_id || '').startsWith('team_pts_')
       );
     });
-  }, [submissions, isOwnProfile, currentUser, steamId, targetUser]);
+
+    const regularGameSubs = baseSubs.filter((s: any) => !isScreenshotSubmission(s));
+    const screenshotPointSubsFromDb = baseSubs.filter((s: any) => isScreenshotSubmission(s));
+
+    const allRelevantEvents = [...events];
+    if (activeEvent && !allRelevantEvents.some((e: any) => e.id === activeEvent.id)) {
+      allRelevantEvents.push(activeEvent);
+    }
+    if (screenshotContestEvent && !allRelevantEvents.some((e: any) => e.id === screenshotContestEvent.id)) {
+      allRelevantEvents.push(screenshotContestEvent);
+    }
+
+    const defaultEvtId = screenshotContestEvent?.id || activeEvent?.id || (sortedEvents[0]?.id) || 'screenshot_default';
+    const eventScreenshotMap = new Map<string, { points: number; createdAt: string }>();
+
+    const ptsPerContestScreenshot = Number(screenshotContestEvent?.submission_points || 40);
+    screenshotContestSubs.forEach((ss: any) => {
+      const evtId = ss.event_id || defaultEvtId;
+      const pts = Number(ss.points || ptsPerContestScreenshot);
+      const curr = eventScreenshotMap.get(evtId) || { points: 0, createdAt: ss.created_at || new Date().toISOString() };
+      curr.points += pts;
+      eventScreenshotMap.set(evtId, curr);
+    });
+
+    screenshotPointSubsFromDb.forEach((s: any) => {
+      const isApproved = s.status === 'verified' || s.status === 'approved' || (!s.status && Number(s.points) > 0);
+      if (!isApproved) return;
+
+      const matchesContestSub = screenshotContestSubs.some(ss => s.notes && s.notes.includes(String(ss.id)));
+      if (matchesContestSub) return;
+
+      const evtId = s.event_id || defaultEvtId;
+      const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
+      const curr = eventScreenshotMap.get(evtId) || { points: 0, createdAt: s.created_at || new Date().toISOString() };
+      curr.points += pts;
+      eventScreenshotMap.set(evtId, curr);
+    });
+
+    const consolidatedScreenshotSubs: any[] = [];
+    eventScreenshotMap.forEach((val, evtId) => {
+      if (val.points > 0) {
+        consolidatedScreenshotSubs.push({
+          id: `screenshot_pts_${evtId}`,
+          user_id: candidateOwnerIds[0] || 'user',
+          game_name: 'Screenshot Points',
+          platform: 'Screenshot Event',
+          event_id: evtId,
+          status: 'verified',
+          is_screenshot: true,
+          points: val.points,
+          calculated_score: val.points,
+          created_at: val.createdAt
+        });
+      }
+    });
+
+    return [...regularGameSubs, ...consolidatedScreenshotSubs];
+  }, [submissions, isOwnProfile, currentUser, steamId, targetUser, screenshotContestSubs, screenshotContestEvent, activeEvent, events, sortedEvents]);
 
   const filteredSubmissions = React.useMemo(() => {
     return userGameSubmissions.filter((s: any) => {
@@ -156,7 +250,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
       const matchesSearch = !query || 
         (s.game_name || '').toLowerCase().includes(query) || 
         (s.platform || '').toLowerCase().includes(query) ||
-        (s.completion_status || '').toLowerCase().includes(query);
+        (s.completion_status || '').toLowerCase().includes(query) ||
+        (isScreenshotSubmission(s) && 'screenshot points'.includes(query));
 
       return matchesEvent && matchesStatus && matchesSearch;
     });
@@ -293,17 +388,17 @@ export default function Profile({ steamId }: { steamId?: string }) {
     fetchSubmissions();
   }, [steamId, isOwnProfile, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId, targetUser?.id, targetUser?.discord_id, targetUser?.points]);
 
-  // Real-time Screenshot Comment Notifications Fetcher & Subscription
+  // Real-time Screenshot Submissions & Notifications Fetcher
   React.useEffect(() => {
-    const fetchScreenshotNotifs = async () => {
+    const fetchScreenshotData = async () => {
       const primaryId = steamId || currentUser?.uid;
       if (!primaryId) return;
 
       setLoadingNotifs(true);
       try {
-        const res = await fetch(`/api/screenshots?action=notifications&userId=${primaryId}`);
-        if (res.ok) {
-          const data = await res.json();
+        const notifRes = await fetch(`/api/screenshots?action=notifications&userId=${primaryId}`);
+        if (notifRes.ok) {
+          const data = await notifRes.json();
           setScreenshotNotifs(data.notifications || []);
         }
       } catch (err) {
@@ -311,18 +406,47 @@ export default function Profile({ steamId }: { steamId?: string }) {
       } finally {
         setLoadingNotifs(false);
       }
+
+      try {
+        const sRes = await fetch('/api/screenshots');
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          setScreenshotContestEvent(sData.event || null);
+          const allScreenshots = sData.submissions || [];
+          const candidateOwnerIds = isOwnProfile
+            ? [currentUser?.steamId, currentUser?.uid, currentUser?.discordId, currentUser?.discordId ? `discord_${currentUser.discordId}` : null, currentUser?.id].filter(Boolean).map(String)
+            : [steamId, targetUser?.steamId, targetUser?.discordId, targetUser?.discordId ? `discord_${targetUser.discordId}` : null, targetUser?.id, targetUser?.uid].filter(Boolean).map(String);
+
+          const userApprovedScreenshots = allScreenshots.filter((s: any) => {
+            const sUid = String(s.user_id || '').trim();
+            const sClean = sUid.startsWith('discord_') ? sUid.replace('discord_', '') : sUid;
+            const isOwner = candidateOwnerIds.some(cid => {
+              const cStr = String(cid).trim();
+              const cClean = cStr.startsWith('discord_') ? cStr.replace('discord_', '') : cStr;
+              return sUid === cStr || sClean === cClean;
+            });
+            return isOwner && (s.status === 'approved' || String(s.caption || '').includes('"status":"approved"'));
+          });
+          setScreenshotContestSubs(userApprovedScreenshots);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch screenshot contest data in profile:', err);
+      }
     };
 
-    fetchScreenshotNotifs();
+    fetchScreenshotData();
 
     if (isSupabaseConfigured && supabase) {
       const channel = supabase
         .channel('realtime-screenshot-notifs')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'screenshot_comments' }, () => {
-          fetchScreenshotNotifs();
+          fetchScreenshotData();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshot_submissions' }, () => {
+          fetchScreenshotData();
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
-          fetchScreenshotNotifs();
+          fetchScreenshotData();
         })
         .subscribe();
 
@@ -330,7 +454,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
         supabase.removeChannel(channel);
       };
     }
-  }, [steamId, currentUser?.uid]);
+  }, [steamId, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId, targetUser?.id, isOwnProfile]);
 
   React.useEffect(() => {
     if (isOwnProfile) {
@@ -444,22 +568,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
     }
   };
 
-  const currentEvent = React.useMemo(() => {
-    return (events || []).find((e: any) => Boolean(e.is_active) || Boolean(e.isActive) || String(e.is_active) === 'true') || sortedEvents[0] || null;
-  }, [events, sortedEvents]);
-
-  const activeEvent = currentEvent;
-  const hideScores = !!activeEvent?.hide_scores;
-  const hideUserScores = hideScores && !isOwnProfile;
-
-  const displayedEvent = React.useMemo(() => {
-    if (selectedEventId !== 'all') {
-      const found = (events || []).find((e: any) => e.id === selectedEventId);
-      if (found) return found;
-    }
-    return currentEvent;
-  }, [selectedEventId, events, currentEvent]);
-
   const displayedPoints = React.useMemo(() => {
     if (!targetUser) return 0;
 
@@ -505,12 +613,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
       }
     }
 
-    const eventSubmissions = (submissions || []).filter((s: any) => {
-      const isOwner = candidateOwnerIds.length === 0 ||
-        candidateOwnerIds.includes(String(s.user_id)) ||
-        candidateOwnerIds.includes(String(s.steamid));
-      if (!isOwner) return false;
-
+    const eventSubmissions = (userGameSubmissions || []).filter((s: any) => {
       const isVerified = s.status === 'verified' || s.status === 'approved' || (!s.status && (Number(s.points) > 0 || Number(s.calculated_score) > 0));
       if (!isVerified) return false;
 
@@ -1057,16 +1160,16 @@ export default function Profile({ steamId }: { steamId?: string }) {
           <div className={cn("p-2 rounded-lg bg-white/5", colors.primary)}>
             <History size={20} />
           </div>
-          <h2 className="text-2xl font-bold dark:text-white text-slate-800">Submitted Games</h2>
+          <h2 className="text-2xl font-bold dark:text-white text-slate-800">Event Submissions</h2>
         </div>
 
         {loadingSubmissions ? (
           <div className="flex justify-center p-12">
             <div className={cn("w-8 h-8 border-2 border-t-transparent rounded-full animate-spin", theme.border)}></div>
           </div>
-        ) : submissions.length === 0 ? (
+        ) : (submissions.length === 0 && userGameSubmissions.length === 0) ? (
           <div className="p-12 text-center rounded-2xl border border-dashed border-black/10 dark:border-white/10 opacity-35 italic font-bold">
-            No submissions found for this user.
+            No event submissions found for this user.
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -1147,7 +1250,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                   type="text"
                   value={submissionSearchQuery}
                   onChange={(e) => setSubmissionSearchQuery(e.target.value)}
-                  placeholder="Search submitted game or platform..."
+                  placeholder="Search event submissions or platform..."
                   className={cn(
                     "w-full pl-9 pr-8 py-2 text-xs rounded-xl dark:bg-[#111111] bg-white border border-black/10 dark:border-white/10 focus:outline-none focus:ring-2 shadow-sm transition-all placeholder:opacity-40",
                     targetUser.team === 'blue' ? "focus:ring-sky-500/50" :
@@ -1199,6 +1302,36 @@ export default function Profile({ steamId }: { steamId?: string }) {
               <div className="flex flex-col gap-3">
                 {filteredSubmissions.map((sub: any) => {
                   const subEvent = events.find((e: any) => e.id === sub.event_id);
+                  const isScreenshot = isScreenshotSubmission(sub);
+
+                  if (isScreenshot) {
+                    return (
+                      <div 
+                        key={sub.id} 
+                        className="group py-2.5 px-4 dark:bg-[#111111] bg-white rounded-xl border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10 transition-all flex items-center justify-between gap-3 shadow-sm"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <h3 className="font-bold text-sm md:text-base dark:text-white text-slate-800 leading-snug">
+                            Screenshot Points
+                          </h3>
+                          {selectedEventId === 'all' && subEvent && (
+                            <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 font-extrabold tracking-wider text-[9px] uppercase shrink-0">
+                              Event #{parseEventNumber(subEvent)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 shrink-0">
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 border border-emerald-500/20 uppercase font-black tracking-wider text-[9px] flex items-center gap-1 shadow-sm">
+                            <CheckCircle2 size={10} /> Approved
+                          </span>
+                          <div className="px-3 py-1.5 rounded-xl text-xs font-mono font-black border uppercase tracking-wider shadow-inner text-center shrink-0 min-w-[70px] bg-sky-500/10 text-sky-400 border-sky-500/30 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-500/30">
+                            +{hideUserScores ? '—' : (sub.points || 0)} pts
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div 
