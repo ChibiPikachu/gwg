@@ -1006,7 +1006,7 @@ interface UserSubmissionStat {
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             {/* Global Screenshot Points Setting Box */}
             <div className="flex items-center gap-1.5 bg-black/40 border border-slate-500/30 rounded-xl px-3 py-1 text-xs text-white">
-              <span className="font-bold text-slate-300">Points / Upload:</span>
+              <span className="font-bold text-slate-300">Screenshot points:</span>
               <input
                 type="number"
                 min="0"
