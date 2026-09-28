@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu, X, User } from 'lucide-react';
+import { LogOut, Moon, Sun, Bell, CheckCircle2, XCircle, Menu, X, User, MessageSquare, Camera } from 'lucide-react';
 import { UserProfile, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -11,6 +11,7 @@ interface TopBarProps {
   onLogout: () => void;
   onProfileClick: () => void;
   onMenuClick?: () => void;
+  onNavigateToScreenshot?: (submissionId: string) => void;
 }
 
 const TAB_TITLES: Record<string, string> = {
@@ -26,7 +27,7 @@ const TAB_TITLES: Record<string, string> = {
   'admin-team_points': 'Admin: Team Points',
 };
 
-export default function TopBar({ user, activeTab = 'submissions', onLogout, onProfileClick, onMenuClick }: TopBarProps) {
+export default function TopBar({ user, activeTab = 'submissions', onLogout, onProfileClick, onMenuClick, onNavigateToScreenshot }: TopBarProps) {
   const { theme, isDarkMode, toggleDarkMode } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
   const [notifications, setNotifications] = React.useState<any[]>([]);
@@ -208,53 +209,149 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
       user.discordId ? `discord_${user.discordId}` : null
     ].filter(Boolean))) as string[];
 
-    const fetchNotifications = async () => {
+    const fetchAllNotifications = async () => {
+      const mergedList: any[] = [];
+      const seenIds = new Set<string>();
+
+      // 1. Fetch screenshot comment alerts and approvals from /api/screenshots?action=notifications
+      try {
+        const queryId = user.steamId || user.uid;
+        const res = await fetch(`/api/screenshots?action=notifications&userId=${queryId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.notifications)) {
+            data.notifications.forEach((n: any) => {
+              if (!seenIds.has(n.id)) {
+                seenIds.add(n.id);
+                mergedList.push(n);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch screenshot notifications in TopBar:', err);
+      }
+
+      // If Supabase is configured, also query 'notifications' table directly
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data, error } = await supabase
-            .from('submissions')
+          const { data: dbNotifs } = await supabase
+            .from('notifications')
             .select('*')
             .in('user_id', candidateIds)
-            .neq('status', 'pending')
             .order('created_at', { ascending: false })
-            .limit(5);
+            .limit(15);
 
-          if (!error && Array.isArray(data)) {
-            setNotifications(data);
-            return;
+          if (dbNotifs && Array.isArray(dbNotifs)) {
+            dbNotifs.forEach((n: any) => {
+              if (seenIds.has(n.id)) return;
+              seenIds.add(n.id);
+
+              let parsedMeta: any = {};
+              if (n.message && typeof n.message === 'string') {
+                const match = n.message.match(/<!--META:(.*?)-->/);
+                if (match && match[1]) {
+                  try { parsedMeta = JSON.parse(match[1]); } catch {}
+                }
+              }
+              const cleanMessage = n.message ? n.message.replace(/<!--META:.*?-->/g, '').trim() : '';
+              const notifType = parsedMeta.type || (n.title?.includes('Comment') ? 'screenshot_comment' : (n.title?.includes('Approved') ? 'screenshot_approved' : 'general'));
+
+              mergedList.push({
+                ...n,
+                ...parsedMeta,
+                id: n.id,
+                title: n.title,
+                message: cleanMessage,
+                content: parsedMeta.content || cleanMessage,
+                actor_name: parsedMeta.actor_name || parsedMeta.userName || 'Member',
+                actor_avatar: parsedMeta.actor_avatar || parsedMeta.userAvatar || '',
+                game_name: parsedMeta.game_name || parsedMeta.gameName || 'Screenshot',
+                submission_id: parsedMeta.submission_id || parsedMeta.submissionId,
+                submissionId: parsedMeta.submission_id || parsedMeta.submissionId,
+                image_url: parsedMeta.image_url || parsedMeta.imageUrl || '',
+                imageUrl: parsedMeta.image_url || parsedMeta.imageUrl || '',
+                type: notifType,
+                is_read: n.read ?? false
+              });
+            });
           }
         } catch (e) {
           console.warn('Supabase notifications query error in TopBar:', e);
         }
       }
 
-      try {
-        const headers: Record<string, string> = {};
-        if (user.steamId) headers['x-steam-id'] = user.steamId;
-        if (user.discordId) headers['x-discord-id'] = user.discordId;
-        if (user.uid) headers['x-user-id'] = user.uid;
+      // 2. Fetch game submissions from submissions table (approved / rejected)
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data: subData, error } = await supabase
+            .from('submissions')
+            .select('*')
+            .in('user_id', candidateIds)
+            .neq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(8);
 
-        const res = await fetch('/api/submissions', { headers });
-        const contentType = res.headers.get('content-type');
-        if (res.ok && contentType && contentType.includes('application/json')) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            const filtered = data.filter(s => candidateIds.includes(String(s.user_id)) && s.status !== 'pending').slice(0, 5);
-            setNotifications(filtered);
+          if (!error && Array.isArray(subData)) {
+            subData.forEach((s: any) => {
+              if (!seenIds.has(s.id)) {
+                seenIds.add(s.id);
+                mergedList.push({
+                  ...s,
+                  type: 'submission'
+                });
+              }
+            });
           }
+        } catch (e) {
+          console.warn('Supabase submissions query error in TopBar:', e);
         }
-      } catch (err) {
-        console.warn('Failed to fetch notifications in TopBar:', err);
+      } else {
+        try {
+          const headers: Record<string, string> = {};
+          if (user.steamId) headers['x-steam-id'] = user.steamId;
+          if (user.discordId) headers['x-discord-id'] = user.discordId;
+          if (user.uid) headers['x-user-id'] = user.uid;
+
+          const res = await fetch('/api/submissions', { headers });
+          const contentType = res.headers.get('content-type');
+          if (res.ok && contentType && contentType.includes('application/json')) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+              const filtered = data.filter(s => candidateIds.includes(String(s.user_id)) && s.status !== 'pending').slice(0, 8);
+              filtered.forEach((s: any) => {
+                if (!seenIds.has(s.id)) {
+                  seenIds.add(s.id);
+                  mergedList.push({
+                    ...s,
+                    type: 'submission'
+                  });
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch submissions in TopBar:', err);
+        }
       }
+
+      // Sort all notifications by created_at descending
+      mergedList.sort((a, b) => {
+        const timeA = new Date(a.created_at || a.createdAt || 0).getTime();
+        const timeB = new Date(b.created_at || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+      setNotifications(mergedList.slice(0, 25));
     };
 
-    fetchNotifications();
+    fetchAllNotifications();
 
     if (!isSupabaseConfigured || !supabase) return;
 
-    // Live subscription for notifications
+    // Live subscription for notifications, submissions, and comments
     const channel = supabase
-      .channel('submission-notifications')
+      .channel('topbar-live-notifications')
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -262,23 +359,8 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
       }, (payload) => {
         const updatedSub = payload.new as any;
         if (updatedSub && candidateIds.includes(String(updatedSub.user_id)) && updatedSub.status !== 'pending') {
-          // Add to start of notification list
-          setNotifications(prev => {
-            const exists = prev.find(n => n.id === updatedSub.id);
-            if (exists) {
-              return prev.map(n => n.id === updatedSub.id ? updatedSub : n);
-            }
-            return [updatedSub, ...prev].slice(0, 5);
-          });
-          
-          // Ensure it's marked as unread if it's a status change
-          setReadIds(prev => {
-            const next = new Set(prev);
-            next.delete(updatedSub.id);
-            return next;
-          });
-          
-          setShowNotifications(true); // Auto-show notification when status changes
+          fetchAllNotifications();
+          setShowNotifications(true);
         }
       })
       .on('postgres_changes', {
@@ -286,30 +368,34 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
         schema: 'public',
         table: 'submissions',
         filter: `user_id=eq.system_notification`
+      }, () => {
+        fetchAllNotifications();
+        setShowNotifications(true);
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications'
       }, (payload) => {
-        const newNotification = payload.new as any;
-        // Add to start of notification list
-        setNotifications(prev => {
-          const exists = prev.find(n => n.id === newNotification.id);
-          if (exists) return prev;
-          return [newNotification, ...prev].slice(0, 5);
-        });
-        
-        // Ensure it's marked as unread
-        setReadIds(prev => {
-          const next = new Set(prev);
-          next.delete(newNotification.id);
-          return next;
-        });
-        
-        setShowNotifications(true); // Auto-show when an event ends
+        const newNotif = payload.new as any;
+        if (newNotif && candidateIds.includes(String(newNotif.user_id))) {
+          fetchAllNotifications();
+          setShowNotifications(true);
+        }
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'screenshot_comments'
+      }, () => {
+        fetchAllNotifications();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.steamId]);
+  }, [user?.steamId, user?.uid]);
 
   return (
     <div className="h-16 flex items-center justify-between px-4 md:px-8 gap-4 relative">
@@ -377,82 +463,210 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
                   {unreadNotifications.length === 0 ? (
                     <div className="p-8 text-center opacity-30 text-xs italic dark:text-white text-slate-500">No recent updates</div>
                   ) : (
-                    unreadNotifications.map((n) => (
-                      <div 
-                        key={n.id} 
-                        className={cn(
-                          "p-5 border-b border-black/5 dark:border-white/5 dark:hover:bg-white/5 hover:bg-slate-50 transition-colors group relative",
-                          "dark:bg-white/[0.02] bg-blue-50/30"
-                        )}
-                        onClick={() => {
-                          setReadIds(prev => {
-                            const next = new Set(prev);
-                            next.add(n.id);
-                            return next;
-                          });
-                        }}
-                      >
-                        {!readIds.has(n.id) && (
-                          <div className={cn("absolute top-6 left-2 w-1.5 h-1.5 rounded-full", theme.bg)} />
-                        )}
-                        <div className="flex gap-4">
-                          <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-black/5 dark:border-white/10">
-                            <img src={n.game_name === 'Screenshot Points' || n.game_name === 'Bingo Points' || n.game_image?.includes('1471391') ? (n.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') : n.game_image} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            {n.user_id === 'system_notification' ? (
-                              <>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  <Bell size={14} className="text-indigo-500 dark:text-indigo-400" />
-                                  <span className="text-[10px] font-black uppercase tracking-tighter text-indigo-500 dark:text-indigo-400">
-                                    Announcement
-                                  </span>
+                    unreadNotifications.map((n) => {
+                      const isScreenshotNotif = n.type === 'screenshot_comment' || n.type === 'screenshot_approved' || n.type === 'screenshot_rejected' || Boolean(n.submission_id || n.submissionId);
+                      const subId = n.submission_id || n.submissionId;
+
+                      const handleNotificationClick = () => {
+                        setReadIds(prev => {
+                          const next = new Set(prev);
+                          next.add(n.id);
+                          return next;
+                        });
+                        if (isScreenshotNotif && subId && onNavigateToScreenshot) {
+                          setShowNotifications(false);
+                          onNavigateToScreenshot(subId);
+                        }
+                      };
+
+                      return (
+                        <div 
+                          key={n.id} 
+                          className={cn(
+                            "p-4 border-b border-black/5 dark:border-white/5 dark:hover:bg-white/5 hover:bg-slate-50 transition-colors group relative cursor-pointer",
+                            !readIds.has(n.id) ? "dark:bg-white/[0.03] bg-sky-50/40" : ""
+                          )}
+                          onClick={handleNotificationClick}
+                        >
+                          {!readIds.has(n.id) && (
+                            <div className={cn("absolute top-5 left-2 w-1.5 h-1.5 rounded-full", theme.bg)} />
+                          )}
+                          <div className="flex gap-3 items-start pl-1">
+                            {/* Thumbnail or Icon */}
+                            {n.type === 'screenshot_comment' ? (
+                              <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-black/10 dark:border-white/10 bg-sky-500/10 flex items-center justify-center">
+                                {n.image_url || n.imageUrl ? (
+                                  <img 
+                                    src={n.image_url || n.imageUrl} 
+                                    className="w-full h-full object-cover" 
+                                    alt="" 
+                                    referrerPolicy="no-referrer" 
+                                  />
+                                ) : (
+                                  <Camera size={20} className="text-sky-400" />
+                                )}
+                                <div className="absolute -bottom-1 -right-1 bg-sky-500 text-white p-1 rounded-full shadow-sm">
+                                  <MessageSquare size={10} />
                                 </div>
-                                <p className="text-sm font-bold leading-relaxed mb-1 dark:text-white text-slate-850 select-text">
-                                  {n.notes}
-                                </p>
-                              </>
+                              </div>
+                            ) : (n.type === 'screenshot_approved' || n.type === 'screenshot_rejected') ? (
+                              <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-black/10 dark:border-white/10 bg-white/5 flex items-center justify-center">
+                                {n.image_url || n.imageUrl ? (
+                                  <img 
+                                    src={n.image_url || n.imageUrl} 
+                                    className="w-full h-full object-cover" 
+                                    alt="" 
+                                    referrerPolicy="no-referrer" 
+                                  />
+                                ) : (
+                                  <Camera size={20} className="text-white/40" />
+                                )}
+                                <div className={cn(
+                                  "absolute -bottom-1 -right-1 text-white p-1 rounded-full shadow-sm",
+                                  n.type === 'screenshot_approved' ? "bg-emerald-500" : "bg-red-500"
+                                )}>
+                                  {n.type === 'screenshot_approved' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                                </div>
+                              </div>
                             ) : (
-                              <>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  {n.status === 'verified' ? (
-                                    <CheckCircle2 size={14} className="text-emerald-500" />
-                                  ) : (
-                                    <XCircle size={14} className="text-red-500" />
-                                  )}
-                                  <span className={cn("text-[10px] font-black uppercase tracking-tighter", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
-                                    {n.status === 'verified' ? "Approved" : "Rejected"}
-                                  </span>
-                                </div>
-                                
-                                <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
-                                  {n.status === 'verified' ? (
-                                    <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
-                                  ) : (
-                                    <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
-                                  )}
-                                </p>
-                              </>
-                            )}
-
-                            {n.status === 'rejected' && (
-                              <p className="text-[10px] text-red-500 opacity-60 mt-2 p-2 bg-red-500/5 rounded italic border border-red-500/10 dark:text-red-300">
-                                "Read the notes to know why"
-                                {n.rejection_reason && <span className="block mt-1 font-bold text-red-600 dark:text-red-400 opacity-100">— {n.rejection_reason}</span>}
-                              </p>
-                            )}
-
-                            {n.status === 'verified' && (
-                              <div className="mt-2 flex items-center gap-2">
-                                <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-full", theme.bg, "text-white")}>
-                                  +{n.points || 0} PTS
-                                </span>
+                              <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-black/5 dark:border-white/10 bg-white/5">
+                                <img 
+                                  src={n.game_name === 'Screenshot Points' || n.game_name === 'Bingo Points' || n.game_image?.includes('1471391') 
+                                    ? (n.game_name === 'Bingo Points' ? 'https://cdn-icons-png.flaticon.com/512/5815/5815809.png' : 'https://i.ibb.co/gZPKx2qh/gwg-extra-points.png') 
+                                    : (n.game_image || n.image_url || n.imageUrl || 'https://via.placeholder.com/150')} 
+                                  className="w-full h-full object-cover" 
+                                  alt="" 
+                                  referrerPolicy="no-referrer" 
+                                />
                               </div>
                             )}
+
+                            {/* Notification details */}
+                            <div className="flex-1 min-w-0">
+                              {n.user_id === 'system_notification' ? (
+                                <>
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <Bell size={13} className="text-indigo-500 dark:text-indigo-400" />
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-500 dark:text-indigo-400">
+                                      Announcement
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800 select-text">
+                                    {n.notes}
+                                  </p>
+                                </>
+                              ) : n.type === 'screenshot_comment' ? (
+                                <>
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <MessageSquare size={13} className="text-sky-400 shrink-0" />
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 truncate">
+                                        Screenshot Comment
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] opacity-40 shrink-0 font-mono">
+                                      {n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs leading-snug mb-1 dark:text-zinc-200 text-slate-800">
+                                    <strong className="font-bold text-sky-400">{n.actor_name || 'Someone'}</strong> commented on your <span className="font-semibold">{n.game_name || 'Screenshot'}</span>:
+                                  </p>
+                                  <p className="text-[11px] italic bg-black/5 dark:bg-white/5 p-2 rounded-lg border border-black/5 dark:border-white/5 dark:text-zinc-300 text-slate-600 line-clamp-2">
+                                    "{n.content || n.message}"
+                                  </p>
+                                  <span className="inline-block mt-1.5 text-[9px] font-bold text-sky-400 hover:underline">
+                                    View screenshot discussion →
+                                  </span>
+                                </>
+                              ) : n.type === 'screenshot_approved' ? (
+                                <>
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <CheckCircle2 size={13} className="text-emerald-500" />
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500">
+                                        Screenshot Approved
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] opacity-40 shrink-0 font-mono">
+                                      {n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold leading-snug mb-1 dark:text-white text-slate-800">
+                                    Your screenshot for <span className="underline decoration-emerald-500/40">{n.game_name || 'Screenshot Contest'}</span> has been approved!
+                                  </p>
+                                  <div className="mt-1 flex items-center gap-2">
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                      +{n.points || 20} PTS
+                                    </span>
+                                    <span className="text-[9px] font-bold text-slate-400 hover:text-white">
+                                      View submission →
+                                    </span>
+                                  </div>
+                                </>
+                              ) : n.type === 'screenshot_rejected' ? (
+                                <>
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <XCircle size={13} className="text-red-500" />
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-red-500">
+                                        Screenshot Rejected
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] opacity-40 shrink-0 font-mono">
+                                      {n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold leading-snug mb-1 dark:text-white text-slate-800">
+                                    Your screenshot for <span className="underline decoration-red-500/40">{n.game_name || 'Screenshot Contest'}</span> was rejected.
+                                  </p>
+                                  {n.rejection_reason && (
+                                    <p className="text-[10px] text-red-400 mt-1 p-1.5 bg-red-500/10 rounded border border-red-500/20 font-medium">
+                                      Note: {n.rejection_reason}
+                                    </p>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    {n.status === 'verified' ? (
+                                      <CheckCircle2 size={13} className="text-emerald-500" />
+                                    ) : (
+                                      <XCircle size={13} className="text-red-500" />
+                                    )}
+                                    <span className={cn("text-[10px] font-black uppercase tracking-wider", n.status === 'verified' ? "text-emerald-500" : "text-red-500")}>
+                                      {n.status === 'verified' ? "Approved" : "Rejected"}
+                                    </span>
+                                  </div>
+                                  
+                                  <p className="text-xs font-bold leading-relaxed mb-1 dark:text-white text-slate-800">
+                                    {n.status === 'verified' ? (
+                                      <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been approved!</>
+                                    ) : (
+                                      <>Your submission of <span className="underline decoration-slate-200 dark:decoration-white/20 underline-offset-2">{n.game_name || n.game_title}</span> has been rejected.</>
+                                    )}
+                                  </p>
+
+                                  {n.status === 'rejected' && (
+                                    <p className="text-[10px] text-red-500 opacity-60 mt-1 p-1.5 bg-red-500/5 rounded italic border border-red-500/10 dark:text-red-300">
+                                      "Read the notes to know why"
+                                      {n.rejection_reason && <span className="block mt-1 font-bold text-red-600 dark:text-red-400 opacity-100">— {n.rejection_reason}</span>}
+                                    </p>
+                                  )}
+
+                                  {n.status === 'verified' && (
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-full", theme.bg, "text-white")}>
+                                        +{n.points || 0} PTS
+                                      </span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
                 {unreadNotifications.length > 0 && (

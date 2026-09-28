@@ -204,26 +204,33 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
   React.useEffect(() => {
     const fetchSubmissions = async () => {
-      const primaryId = steamId || currentUser?.uid || targetUser?.steamId || targetUser?.id;
+      const primaryId = isOwnProfile
+        ? (steamId || currentUser?.uid || currentUser?.steamId)
+        : (steamId || targetUser?.steamId || targetUser?.id || targetUser?.uid);
       if (!primaryId) return;
 
-      const candidateIds = Array.from(new Set([
-        primaryId,
-        steamId,
-        currentUser?.steamId,
-        currentUser?.uid,
-        currentUser?.discordId,
-        currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
-        currentUser?.id,
-        targetUser?.id,
-        targetUser?.uid,
-        targetUser?.steamId,
-        targetUser?.steamid,
-        targetUser?.discordId,
-        targetUser?.discord_id,
-        targetUser?.discordId ? `discord_${targetUser.discordId}` : null,
-        targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
-      ].filter(Boolean))) as string[];
+      const candidateIds = isOwnProfile
+        ? Array.from(new Set([
+            primaryId,
+            steamId,
+            currentUser?.steamId,
+            currentUser?.uid,
+            currentUser?.discordId,
+            currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
+            currentUser?.id
+          ].filter(Boolean))) as string[]
+        : Array.from(new Set([
+            primaryId,
+            steamId,
+            targetUser?.id,
+            targetUser?.uid,
+            targetUser?.steamId,
+            targetUser?.steamid,
+            targetUser?.discordId,
+            targetUser?.discord_id,
+            targetUser?.discordId ? `discord_${targetUser.discordId}` : null,
+            targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
+          ].filter(Boolean))) as string[];
 
       setLoadingSubmissions(true);
 
@@ -336,12 +343,13 @@ export default function Profile({ steamId }: { steamId?: string }) {
       const fetchUserProfile = async () => {
         if (isSupabaseConfigured && supabase && steamId) {
           try {
-            const { data: profile, error } = await supabase
+            const { data: profileList, error } = await supabase
               .from('profiles')
               .select('*')
               .or(buildProfileOrFilter(steamId))
-              .maybeSingle();
+              .limit(1);
 
+            const profile = profileList?.[0];
             if (profile && !error) {
               const isAdmin = profile.role === 'admin' || profile.role === 'admins' || profile.role === 'owner' || profile.is_admin === true || profile.isAdmin === true;
               const formattedUser = {
@@ -355,7 +363,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                 isAdmin: Boolean(isAdmin),
                 role: profile.role || (isAdmin ? 'admin' : 'member'),
                 status: profile.status || 'Ready for Event',
-                points: typeof profile.points === 'number' ? profile.points : 0,
+                points: Number(profile.points) || 0,
                 discordId: profile.discord_id,
                 discordName: profile.discord_name,
                 discordAvatar: profile.discord_avatar,
@@ -381,7 +389,11 @@ export default function Profile({ steamId }: { steamId?: string }) {
             return res.json();
           })
           .then(data => {
-            setTargetUser(data);
+            setTargetUser({
+              ...data,
+              team: data.team || 'none',
+              points: Number(data.points) || 0
+            });
             setLoading(false);
           })
           .catch(err => {
@@ -402,45 +414,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
       setActiveAvatar(targetUser.active_avatar || 'steam');
     }
   }, [targetUser?.uid, targetUser?.status, targetUser?.steamName, targetUser?.active_avatar]);
-
-  if (loading) {
-    return (
-      <div className="p-20 flex justify-center">
-        <div className={cn("w-12 h-12 border-4 border-t-transparent rounded-full animate-spin", theme.border)}></div>
-      </div>
-    );
-  }
-
-  if (!targetUser || targetUser.error) {
-    return (
-      <div className="p-20 text-center text-white/50 font-bold flex flex-col items-center justify-center gap-4">
-        <div className="text-red-500/80 animate-pulse">
-          <Shield size={48} />
-        </div>
-        <span>{targetUser?.error || 'User profile not found'}</span>
-      </div>
-    );
-  }
-
-  const handleSave = async () => {
-    if (!isOwnProfile) return;
-    setIsSaving(true);
-    const success = await updateProfile({ displayName, status });
-    setIsSaving(false);
-    if (success) {
-      setIsEditing(false);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-    }
-  };
-
-  const handleCancel = () => {
-    if (targetUser && !targetUser.error) {
-      setStatus(targetUser.status || '');
-      setDisplayName(targetUser.steamName || '');
-    }
-    setIsEditing(false);
-  };
 
   const colors = TEAM_COLORS[(targetUser?.team || 'none') as Team] || TEAM_COLORS['none'] || TEAM_COLORS['blue'];
   const logoColor = targetUser?.team === 'blue' ? 'bg-blue-accent' : 
@@ -490,22 +463,25 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const displayedPoints = React.useMemo(() => {
     if (!targetUser) return 0;
 
-    const candidateOwnerIds = Array.from(new Set([
-      steamId,
-      currentUser?.steamId,
-      currentUser?.uid,
-      currentUser?.discordId,
-      currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
-      currentUser?.id,
-      targetUser?.id,
-      targetUser?.uid,
-      targetUser?.steamId,
-      targetUser?.steamid,
-      targetUser?.discordId,
-      targetUser?.discord_id,
-      targetUser?.discordId ? `discord_${targetUser.discordId}` : null,
-      targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
-    ].filter(Boolean))) as string[];
+    const candidateOwnerIds = isOwnProfile
+      ? Array.from(new Set([
+          currentUser?.steamId,
+          currentUser?.uid,
+          currentUser?.discordId,
+          currentUser?.discordId ? `discord_${currentUser.discordId}` : null,
+          currentUser?.id
+        ].filter(Boolean))) as string[]
+      : Array.from(new Set([
+          steamId,
+          targetUser?.id,
+          targetUser?.uid,
+          targetUser?.steamId,
+          targetUser?.steamid,
+          targetUser?.discordId,
+          targetUser?.discord_id,
+          targetUser?.discordId ? `discord_${targetUser.discordId}` : null,
+          targetUser?.discord_id ? `discord_${targetUser.discord_id}` : null
+        ].filter(Boolean))) as string[];
 
     const isAllEvents = selectedEventId === 'all';
     const targetEvt = displayedEvent;
@@ -610,6 +586,45 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
     return calculatedTotal;
   }, [displayedEvent, selectedEventId, submissions, userAdjustments, isOwnProfile, currentUser, steamId, targetUser, events]);
+
+  const handleSave = async () => {
+    if (!isOwnProfile) return;
+    setIsSaving(true);
+    const success = await updateProfile({ displayName, status });
+    setIsSaving(false);
+    if (success) {
+      setIsEditing(false);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    }
+  };
+
+  const handleCancel = () => {
+    if (targetUser && !targetUser.error) {
+      setStatus(targetUser.status || '');
+      setDisplayName(targetUser.steamName || '');
+    }
+    setIsEditing(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="p-20 flex justify-center">
+        <div className={cn("w-12 h-12 border-4 border-t-transparent rounded-full animate-spin", theme.border)}></div>
+      </div>
+    );
+  }
+
+  if (!targetUser || targetUser.error) {
+    return (
+      <div className="p-20 text-center text-white/50 font-bold flex flex-col items-center justify-center gap-4">
+        <div className="text-red-500/80 animate-pulse">
+          <Shield size={48} />
+        </div>
+        <span>{targetUser?.error || 'User profile not found'}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-12">
@@ -845,7 +860,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
             <Trophy size={32} className={colors.primary} />
             <div>
                <span className="text-4xl font-mono font-bold block dark:text-white text-slate-800">
-                 {hideUserScores ? '—' : displayedPoints.toLocaleString()}
+                 {hideUserScores ? '—' : (Number(displayedPoints) || 0).toLocaleString()}
                </span>
                <span className="text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">
                  Points Earned {selectedEventId === 'all' ? '(All Events)' : displayedEvent ? (displayedEvent.is_active || displayedEvent.isActive ? `(Active Event #${parseEventNumber(displayedEvent)})` : `(Event #${parseEventNumber(displayedEvent)})`) : '(Active Event)'}

@@ -3596,13 +3596,27 @@ async function createServer() {
     if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     const { steamid } = req.params;
-    let query = supabase.from('profiles').select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, points, role, created_at, id');
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(steamid)) {
-      query = query.or(`id.eq.${steamid},steamid.eq.${steamid},discord_id.eq.${steamid}`);
-    } else {
-      query = query.or(`steamid.eq.${steamid},discord_id.eq.${steamid}`);
+    const cleanId = String(steamid || '').startsWith('discord_') ? String(steamid).replace('discord_', '') : String(steamid || '');
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(steamid);
+
+    const filterParts = [
+      `steamid.eq.${steamid}`,
+      `steamid.eq.${cleanId}`,
+      `steamid.eq.discord_${cleanId}`,
+      `discord_id.eq.${steamid}`,
+      `discord_id.eq.${cleanId}`
+    ];
+    if (isUuid) {
+      filterParts.unshift(`id.eq.${steamid}`);
     }
-    const { data: profile, error } = await query.maybeSingle();
+
+    let query = supabase.from('profiles')
+      .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, discord_id, active_avatar, team, status, points, role, created_at, id')
+      .or(filterParts.join(','))
+      .limit(1);
+
+    const { data: profiles, error } = await query;
+    const profile = profiles?.[0];
 
     if (error || !profile) return res.status(404).json({ error: 'User not found' });
 
@@ -3685,21 +3699,21 @@ async function createServer() {
 
     // Transform to frontend format
     const transformedUser = {
-      uid: profile.steamid,
-      steamId: profile.steamid,
-      steamName: profile.steam_name,
-      steamAvatar: finalAvatar, // Respect preference
-      discordName: profile.discord_name,
-      discordAvatar: profile.discord_avatar,
-      discordId: profile.discord_id,
+      uid: String(profile.steamid || profile.discord_id || profile.id || steamid),
+      steamId: String(profile.steamid || profile.discord_id || profile.id || steamid),
+      steamName: profile.steam_name || profile.discord_name || 'Gamer',
+      steamAvatar: finalAvatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+      discordName: profile.discord_name || null,
+      discordAvatar: profile.discord_avatar || null,
+      discordId: profile.discord_id || null,
       active_avatar: profile.active_avatar || 'steam',
-      team: profile.team,
-      status: profile.status,
-      points: calculatedUserPoints,
-      role: profile.role,
-      isAdmin: profile.role === 'admin' || profile.role === 'admins',
+      team: profile.team || 'none',
+      status: profile.status || '',
+      points: Number(calculatedUserPoints) || 0,
+      role: profile.role || 'member',
+      isAdmin: profile.role === 'admin' || profile.role === 'admins' || profile.is_admin === true,
       createdAt: profile.created_at,
-      eventTeams: eventTeams
+      eventTeams: eventTeams || {}
     };
     
     res.json(transformedUser);

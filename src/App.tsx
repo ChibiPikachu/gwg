@@ -37,11 +37,18 @@ function AppContent() {
   const { user, loading, theme, loginWithSteam, loginWithDiscord, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('submissions');
   const [viewedProfileId, setViewedProfileId] = useState<string | null>(null);
+  const [viewedScreenshotId, setViewedScreenshotId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const handleViewProfile = (steamId: string | null) => {
     setViewedProfileId(steamId);
     setActiveTab('profile');
+  };
+
+  const handleNavigateToScreenshot = (submissionId: string) => {
+    setViewedScreenshotId(submissionId);
+    setActiveTab('screenshots');
+    setIsSidebarOpen(false);
   };
 
   const isDiscordWithoutSteam = Boolean(
@@ -114,7 +121,7 @@ function AppContent() {
       case 'submissions':
         return <MySubmissions />;
       case 'profile':
-        return <Profile steamId={viewedProfileId || undefined} />;
+        return <Profile key={viewedProfileId || (user?.steamId || user?.uid || 'my-profile')} steamId={viewedProfileId || undefined} />;
       case 'team':
         return <MyTeam onViewProfile={handleViewProfile} />;
       case 'games':
@@ -124,7 +131,7 @@ function AppContent() {
       case 'events':
         return <EventsPanel />;
       case 'screenshots':
-        return <ScreenshotContest onViewProfile={handleViewProfile} />;
+        return <ScreenshotContest onViewProfile={handleViewProfile} initialSubmissionId={viewedScreenshotId} />;
       case 'admin-users':
       case 'admin-submissions':
       case 'admin-team_points':
@@ -148,6 +155,7 @@ function AppContent() {
         onClose={() => setIsSidebarOpen(false)}
         setActiveTab={(tab) => {
           if (tab !== 'profile') setViewedProfileId(null);
+          if (tab !== 'screenshots') setViewedScreenshotId(null);
           setActiveTab(tab);
           setIsSidebarOpen(false);
         }} 
@@ -159,11 +167,12 @@ function AppContent() {
           onLogout={logout} 
           onProfileClick={() => handleViewProfile(null)} 
           onMenuClick={() => setIsSidebarOpen(true)}
+          onNavigateToScreenshot={handleNavigateToScreenshot}
         />
         <main className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
-              key={activeTab}
+              key={activeTab === 'profile' ? `profile-${viewedProfileId || 'me'}` : activeTab}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}

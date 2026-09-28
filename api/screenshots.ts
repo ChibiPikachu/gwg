@@ -328,21 +328,53 @@ export default async function handler(req: Request, res: Response) {
     if (method === 'GET') {
       if (action === 'notifications' || req.query.notifications === 'true') {
         const queryUserId = (req.query.userId || req.query.user_id) as string;
-        if (supabase && queryUserId) {
+        const cleanQueryId = queryUserId?.startsWith('discord_') ? queryUserId.replace('discord_', '') : queryUserId;
+        const candidateUserIds = Array.from(new Set([queryUserId, cleanQueryId, `discord_${cleanQueryId}`].filter(Boolean))) as string[];
+
+        if (supabase && candidateUserIds.length > 0) {
           const { data: dbNotifs } = await supabase
             .from('notifications')
             .select('*')
-            .eq('user_id', queryUserId)
+            .in('user_id', candidateUserIds)
             .order('created_at', { ascending: false })
-            .limit(20);
+            .limit(30);
 
           if (dbNotifs && dbNotifs.length > 0) {
-            return res.status(200).json({ notifications: dbNotifs });
+            const formatted = dbNotifs.map((n: any) => {
+              let parsedMeta: any = {};
+              if (n.message && typeof n.message === 'string') {
+                const match = n.message.match(/<!--META:(.*?)-->/);
+                if (match && match[1]) {
+                  try {
+                    parsedMeta = JSON.parse(match[1]);
+                  } catch {}
+                }
+              }
+              const cleanMessage = n.message ? n.message.replace(/<!--META:.*?-->/g, '').trim() : '';
+              return {
+                ...n,
+                ...parsedMeta,
+                id: n.id,
+                title: n.title,
+                message: cleanMessage,
+                content: parsedMeta.content || cleanMessage,
+                actor_name: parsedMeta.actor_name || parsedMeta.userName || 'Member',
+                actor_avatar: parsedMeta.actor_avatar || parsedMeta.userAvatar || '',
+                game_name: parsedMeta.game_name || parsedMeta.gameName || 'Screenshot',
+                submission_id: parsedMeta.submission_id || parsedMeta.submissionId,
+                submissionId: parsedMeta.submission_id || parsedMeta.submissionId,
+                image_url: parsedMeta.image_url || parsedMeta.imageUrl || '',
+                imageUrl: parsedMeta.image_url || parsedMeta.imageUrl || '',
+                type: parsedMeta.type || (n.title?.includes('Comment') ? 'screenshot_comment' : (n.title?.includes('Approved') ? 'screenshot_approved' : 'general')),
+                is_read: n.read ?? false
+              };
+            });
+            return res.status(200).json({ notifications: formatted });
           }
         }
 
-        const filtered = queryUserId 
-          ? memoryNotifications.filter(n => n.user_id === queryUserId)
+        const filtered = candidateUserIds.length > 0
+          ? memoryNotifications.filter(n => candidateUserIds.includes(String(n.user_id)))
           : memoryNotifications;
         return res.status(200).json({ notifications: filtered });
       }
@@ -752,6 +784,47 @@ export default async function handler(req: Request, res: Response) {
                 created_at: new Date().toISOString()
               }]);
             }
+
+            // Create approval notification for screenshot owner
+            if (targetSub.user_id) {
+              const approvalMeta = {
+                type: 'screenshot_approved',
+                submissionId: targetSub.id,
+                submission_id: targetSub.id,
+                gameName: targetSub.game_name || 'Screenshot',
+                game_name: targetSub.game_name || 'Screenshot',
+                imageUrl: targetSub.image_url || '',
+                image_url: targetSub.image_url || ''
+              };
+              const approvalMsg = `Your screenshot submission has been approved! <!--META:${JSON.stringify(approvalMeta)}-->`;
+              try {
+                await supabase.from('notifications').insert([{
+                  user_id: targetSub.user_id,
+                  title: 'Screenshot Submission Approved',
+                  message: approvalMsg,
+                  read: false,
+                  created_at: new Date().toISOString()
+                }]);
+              } catch (notifErr) {
+                console.warn('Could not insert approval notification into Supabase:', notifErr);
+              }
+              memoryNotifications.unshift({
+                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                user_id: targetSub.user_id,
+                type: 'screenshot_approved',
+                submissionId: targetSub.id,
+                submission_id: targetSub.id,
+                gameName: targetSub.game_name || 'Screenshot',
+                game_name: targetSub.game_name || 'Screenshot',
+                imageUrl: targetSub.image_url || '',
+                image_url: targetSub.image_url || '',
+                title: 'Screenshot Submission Approved',
+                message: 'Your screenshot submission has been approved!',
+                created_at: new Date().toISOString(),
+                read: false,
+                is_read: false
+              });
+            }
           } else if (validStatus === 'pending') {
             // Revert linked points in submissions table to pending
             await supabase.from('submissions').update({ status: 'pending' }).ilike('notes', `%${submissionId}%`);
@@ -887,56 +960,70 @@ export default async function handler(req: Request, res: Response) {
         // Find screenshot creator to notify
         let creatorId: string | null = null;
         let gameName = '';
+        let screenshotImg = '';
         if (supabase) {
           const { data: subData } = await supabase
             .from('screenshot_submissions')
-            .select('user_id, game_name')
+            .select('user_id, game_name, image_url')
             .eq('id', submissionId)
             .maybeSingle();
           if (subData) {
             creatorId = subData.user_id;
             gameName = subData.game_name || 'Screenshot';
+            screenshotImg = subData.image_url || '';
           }
         } else {
           const subData = memorySubmissions.find(s => s.id === submissionId);
           if (subData) {
             creatorId = subData.user_id;
             gameName = subData.game_name || 'Screenshot';
+            screenshotImg = subData.image_url || '';
           }
         }
 
         // Send alert if commenter is not the creator
         if (creatorId && creatorId !== userId) {
-          const notifObj = {
-            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-            user_id: creatorId,
-            actor_name: userName || 'Someone',
-            actor_avatar: userAvatar || '',
-            game_name: gameName,
+          const metaObj = {
+            type: 'screenshot_comment',
             submission_id: submissionId,
+            submissionId: submissionId,
+            actor_name: userName || 'Someone',
+            userName: userName || 'Someone',
+            actor_avatar: userAvatar || '',
+            userAvatar: userAvatar || '',
+            game_name: gameName,
+            gameName: gameName,
             content: content.trim(),
-            title: 'New Comment on your Screenshot',
-            message: `${userName || 'Someone'} commented on your ${gameName} screenshot: "${content.trim()}"`,
-            created_at: new Date().toISOString(),
-            is_read: false
+            image_url: screenshotImg,
+            imageUrl: screenshotImg
           };
+          const notifTitle = 'New Comment on your Screenshot';
+          const notifMsg = `${userName || 'Someone'} commented on your ${gameName} screenshot: "${content.trim()}" <!--META:${JSON.stringify(metaObj)}-->`;
+          const notifCreatedAt = new Date().toISOString();
 
           if (supabase) {
             try {
               await supabase.from('notifications').insert([{
                 user_id: creatorId,
-                title: notifObj.title,
-                message: notifObj.message,
-                type: 'screenshot_comment',
-                data: JSON.stringify({ submissionId, gameName, userName, content: content.trim() }),
-                created_at: notifObj.created_at,
-                is_read: false
+                title: notifTitle,
+                message: notifMsg,
+                read: false,
+                created_at: notifCreatedAt
               }]);
             } catch (err) {
               console.warn('Could not insert into Supabase notifications table, using fallback:', err);
             }
           }
-          memoryNotifications.unshift(notifObj);
+          memoryNotifications.unshift({
+            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            user_id: creatorId,
+            title: notifTitle,
+            message: notifMsg,
+            created_at: notifCreatedAt,
+            read: false,
+            is_read: false,
+            ...metaObj
+          });
         }
 
         if (supabase) {
@@ -1113,6 +1200,45 @@ export default async function handler(req: Request, res: Response) {
 
           if (targetSub?.user_id) {
             await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
+            if (effectiveStatus === 'approved' && parsed.status !== 'approved') {
+              const approvalMeta = {
+                type: 'screenshot_approved',
+                submissionId: targetSub.id,
+                submission_id: targetSub.id,
+                gameName: gameName || targetSub.game_name || 'Screenshot',
+                game_name: gameName || targetSub.game_name || 'Screenshot',
+                imageUrl: targetSub.image_url || '',
+                image_url: targetSub.image_url || ''
+              };
+              const approvalMsg = `Your screenshot submission has been approved! <!--META:${JSON.stringify(approvalMeta)}-->`;
+              try {
+                await supabase.from('notifications').insert([{
+                  user_id: targetSub.user_id,
+                  title: 'Screenshot Submission Approved',
+                  message: approvalMsg,
+                  read: false,
+                  created_at: new Date().toISOString()
+                }]);
+              } catch (notifErr) {
+                console.warn('Could not insert approval notification into Supabase:', notifErr);
+              }
+              memoryNotifications.unshift({
+                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                user_id: targetSub.user_id,
+                type: 'screenshot_approved',
+                submissionId: targetSub.id,
+                submission_id: targetSub.id,
+                gameName: gameName || targetSub.game_name || 'Screenshot',
+                game_name: gameName || targetSub.game_name || 'Screenshot',
+                imageUrl: targetSub.image_url || '',
+                image_url: targetSub.image_url || '',
+                title: 'Screenshot Submission Approved',
+                message: 'Your screenshot submission has been approved!',
+                created_at: new Date().toISOString(),
+                read: false,
+                is_read: false
+              });
+            }
           }
 
           return res.status(200).json({

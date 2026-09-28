@@ -117,7 +117,13 @@ const TEAM_BG_ACCENT: Record<string, string> = {
   none: 'bg-slate-500/10 border-slate-500/20 text-slate-400'
 };
 
-export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (steamId: string) => void }) {
+export default function ScreenshotContest({ 
+  onViewProfile,
+  initialSubmissionId
+}: { 
+  onViewProfile?: (steamId: string) => void;
+  initialSubmissionId?: string | null;
+}) {
   const { user, theme } = useAuth();
   const currentUserId = user?.steamId || user?.discordId || user?.uid || '';
   const userTeam = user?.team || 'none';
@@ -244,6 +250,22 @@ export default function ScreenshotContest({ onViewProfile }: { onViewProfile?: (
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (initialSubmissionId) {
+      setLightboxSubId(initialSubmissionId);
+      setActiveTab('all');
+    }
+  }, [initialSubmissionId]);
+
+  useEffect(() => {
+    if (initialSubmissionId && submissions.length > 0) {
+      const match = submissions.find(s => s.id === initialSubmissionId);
+      if (match) {
+        setLightboxSubId(initialSubmissionId);
+      }
+    }
+  }, [initialSubmissionId, submissions]);
 
   // Calculate user submissions count
   const mySubmissions = useMemo(() => {
@@ -786,6 +808,9 @@ interface UserSubmissionStat {
     } : {
       id: 'default-evt',
       title: 'Screenshot Submission',
+      description: '',
+      max_submissions_per_user: 10,
+      created_at: new Date().toISOString(),
       status: newStatus as any,
       submission_points: editSubmissionPoints,
       is_admin_only: false,
@@ -1203,7 +1228,14 @@ interface UserSubmissionStat {
                   {/* Bottom Info */}
                   <div className="relative z-20 p-3 space-y-1">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 truncate">
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (sub.user_id) onViewProfile?.(sub.user_id);
+                        }}
+                        className="flex items-center gap-1.5 truncate cursor-pointer hover:opacity-80 transition-opacity"
+                        title={`View ${sub.user_name}'s profile`}
+                      >
                         {sub.user_avatar ? (
                           <img src={sub.user_avatar} alt="" className="w-5 h-5 rounded-full border border-white/20 shrink-0" />
                         ) : (
@@ -1211,7 +1243,7 @@ interface UserSubmissionStat {
                             {sub.user_name?.[0]?.toUpperCase() || 'U'}
                           </div>
                         )}
-                        <span className="text-[11px] font-bold text-white truncate drop-shadow-sm">
+                        <span className="text-[11px] font-bold text-white truncate drop-shadow-sm hover:underline">
                           {sub.user_name}
                         </span>
                       </div>
@@ -1623,7 +1655,14 @@ interface UserSubmissionStat {
                   <div>
                     {/* User info */}
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 truncate">
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (sub.user_id) onViewProfile?.(sub.user_id);
+                        }}
+                        className="flex items-center gap-2 truncate cursor-pointer hover:opacity-80 transition-opacity"
+                        title={`View ${sub.user_name}'s profile`}
+                      >
                         {sub.user_avatar ? (
                           <img src={sub.user_avatar} alt="" className="w-6 h-6 rounded-full border border-white/10 shrink-0" />
                         ) : (
@@ -1631,7 +1670,7 @@ interface UserSubmissionStat {
                             {sub.user_name?.[0]?.toUpperCase() || 'U'}
                           </div>
                         )}
-                        <span className="text-xs font-bold dark:text-white text-slate-800 truncate">
+                        <span className="text-xs font-bold dark:text-white text-slate-800 truncate hover:underline">
                           {sub.user_name}
                         </span>
                       </div>
@@ -2676,16 +2715,25 @@ interface UserSubmissionStat {
                   <div className="space-y-5">
                     {/* Contributor Profile */}
                     <div className="flex items-center justify-between gap-3 pb-4 border-b border-white/10">
-                      <div className="flex items-center gap-3 truncate">
+                      <div 
+                        onClick={() => {
+                          if (currentSub.user_id) {
+                            setLightboxSubId(null);
+                            onViewProfile?.(currentSub.user_id);
+                          }
+                        }}
+                        className="flex items-center gap-3 truncate cursor-pointer group/author hover:opacity-80 transition-opacity"
+                        title={`View ${currentSub.user_name}'s profile`}
+                      >
                         {currentSub.user_avatar ? (
-                          <img src={currentSub.user_avatar} alt="" className="w-10 h-10 rounded-full border border-white/20" />
+                          <img src={currentSub.user_avatar} alt="" className="w-10 h-10 rounded-full border border-white/20 group-hover/author:border-white/50 transition-colors" />
                         ) : (
                           <div className={cn("w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm", teamActiveTab)}>
                             {currentSub.user_name?.[0]?.toUpperCase() || 'U'}
                           </div>
                         )}
                         <div className="truncate">
-                          <h4 className="text-sm font-bold text-white truncate">{currentSub.user_name}</h4>
+                          <h4 className="text-sm font-bold text-white truncate group-hover/author:underline">{currentSub.user_name}</h4>
                           <span className="text-[11px] text-white/40">
                             {new Date(currentSub.created_at).toLocaleString()}
                           </span>

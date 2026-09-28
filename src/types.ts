@@ -2,18 +2,29 @@ export type Team = 'blue' | 'green' | 'purple' | 'red' | 'none';
 
 export interface UserProfile {
   uid: string;
+  id?: string;
   steamId: string;
+  steamid?: string;
   steamName: string;
+  steam_name?: string;
+  displayName?: string;
   steamAvatar: string;
+  steam_avatar?: string;
+  active_avatar?: string;
   discordId?: string;
+  discord_id?: string;
   discordName?: string;
+  discord_name?: string;
   discordAvatar?: string;
+  discord_avatar?: string;
   team: Team;
   isAdmin: boolean;
+  is_admin?: boolean;
   role?: string;
   status: string;
   points: number;
   createdAt?: string;
+  created_at?: string;
   eventTeams?: Record<string, string>;
   needs_registration?: boolean;
 }
@@ -52,7 +63,12 @@ export interface CompetitionEvent {
   start_date: string;
   end_date: string;
   is_active: boolean;
+  isActive?: boolean;
   hide_scores?: boolean;
+  winner_team?: string;
+  winnerTeam?: string;
+  event_number?: number;
+  snapshot?: any;
 }
 
 export interface ThemeHelper {
@@ -65,6 +81,8 @@ export interface ThemeHelper {
   glow: string;
   secondary: string;
   muted: string;
+  border_focus?: string;
+  text_accent?: string;
 }
 
 export const TEAM_COLORS: Record<Team, { primary: string; secondary: string; border: string; glow: string }> = {

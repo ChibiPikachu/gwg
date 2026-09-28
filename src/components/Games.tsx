@@ -400,7 +400,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                         {game.users.map((user: any) => (
                           <button
                             key={user.steamid}
-                            onClick={() => onViewProfile?.(user.steamid)}
+                            onClick={() => onViewProfile?.(user.steamid || user.steamId || user.discord_id || user.id)}
                             className="group/user flex items-center gap-2 px-2 py-1 rounded-full bg-black/10 dark:bg-white/5 border border-black/5 dark:border-white/5 hover:border-black/20 dark:hover:border-white/10 transition-all outline-none"
                             title={`View ${user.steam_name}'s profile`}
                           >
@@ -467,7 +467,7 @@ export default function Games({ onViewProfile }: { onViewProfile?: (id: string) 
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onViewProfile?.(user.steamid);
+                              onViewProfile?.(user.steamid || user.steamId || user.discord_id || user.id);
                             }}
                             className="w-5 h-5 rounded-full border border-black flex-shrink-0 hover:scale-125 hover:z-20 transition-transform active:scale-95 relative cursor-pointer"
                             title={`View ${user.steam_name}'s profile`}

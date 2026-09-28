@@ -248,7 +248,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    onViewProfile?.(m.steamid);
+                    onViewProfile?.(m.steamid || m.discord_id || m.id);
                   }}
                   title="View App Profile"
                   className={cn("w-14 h-14 rounded-full p-1 border-2 relative transition-transform hover:scale-110 active:scale-95 cursor-pointer outline-none focus:ring-2 shrink-0", `focus:${theme.ring}/50`, colors.border)}

@@ -1297,7 +1297,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          onViewProfile?.(u.steamid);
+                          onViewProfile?.(u.steamid || u.steamId || u.discord_id || u.id);
                         }}
                         title="View App Profile"
                         className={cn(
@@ -1762,7 +1762,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onViewProfile?.(u.steamid);
+                                  onViewProfile?.(u.steamid || u.steamId || u.discord_id || u.id);
                                 }}
                                 title="View App Profile"
                                 className={cn(

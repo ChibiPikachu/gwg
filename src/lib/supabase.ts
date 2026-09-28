@@ -28,10 +28,11 @@ export const isUuid = (val: string): boolean => {
 
 export const buildProfileOrFilter = (key: string): string => {
   if (!key) return 'steamid.eq.none';
-  const cleanDiscordId = key.startsWith('discord_') ? key.replace('discord_', '') : key;
+  const cleanKey = String(key).trim();
+  const cleanDiscordId = cleanKey.startsWith('discord_') ? cleanKey.replace('discord_', '') : cleanKey;
   const prefixedDiscordId = `discord_${cleanDiscordId}`;
-  if (isUuid(key)) {
-    return `id.eq.${key},steamid.eq.${key},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+  if (isUuid(cleanKey)) {
+    return `id.eq.${cleanKey},steamid.eq.${cleanKey},discord_id.eq.${cleanKey},discord_id.eq.${cleanDiscordId}`;
   }
-  return `steamid.eq.${key},steamid.eq.${prefixedDiscordId},discord_id.eq.${key},discord_id.eq.${cleanDiscordId}`;
+  return `steamid.eq.${cleanKey},steamid.eq.${prefixedDiscordId},discord_id.eq.${cleanKey},discord_id.eq.${cleanDiscordId}`;
 };
