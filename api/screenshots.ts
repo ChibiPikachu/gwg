@@ -339,8 +339,9 @@ export default async function handler(req: Request, res: Response) {
             .order('created_at', { ascending: false })
             .limit(30);
 
+          let formatted: any[] = [];
           if (dbNotifs && dbNotifs.length > 0) {
-            const formatted = dbNotifs.map((n: any) => {
+            formatted = dbNotifs.map((n: any) => {
               let parsedMeta: any = {};
               if (n.message && typeof n.message === 'string') {
                 const match = n.message.match(/<!--META:(.*?)-->/);
@@ -369,13 +370,87 @@ export default async function handler(req: Request, res: Response) {
                 is_read: n.read ?? false
               };
             });
-            return res.status(200).json({ notifications: formatted });
           }
+
+          // Check if user has any approved screenshot submissions not yet covered by a notification
+          try {
+            const { data: userSubs } = await supabase
+              .from('screenshot_submissions')
+              .select('*')
+              .in('user_id', candidateUserIds);
+
+            if (userSubs && Array.isArray(userSubs)) {
+              userSubs.forEach((sub: any) => {
+                const parsed = parseSubmissionCaption(sub.caption);
+                const isApproved = parsed.status === 'approved' || sub.status === 'approved';
+                if (isApproved) {
+                  const alreadyPresent = formatted.some((f: any) => 
+                    String(f.submission_id || f.submissionId) === String(sub.id) && f.type === 'screenshot_approved'
+                  );
+                  if (!alreadyPresent) {
+                    formatted.unshift({
+                      id: `approved_sub_${sub.id}`,
+                      user_id: sub.user_id,
+                      type: 'screenshot_approved',
+                      submission_id: sub.id,
+                      submissionId: sub.id,
+                      game_name: sub.game_name || 'Screenshot Contest',
+                      gameName: sub.game_name || 'Screenshot Contest',
+                      image_url: sub.image_url || '',
+                      imageUrl: sub.image_url || '',
+                      title: 'Screenshot Submission Approved',
+                      message: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
+                      content: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
+                      points: sub.points || persistentDefaultSubmissionPoints || 20,
+                      created_at: parsed.approved_at || sub.created_at || new Date().toISOString(),
+                      read: false,
+                      is_read: false
+                    });
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Error checking approved submissions for notifications:', e);
+          }
+
+          return res.status(200).json({ notifications: formatted });
         }
 
         const filtered = candidateUserIds.length > 0
           ? memoryNotifications.filter(n => candidateUserIds.includes(String(n.user_id)))
           : memoryNotifications;
+
+        // Also check memory submissions for approved submissions of this user
+        memorySubmissions.forEach(sub => {
+          const rawUid = String(sub.user_id || '').trim();
+          const cleanUid = rawUid.replace('discord_', '');
+          const isUser = candidateUserIds.some(cid => cid === rawUid || cid === cleanUid);
+          if (isUser && sub.status === 'approved') {
+            const alreadyPresent = filtered.some(f => String(f.submission_id || f.submissionId) === String(sub.id) && f.type === 'screenshot_approved');
+            if (!alreadyPresent) {
+              filtered.unshift({
+                id: `approved_sub_${sub.id}`,
+                user_id: sub.user_id,
+                type: 'screenshot_approved',
+                submission_id: sub.id,
+                submissionId: sub.id,
+                game_name: sub.game_name || 'Screenshot Contest',
+                gameName: sub.game_name || 'Screenshot Contest',
+                image_url: sub.image_url || '',
+                imageUrl: sub.image_url || '',
+                title: 'Screenshot Submission Approved',
+                message: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
+                content: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
+                points: sub.points || persistentDefaultSubmissionPoints || 20,
+                created_at: sub.approved_at || sub.created_at || new Date().toISOString(),
+                read: false,
+                is_read: false
+              });
+            }
+          }
+        });
+
         return res.status(200).json({ notifications: filtered });
       }
 
@@ -854,6 +929,36 @@ export default async function handler(req: Request, res: Response) {
             approved_by: effectiveAdmin,
             approved_at: effectiveApprovedAt
           } : s);
+
+          if (validStatus === 'approved') {
+            const targetSub = memorySubmissions.find(s => s.id === submissionId);
+            if (targetSub && targetSub.user_id) {
+              const alreadyNotif = memoryNotifications.some(n => 
+                String(n.submission_id || n.submissionId) === String(targetSub.id) && n.type === 'screenshot_approved'
+              );
+              if (!alreadyNotif) {
+                memoryNotifications.unshift({
+                  id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                  user_id: targetSub.user_id,
+                  type: 'screenshot_approved',
+                  submission_id: targetSub.id,
+                  submissionId: targetSub.id,
+                  game_name: targetSub.game_name || 'Screenshot Contest',
+                  gameName: targetSub.game_name || 'Screenshot Contest',
+                  image_url: targetSub.image_url || '',
+                  imageUrl: targetSub.image_url || '',
+                  title: 'Screenshot Submission Approved',
+                  message: `Your screenshot for ${targetSub.game_name || 'Screenshot Contest'} has been approved!`,
+                  content: `Your screenshot for ${targetSub.game_name || 'Screenshot Contest'} has been approved!`,
+                  points: targetSub.points || persistentDefaultSubmissionPoints || 20,
+                  created_at: new Date().toISOString(),
+                  read: false,
+                  is_read: false
+                });
+              }
+            }
+          }
+
           return res.status(200).json({
             success: true,
             status: validStatus,
@@ -874,19 +979,25 @@ export default async function handler(req: Request, res: Response) {
         }
 
         if (currentStatus !== 'voting_active' && eventStatus !== 'voting_active') {
-          return res.status(400).json({ error: "You can't vote yet!" });
+          return res.status(400).json({ 
+            title: "Voting is closed right now", 
+            error: "Please wait for the Voting Period to be active to vote for your favorite entries!" 
+          });
         }
 
         if (!submissionId || !userId) {
           return res.status(400).json({ error: 'Missing submissionId or userId' });
         }
 
+        const cleanUserId = String(userId).replace('discord_', '');
+
         if (supabase) {
           // Check if submission belongs to user
           const { data: targetSub } = await supabase.from('screenshot_submissions').select('user_id, is_selected').eq('id', submissionId).single();
           if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
 
-          if (targetSub.user_id === userId) {
+          const subOwnerClean = String(targetSub.user_id || '').replace('discord_', '');
+          if (targetSub.user_id === userId || subOwnerClean === cleanUserId) {
             return res.status(400).json({ error: "You can't vote for yourself, silly!" });
           }
 
@@ -917,9 +1028,17 @@ export default async function handler(req: Request, res: Response) {
         } else {
           const targetSub = memorySubmissions.find(s => s.id === submissionId);
           if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-          if (targetSub.user_id === userId) return res.status(400).json({ error: "You can't vote for yourself, silly!" });
 
-          const existingIndex = memoryVotes.findIndex(v => v.user_id === userId && v.submission_id === submissionId);
+          const subOwnerClean = String(targetSub.user_id || '').replace('discord_', '');
+          if (targetSub.user_id === userId || subOwnerClean === cleanUserId) {
+            return res.status(400).json({ error: "You can't vote for yourself, silly!" });
+          }
+
+          if (!targetSub.is_selected) {
+            return res.status(400).json({ error: 'This screenshot is not up for voting!' });
+          }
+
+          const existingIndex = memoryVotes.findIndex(v => (v.user_id === userId || String(v.user_id).replace('discord_', '') === cleanUserId) && v.submission_id === submissionId);
           if (existingIndex >= 0) {
             memoryVotes.splice(existingIndex, 1);
             return res.status(200).json({ success: true, voted: false, message: 'Vote removed' });

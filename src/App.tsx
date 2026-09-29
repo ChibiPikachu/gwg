@@ -38,6 +38,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('submissions');
   const [viewedProfileId, setViewedProfileId] = useState<string | null>(null);
   const [viewedScreenshotId, setViewedScreenshotId] = useState<string | null>(null);
+  const [viewedScreenshot, setViewedScreenshot] = useState<{ id: string; key: number; metadata?: any } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const handleViewProfile = (steamId: string | null) => {
@@ -45,8 +46,10 @@ function AppContent() {
     setActiveTab('profile');
   };
 
-  const handleNavigateToScreenshot = (submissionId: string) => {
-    setViewedScreenshotId(submissionId);
+  const handleNavigateToScreenshot = (submissionId: string, metadata?: any) => {
+    const strId = String(submissionId);
+    setViewedScreenshot({ id: strId, key: Date.now(), metadata });
+    setViewedScreenshotId(strId);
     setActiveTab('screenshots');
     setIsSidebarOpen(false);
   };
@@ -131,7 +134,13 @@ function AppContent() {
       case 'events':
         return <EventsPanel />;
       case 'screenshots':
-        return <ScreenshotContest onViewProfile={handleViewProfile} initialSubmissionId={viewedScreenshotId} />;
+        return (
+          <ScreenshotContest 
+            onViewProfile={handleViewProfile} 
+            initialSubmissionId={viewedScreenshotId} 
+            targetSubmission={viewedScreenshot}
+          />
+        );
       case 'admin-users':
       case 'admin-submissions':
       case 'admin-team_points':
@@ -155,7 +164,10 @@ function AppContent() {
         onClose={() => setIsSidebarOpen(false)}
         setActiveTab={(tab) => {
           if (tab !== 'profile') setViewedProfileId(null);
-          if (tab !== 'screenshots') setViewedScreenshotId(null);
+          if (tab !== 'screenshots') {
+            setViewedScreenshotId(null);
+            setViewedScreenshot(null);
+          }
           setActiveTab(tab);
           setIsSidebarOpen(false);
         }} 

@@ -11,7 +11,7 @@ interface TopBarProps {
   onLogout: () => void;
   onProfileClick: () => void;
   onMenuClick?: () => void;
-  onNavigateToScreenshot?: (submissionId: string) => void;
+  onNavigateToScreenshot?: (submissionId: string, metadata?: any) => void;
 }
 
 const TAB_TITLES: Record<string, string> = {
@@ -200,7 +200,7 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
   );
 
   React.useEffect(() => {
-    if (!user?.steamId && !user?.uid) return;
+    if (!user?.steamId && !user?.uid && !user?.discordId) return;
     
     const candidateIds = Array.from(new Set([
       user.steamId,
@@ -215,7 +215,7 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
 
       // 1. Fetch screenshot comment alerts and approvals from /api/screenshots?action=notifications
       try {
-        const queryId = user.steamId || user.uid;
+        const queryId = user.steamId || user.discordId || user.uid;
         const res = await fetch(`/api/screenshots?action=notifications&userId=${queryId}`);
         if (res.ok) {
           const data = await res.json();
@@ -294,13 +294,37 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
 
           if (!error && Array.isArray(subData)) {
             subData.forEach((s: any) => {
-              if (!seenIds.has(s.id)) {
-                seenIds.add(s.id);
-                mergedList.push({
-                  ...s,
-                  type: 'submission'
-                });
+              if (seenIds.has(s.id)) return;
+              seenIds.add(s.id);
+
+              let targetScreenshotId: string | null = null;
+              if (s.notes && typeof s.notes === 'string') {
+                const match = s.notes.match(/__META_START__(.*?)__META_END__/);
+                if (match && match[1]) {
+                  try {
+                    const parsedNotes = JSON.parse(match[1]);
+                    if (parsedNotes.screenshotId) {
+                      targetScreenshotId = String(parsedNotes.screenshotId);
+                    }
+                  } catch {}
+                }
               }
+
+              const isScreenshot = Boolean(targetScreenshotId) || s.platform === 'Screenshot Event' || String(s.game_name || '').includes('Screenshot');
+              if (isScreenshot && targetScreenshotId) {
+                const alreadyNotified = mergedList.some((m: any) => 
+                  String(m.submission_id || m.submissionId) === targetScreenshotId && m.type === 'screenshot_approved'
+                );
+                if (alreadyNotified) return;
+              }
+
+              mergedList.push({
+                ...s,
+                type: isScreenshot ? (s.status === 'verified' ? 'screenshot_approved' : (s.status === 'rejected' ? 'screenshot_rejected' : 'submission')) : 'submission',
+                submission_id: targetScreenshotId || s.id,
+                submissionId: targetScreenshotId || s.id,
+                is_screenshot: isScreenshot
+              });
             });
           }
         } catch (e) {
@@ -320,13 +344,37 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
             if (Array.isArray(data)) {
               const filtered = data.filter(s => candidateIds.includes(String(s.user_id)) && s.status !== 'pending').slice(0, 8);
               filtered.forEach((s: any) => {
-                if (!seenIds.has(s.id)) {
-                  seenIds.add(s.id);
-                  mergedList.push({
-                    ...s,
-                    type: 'submission'
-                  });
+                if (seenIds.has(s.id)) return;
+                seenIds.add(s.id);
+
+                let targetScreenshotId: string | null = null;
+                if (s.notes && typeof s.notes === 'string') {
+                  const match = s.notes.match(/__META_START__(.*?)__META_END__/);
+                  if (match && match[1]) {
+                    try {
+                      const parsedNotes = JSON.parse(match[1]);
+                      if (parsedNotes.screenshotId) {
+                        targetScreenshotId = String(parsedNotes.screenshotId);
+                      }
+                    } catch {}
+                  }
                 }
+
+                const isScreenshot = Boolean(targetScreenshotId) || s.platform === 'Screenshot Event' || String(s.game_name || '').includes('Screenshot');
+                if (isScreenshot && targetScreenshotId) {
+                  const alreadyNotified = mergedList.some((m: any) => 
+                    String(m.submission_id || m.submissionId) === targetScreenshotId && m.type === 'screenshot_approved'
+                  );
+                  if (alreadyNotified) return;
+                }
+
+                mergedList.push({
+                  ...s,
+                  type: isScreenshot ? (s.status === 'verified' ? 'screenshot_approved' : (s.status === 'rejected' ? 'screenshot_rejected' : 'submission')) : 'submission',
+                  submission_id: targetScreenshotId || s.id,
+                  submissionId: targetScreenshotId || s.id,
+                  is_screenshot: isScreenshot
+                });
               });
             }
           }
@@ -390,12 +438,19 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
       }, () => {
         fetchAllNotifications();
       })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'screenshot_submissions'
+      }, () => {
+        fetchAllNotifications();
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.steamId, user?.uid]);
+  }, [user?.steamId, user?.uid, user?.discordId]);
 
   return (
     <div className="h-16 flex items-center justify-between px-4 md:px-8 gap-4 relative">
@@ -464,8 +519,19 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
                     <div className="p-8 text-center opacity-30 text-xs italic dark:text-white text-slate-500">No recent updates</div>
                   ) : (
                     unreadNotifications.map((n) => {
-                      const isScreenshotNotif = n.type === 'screenshot_comment' || n.type === 'screenshot_approved' || n.type === 'screenshot_rejected' || Boolean(n.submission_id || n.submissionId);
-                      const subId = n.submission_id || n.submissionId;
+                      const isScreenshotNotif = n.type === 'screenshot_comment' || n.type === 'screenshot_approved' || n.type === 'screenshot_rejected' || Boolean(n.submission_id || n.submissionId) || Boolean(n.is_screenshot);
+                      let subId = n.submission_id || n.submissionId;
+                      if (!subId && n.notes && typeof n.notes === 'string') {
+                        const match = n.notes.match(/__META_START__(.*?)__META_END__/);
+                        if (match && match[1]) {
+                          try {
+                            const parsedNotes = JSON.parse(match[1]);
+                            if (parsedNotes.screenshotId) {
+                              subId = String(parsedNotes.screenshotId);
+                            }
+                          } catch {}
+                        }
+                      }
 
                       const handleNotificationClick = () => {
                         setReadIds(prev => {
@@ -473,9 +539,9 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
                           next.add(n.id);
                           return next;
                         });
-                        if (isScreenshotNotif && subId && onNavigateToScreenshot) {
+                        if (onNavigateToScreenshot) {
                           setShowNotifications(false);
-                          onNavigateToScreenshot(subId);
+                          onNavigateToScreenshot(subId || n.id, n);
                         }
                       };
 

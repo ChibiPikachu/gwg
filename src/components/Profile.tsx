@@ -99,9 +99,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
   const [activeAvatar, setActiveAvatar] = useState('steam');
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
 
-  // Real-time screenshot notifications state
-  const [screenshotNotifs, setScreenshotNotifs] = useState<any[]>([]);
-  const [loadingNotifs, setLoadingNotifs] = useState(false);
   const [screenshotContestSubs, setScreenshotContestSubs] = useState<any[]>([]);
   const [screenshotContestEvent, setScreenshotContestEvent] = useState<any>(null);
 
@@ -388,24 +385,11 @@ export default function Profile({ steamId }: { steamId?: string }) {
     fetchSubmissions();
   }, [steamId, isOwnProfile, currentUser?.uid, currentUser?.steamId, currentUser?.discordId, targetUser?.steamId, targetUser?.discordId, targetUser?.id, targetUser?.discord_id, targetUser?.points]);
 
-  // Real-time Screenshot Submissions & Notifications Fetcher
+  // Screenshot Submissions Fetcher for Profile Points
   React.useEffect(() => {
     const fetchScreenshotData = async () => {
       const primaryId = steamId || currentUser?.uid;
       if (!primaryId) return;
-
-      setLoadingNotifs(true);
-      try {
-        const notifRes = await fetch(`/api/screenshots?action=notifications&userId=${primaryId}`);
-        if (notifRes.ok) {
-          const data = await notifRes.json();
-          setScreenshotNotifs(data.notifications || []);
-        }
-      } catch (err) {
-        console.warn('Failed to fetch screenshot notifications:', err);
-      } finally {
-        setLoadingNotifs(false);
-      }
 
       try {
         const sRes = await fetch('/api/screenshots');
@@ -438,14 +422,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
     if (isSupabaseConfigured && supabase) {
       const channel = supabase
-        .channel('realtime-screenshot-notifs')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'screenshot_comments' }, () => {
-          fetchScreenshotData();
-        })
+        .channel('realtime-screenshot-profile-sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshot_submissions' }, () => {
-          fetchScreenshotData();
-        })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
           fetchScreenshotData();
         })
         .subscribe();
@@ -1090,69 +1068,6 @@ export default function Profile({ steamId }: { steamId?: string }) {
             )}
           </div>
       </div>
-
-      {/* Real-time Screenshot Comment Notifications Section */}
-      {isOwnProfile && (
-        <section className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={cn("p-2 rounded-lg bg-sky-500/10 text-sky-400")}>
-                <Bell size={20} />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold dark:text-white text-slate-800 flex items-center gap-2">
-                  Screenshot Comment Alerts
-                  {screenshotNotifs.filter(n => !n.is_read).length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-sky-500 text-white font-mono animate-pulse">
-                      {screenshotNotifs.filter(n => !n.is_read).length} new
-                    </span>
-                  )}
-                </h2>
-                <p className="text-xs opacity-50 dark:text-white text-slate-500">Real-time alerts when users comment on your screenshot submissions</p>
-              </div>
-            </div>
-          </div>
-
-          {loadingNotifs ? (
-            <div className="p-4 text-xs opacity-40 italic">Loading alerts...</div>
-          ) : screenshotNotifs.length === 0 ? (
-            <div className="p-6 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 text-center text-xs opacity-50">
-              No comment alerts yet. Submit screenshots in the Screenshot Contest to get feedback!
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {screenshotNotifs.slice(0, 6).map((notif, idx) => (
-                <div 
-                  key={notif.id || idx}
-                  className="p-4 rounded-xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 flex items-start gap-3 shadow-sm hover:border-sky-500/40 transition-all"
-                >
-                  <div className="w-9 h-9 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <MessageSquare size={16} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-bold dark:text-white text-slate-800 truncate">
-                        {notif.actor_name || notif.title || 'New Comment'}
-                      </span>
-                      <span className="text-[10px] opacity-40 font-mono shrink-0">
-                        {notif.created_at ? new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
-                      </span>
-                    </div>
-                    <p className="text-xs opacity-80 dark:text-slate-300 text-slate-600 line-clamp-2">
-                      {notif.content || notif.message}
-                    </p>
-                    {notif.game_name && (
-                      <span className="inline-block mt-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded">
-                        🎮 {notif.game_name}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
 
       {/* Submissions Section */}
       <section className="flex flex-col gap-6">

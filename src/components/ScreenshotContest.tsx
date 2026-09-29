@@ -119,10 +119,12 @@ const TEAM_BG_ACCENT: Record<string, string> = {
 
 export default function ScreenshotContest({ 
   onViewProfile,
-  initialSubmissionId
+  initialSubmissionId,
+  targetSubmission
 }: { 
   onViewProfile?: (steamId: string) => void;
   initialSubmissionId?: string | null;
+  targetSubmission?: { id: string; key: number; metadata?: any } | null;
 }) {
   const { user, theme } = useAuth();
   const currentUserId = user?.steamId || user?.discordId || user?.uid || '';
@@ -137,6 +139,7 @@ export default function ScreenshotContest({
   const userTeamColors = TEAM_COLORS[userTeam as Team] || TEAM_COLORS['none'];
 
   const [event, setEvent] = useState<ScreenshotEvent | null>(null);
+  const isVotingActive = event?.status === 'voting_active' || Boolean(event?.is_voting_active);
   const [submissions, setSubmissions] = useState<ScreenshotSubmission[]>([]);
   const [votes, setVotes] = useState<ScreenshotVote[]>([]);
   const [comments, setComments] = useState<ScreenshotComment[]>([]);
@@ -197,8 +200,8 @@ export default function ScreenshotContest({
     targetGameName?: string;
   } | null>(null);
 
-  // Notice modal for voting inactive
-  const [votingNoticeMessage, setVotingNoticeMessage] = useState<string | null>(null);
+  // Notice modal for voting status & rules
+  const [votingNotice, setVotingNotice] = useState<{ title: string; message: string } | null>(null);
 
   // Admin tally result modal
   const [tallyResults, setTallyResults] = useState<any[] | null>(null);
@@ -252,20 +255,31 @@ export default function ScreenshotContest({
   }, []);
 
   useEffect(() => {
-    if (initialSubmissionId) {
-      setLightboxSubId(initialSubmissionId);
+    const targetId = targetSubmission?.id || initialSubmissionId;
+    if (targetId) {
+      const strId = String(targetId);
+      setLightboxSubId(strId);
       setActiveTab('all');
+      setSearchGame('');
+      setAdminFilterUserId(null);
     }
-  }, [initialSubmissionId]);
+  }, [targetSubmission, initialSubmissionId]);
 
   useEffect(() => {
-    if (initialSubmissionId && submissions.length > 0) {
-      const match = submissions.find(s => s.id === initialSubmissionId);
+    const targetId = targetSubmission?.id || initialSubmissionId;
+    if (targetId && submissions.length > 0) {
+      const strId = String(targetId);
+      const cleanId = strId.replace(/^approved_sub_/, '').replace(/^sub_/, '');
+      const match = submissions.find(s => 
+        String(s.id) === strId || 
+        String(s.id) === cleanId ||
+        (s.image_url && targetSubmission?.metadata?.image_url && s.image_url === targetSubmission.metadata.image_url)
+      );
       if (match) {
-        setLightboxSubId(initialSubmissionId);
+        setLightboxSubId(String(match.id));
       }
     }
-  }, [initialSubmissionId, submissions]);
+  }, [targetSubmission, initialSubmissionId, submissions]);
 
   // Calculate user submissions count
   const mySubmissions = useMemo(() => {
@@ -611,14 +625,36 @@ interface UserSubmissionStat {
 
   // Vote for Screenshot
   const handleVote = async (sub: ScreenshotSubmission) => {
-    const isVotingActive = event?.status === 'voting_active' || event?.is_voting_active;
-    if (!isVotingActive) {
-      setVotingNoticeMessage("You can't vote yet!");
+    // Only entries marked as For Voting can be voted on
+    if (!sub.is_selected) {
       return;
     }
 
-    if (sub.user_id === currentUserId) {
-      setVotingNoticeMessage("You can't vote for yourself, silly!");
+    const isVotingActive = event?.status === 'voting_active' || Boolean(event?.is_voting_active);
+    if (!isVotingActive) {
+      setVotingNotice({
+        title: "Voting is closed right now",
+        message: "Please wait for the Voting Period to be active to vote for your favorite entries!"
+      });
+      return;
+    }
+
+    const rawSubUid = String(sub.user_id || '').trim();
+    const cleanSubUid = rawSubUid.replace('discord_', '');
+    const cleanCurrent = String(currentUserId).replace('discord_', '');
+    const isMine = (
+      rawSubUid === currentUserId ||
+      cleanSubUid === cleanCurrent ||
+      (user?.uid && (rawSubUid === String(user.uid).trim() || cleanSubUid === String(user.uid).replace('discord_', '').trim())) ||
+      (user?.steamId && (rawSubUid === String(user.steamId).trim() || cleanSubUid === String(user.steamId).trim())) ||
+      (user?.discordId && (cleanSubUid === String(user.discordId).trim() || rawSubUid === `discord_${user.discordId}`))
+    );
+
+    if (isMine) {
+      setVotingNotice({
+        title: "You can't vote for yourself, silly!",
+        message: "You can't vote for yourself, silly!"
+      });
       return;
     }
 
@@ -634,7 +670,22 @@ interface UserSubmissionStat {
       });
       const data = await safeParseResponse(res);
       if (!res.ok) {
-        setVotingNoticeMessage(data.error || "You can't vote yet!");
+        if (data.title || data.error?.includes('Voting is closed') || data.error?.includes('active')) {
+          setVotingNotice({
+            title: data.title || "Voting is closed right now",
+            message: data.error || "Please wait for the Voting Period to be active to vote for your favorite entries!"
+          });
+        } else if (data.error?.includes('yourself') || data.error?.includes('silly')) {
+          setVotingNotice({
+            title: "You can't vote for yourself, silly!",
+            message: "You can't vote for yourself, silly!"
+          });
+        } else {
+          setVotingNotice({
+            title: "Voting Notice",
+            message: data.error || "You can't vote yet!"
+          });
+        }
       } else {
         fetchData();
       }
@@ -1135,7 +1186,7 @@ interface UserSubmissionStat {
               {event?.title || 'Screenshot Submissions'}
             </h1>
             <p className="text-sm dark:text-white/60 text-slate-600 leading-relaxed">
-              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+{event?.submission_points ?? editSubmissionPoints ?? 20} points</strong> for your team! Select <b>one</b> official screenshot for voting when the Voting Period starts. Screenshots taken during and before the event are allowed.
+              Submit up to 10 screenshots. Every submission is worth <strong className="text-emerald-400">+{event?.submission_points ?? editSubmissionPoints ?? 20} points</strong> for your team! Select <b>one</b> screenshot as your Voting Entry when the Voting Period starts. Screenshots taken during and before the event are allowed.
             </p>
           </div>
 
@@ -1513,22 +1564,12 @@ interface UserSubmissionStat {
                         }
                         if (status === 'pending') {
                           return (
-                            <div className="relative group/badge inline-flex items-center">
-                              <span
-                                title="Pending Admin Approval"
-                                className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help"
-                              >
-                                <Clock size={10} className="text-amber-400 animate-pulse" />
-                                Pending
-                              </span>
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
-                                <div className="bg-slate-950/95 text-amber-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-2xl border border-amber-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
-                                  <Clock size={12} className="text-amber-400 shrink-0" />
-                                  <span>Pending admin review</span>
-                                </div>
-                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-amber-500/40 transform rotate-45 -mt-1" />
-                              </div>
-                            </div>
+                            <span
+                              className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md"
+                            >
+                              <Clock size={10} className="text-amber-400 animate-pulse" />
+                              Pending
+                            </span>
                           );
                         }
                         return (
@@ -1736,7 +1777,7 @@ interface UserSubmissionStat {
                         )}
                       >
                         <Star size={12} className={sub.is_selected ? "fill-amber-400 text-amber-400" : ""} />
-                        {sub.is_selected ? "Official Entry" : "Set for Voting"}
+                        {sub.is_selected ? "Voting Entry" : "Set for Voting"}
                       </button>
                     ) : (
                       <span className="text-[10px] opacity-40 font-medium">
@@ -1754,21 +1795,32 @@ interface UserSubmissionStat {
                         <span>{subComments.length}</span>
                       </button>
 
-                      {/* Vote button */}
-                      <button
-                        onClick={() => handleVote(sub)}
-                        disabled={isMine}
-                        className={cn(
-                          "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95",
-                          hasVoted
-                            ? "bg-rose-500 text-white shadow-rose-500/30"
-                            : "bg-black/5 dark:bg-white/10 hover:bg-rose-500/20 text-slate-700 dark:text-white hover:text-rose-400",
-                          isMine && "opacity-40 cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/10 hover:text-slate-700"
-                        )}
-                      >
-                        <Heart size={14} className={cn(hasVoted && "fill-white")} />
-                        <span>{voteCount}</span>
-                      </button>
+                      {/* Vote button - only for entries marked as For Voting */}
+                      {sub.is_selected && (
+                        <button
+                          onClick={() => handleVote(sub)}
+                          title={
+                            !isVotingActive
+                              ? "Voting is closed right now"
+                              : isMine
+                              ? "You can't vote for yourself, silly!"
+                              : hasVoted
+                              ? "Remove vote"
+                              : "Vote for this entry"
+                          }
+                          className={cn(
+                            "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95",
+                            !isVotingActive
+                              ? "opacity-50 grayscale bg-slate-200 dark:bg-white/5 text-slate-400 dark:text-white/40 border border-black/5 dark:border-white/10 hover:opacity-75"
+                              : hasVoted
+                              ? "bg-rose-500 text-white shadow-rose-500/30"
+                              : "bg-black/5 dark:bg-white/10 hover:bg-rose-500/20 text-slate-700 dark:text-white hover:text-rose-400"
+                          )}
+                        >
+                          <Heart size={14} className={cn(hasVoted && isVotingActive && "fill-white")} />
+                          <span>{voteCount}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1917,22 +1969,12 @@ interface UserSubmissionStat {
                         }
                         if (status === 'pending') {
                           return (
-                            <div className="relative group/badge inline-flex items-center">
-                              <span
-                                title="Pending Admin Approval"
-                                className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help"
-                              >
-                                <Clock size={10} className="text-amber-400 animate-pulse" />
-                                Pending
-                              </span>
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
-                                <div className="bg-slate-950/95 text-amber-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-2xl border border-amber-500/40 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
-                                  <Clock size={12} className="text-amber-400 shrink-0" />
-                                  <span>Pending admin review</span>
-                                </div>
-                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-amber-500/40 transform rotate-45 -mt-1" />
-                              </div>
-                            </div>
+                            <span
+                              className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md"
+                            >
+                              <Clock size={10} className="text-amber-400 animate-pulse" />
+                              Pending
+                            </span>
                           );
                         }
                         return (
@@ -1999,7 +2041,7 @@ interface UserSubmissionStat {
                     {isMine && (
                       <button
                         onClick={() => handleSetForVoting(sub.id)}
-                        title={sub.is_selected ? "Currently your official voting entry" : "Set this as your official voting entry"}
+                        title={sub.is_selected ? "Currently your voting entry" : "Set this as your voting entry"}
                         className={cn(
                           "p-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border",
                           sub.is_selected
@@ -2008,7 +2050,7 @@ interface UserSubmissionStat {
                         )}
                       >
                         <Star size={14} className={sub.is_selected ? "fill-amber-400 text-amber-400" : ""} />
-                        <span className="hidden sm:inline text-[10px]">{sub.is_selected ? "Entry" : "Set Entry"}</span>
+                        <span className="hidden sm:inline text-[10px]">{sub.is_selected ? "Voting Entry" : "Set Entry"}</span>
                       </button>
                     )}
 
@@ -2022,22 +2064,32 @@ interface UserSubmissionStat {
                       <span>{subComments.length}</span>
                     </button>
 
-                    {/* Vote Button */}
-                    <button
-                      onClick={() => handleVote(sub)}
-                      disabled={isMine}
-                      title={isMine ? "You cannot vote for your own submission" : (hasVoted ? "Remove vote" : "Vote for this screenshot")}
-                      className={cn(
-                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95",
-                        hasVoted
-                          ? "bg-rose-500 text-white shadow-rose-500/30"
-                          : "bg-black/5 dark:bg-white/10 hover:bg-rose-500/20 text-slate-700 dark:text-white hover:text-rose-400",
-                        isMine && "opacity-40 cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/10 hover:text-slate-700"
-                      )}
-                    >
-                      <Heart size={14} className={cn(hasVoted && "fill-white")} />
-                      <span>{voteCount}</span>
-                    </button>
+                    {/* Vote Button - only for entries marked as For Voting */}
+                    {sub.is_selected && (
+                      <button
+                        onClick={() => handleVote(sub)}
+                        title={
+                          !isVotingActive
+                            ? "Voting is closed right now"
+                            : isMine
+                            ? "You can't vote for yourself, silly!"
+                            : hasVoted
+                            ? "Remove vote"
+                            : "Vote for this entry"
+                        }
+                        className={cn(
+                          "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95",
+                          !isVotingActive
+                            ? "opacity-50 grayscale bg-slate-200 dark:bg-white/5 text-slate-400 dark:text-white/40 border border-black/5 dark:border-white/10 hover:opacity-75"
+                            : hasVoted
+                            ? "bg-rose-500 text-white shadow-rose-500/30"
+                            : "bg-black/5 dark:bg-white/10 hover:bg-rose-500/20 text-slate-700 dark:text-white hover:text-rose-400"
+                        )}
+                      >
+                        <Heart size={14} className={cn(hasVoted && isVotingActive && "fill-white")} />
+                        <span>{voteCount}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Admin Quick Toolbar */}
@@ -2264,7 +2316,7 @@ interface UserSubmissionStat {
                     />
                     <span className="text-amber-400 font-bold flex items-center gap-1">
                       <Star size={12} className="fill-amber-400" />
-                      Set as my official entry for Voting
+                      Set as my Voting Entry
                     </span>
                   </label>
 
@@ -2272,7 +2324,7 @@ interface UserSubmissionStat {
                     <div className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2 ml-1">
                       <AlertCircle size={14} className="text-amber-400 shrink-0 mt-0.5" />
                       <div>
-                        <span>You already have an official voting entry: <strong>"{userExistingVotingEntry.game_name || 'Screenshot'}"</strong>. Submitting will confirm replacing it.</span>
+                        <span>You already have a voting entry: <strong>"{userExistingVotingEntry.game_name || 'Screenshot'}"</strong>. Submitting will confirm replacing it.</span>
                       </div>
                     </div>
                   )}
@@ -2438,25 +2490,33 @@ interface UserSubmissionStat {
         )}
       </AnimatePresence>
 
-      {/* VOTING INACTIVE NOTICE MODAL */}
+      {/* VOTING STATUS & RULES NOTICE MODAL */}
       <AnimatePresence>
-        {votingNoticeMessage && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        {votingNotice && (
+          <div 
+            className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm cursor-pointer"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setVotingNotice(null);
+            }}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl"
+              className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl cursor-default"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-300 border border-slate-700 mx-auto flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 mx-auto flex items-center justify-center">
                 <AlertCircle size={28} />
               </div>
-              <h3 className="text-base font-bold text-white">Voting Period Information</h3>
-              <p className="text-xs text-white/70 leading-relaxed">
-                {votingNoticeMessage}
-              </p>
+              <h3 className="text-base font-bold text-white leading-snug">{votingNotice.title}</h3>
+              {votingNotice.message && votingNotice.message !== votingNotice.title && (
+                <p className="text-xs text-white/70 leading-relaxed">
+                  {votingNotice.message}
+                </p>
+              )}
               <button
-                onClick={() => setVotingNoticeMessage(null)}
+                onClick={() => setVotingNotice(null)}
                 className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs py-2.5 rounded-xl transition-colors cursor-pointer border border-slate-600"
               >
                 Got It
@@ -2593,7 +2653,31 @@ interface UserSubmissionStat {
       {/* FULL-SCREEN LIGHTBOX MODAL */}
       <AnimatePresence>
         {lightboxSubId && (() => {
-          const currentSub = submissions.find(s => s.id === lightboxSubId);
+          const cleanLightboxId = String(lightboxSubId).replace(/^approved_sub_/, '').replace(/^sub_/, '');
+          let currentSub = submissions.find(s => 
+            String(s.id) === String(lightboxSubId) || 
+            String(s.id) === cleanLightboxId ||
+            (s.image_url && targetSubmission?.metadata?.image_url && s.image_url === targetSubmission.metadata.image_url)
+          );
+          if (!currentSub && targetSubmission && targetSubmission.metadata) {
+            const meta = targetSubmission.metadata;
+            const img = meta.image_url || meta.imageUrl || meta.game_image || '';
+            currentSub = {
+              id: targetSubmission.id,
+              event_id: meta.event_id || event?.id || 'evt_screenshot_01',
+              user_id: meta.user_id || currentUserId,
+              user_name: meta.actor_name || meta.user_name || meta.userName || user?.steamName || 'Member',
+              user_avatar: meta.actor_avatar || meta.user_avatar || meta.userAvatar || user?.steamAvatar || '',
+              user_team: meta.user_team || userTeam,
+              game_name: meta.game_name || meta.gameName || 'Screenshot',
+              image_url: img,
+              caption: meta.content || meta.message || '',
+              is_spoiler: Boolean(meta.is_spoiler),
+              is_selected: Boolean(meta.is_selected),
+              status: 'approved',
+              created_at: meta.created_at || new Date().toISOString()
+            };
+          }
           if (!currentSub) return null;
 
           const isSpoilerHidden = currentSub.is_spoiler && !revealedSpoilers[currentSub.id];
@@ -2601,7 +2685,7 @@ interface UserSubmissionStat {
           const hasVoted = myVotedSubIds.has(currentSub.id);
           const isMine = currentSub.user_id === currentUserId;
           const subComments = comments.filter(c => c.submission_id === currentSub.id);
-          const currentIndex = filteredSubmissions.findIndex(s => s.id === lightboxSubId);
+          const currentIndex = filteredSubmissions.findIndex(s => String(s.id) === String(lightboxSubId));
           const totalCount = filteredSubmissions.length;
 
           return (
@@ -2630,7 +2714,7 @@ interface UserSubmissionStat {
                   )}
                   {currentSub.is_selected && (
                     <span className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <Star size={12} className="fill-black" /> Official Voting Entry
+                      <Star size={12} className="fill-black" /> Voting Entry
                     </span>
                   )}
                 </div>
@@ -2807,22 +2891,39 @@ interface UserSubmissionStat {
                       )}
                     </div>
 
-                    {/* Lightbox Voting & Official Entry Controls */}
+                    {/* Lightbox Voting & Voting Entry Controls */}
                     <div className="space-y-2.5 pt-2">
-                      <button
-                        onClick={() => handleVote(currentSub)}
-                        disabled={isMine}
-                        className={cn(
-                          "w-full py-2.5 px-4 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-95",
-                          hasVoted
-                            ? "bg-rose-500 text-white shadow-rose-500/30"
-                            : "bg-white/10 hover:bg-rose-500/20 text-white hover:text-rose-400 border border-white/10",
-                          isMine && "opacity-40 cursor-not-allowed hover:bg-white/10 hover:text-white"
-                        )}
-                      >
-                        <Heart size={16} className={cn(hasVoted && "fill-white")} />
-                        <span>{hasVoted ? 'You Voted for this Screenshot!' : `Vote for Screenshot (${voteCount})`}</span>
-                      </button>
+                      {currentSub.is_selected && (
+                        <button
+                          onClick={() => handleVote(currentSub)}
+                          title={
+                            !isVotingActive
+                              ? "Voting is closed right now"
+                              : isMine
+                              ? "You can't vote for yourself, silly!"
+                              : hasVoted
+                              ? "Remove vote"
+                              : "Vote for this entry"
+                          }
+                          className={cn(
+                            "w-full py-2.5 px-4 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-95",
+                            !isVotingActive
+                              ? "opacity-50 grayscale bg-white/5 text-white/40 border border-white/10 hover:opacity-75"
+                              : hasVoted
+                              ? "bg-rose-500 text-white shadow-rose-500/30"
+                              : "bg-white/10 hover:bg-rose-500/20 text-white hover:text-rose-400 border border-white/10"
+                          )}
+                        >
+                          <Heart size={16} className={cn(hasVoted && isVotingActive && "fill-white")} />
+                          <span>
+                            {!isVotingActive
+                              ? `Voting is Closed (${voteCount})`
+                              : hasVoted
+                              ? 'You Voted for this Screenshot!'
+                              : `Vote for Screenshot (${voteCount})`}
+                          </span>
+                        </button>
+                      )}
 
                       {isMine && (
                         <button
@@ -2835,7 +2936,7 @@ interface UserSubmissionStat {
                           )}
                         >
                           <Star size={14} className={currentSub.is_selected ? "fill-amber-400 text-amber-400" : ""} />
-                          {currentSub.is_selected ? "Official Entry for Voting" : "Set as Official Voting Entry"}
+                          {currentSub.is_selected ? "Voting Entry" : "Set as Voting Entry"}
                         </button>
                       )}
                     </div>
