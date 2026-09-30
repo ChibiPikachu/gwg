@@ -635,7 +635,7 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
                                     </span>
                                   </div>
                                   <p className="text-xs leading-snug mb-1 dark:text-zinc-200 text-slate-800">
-                                    <strong className="font-bold text-sky-400">{n.actor_name || 'Someone'}</strong> commented on your <span className="font-semibold">{n.game_name || 'Screenshot'}</span>:
+                                    <strong className="font-bold text-sky-400">{n.actor_name || 'Someone'}</strong> commented on your <span className="font-semibold">{n.game_name || 'Screenshot'}</span> submission:
                                   </p>
                                   <p className="text-[11px] italic bg-black/5 dark:bg-white/5 p-2 rounded-lg border border-black/5 dark:border-white/5 dark:text-zinc-300 text-slate-600 line-clamp-2">
                                     "{n.content || n.message}"
