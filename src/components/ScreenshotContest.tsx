@@ -2779,11 +2779,6 @@ interface UserSubmissionStat {
                       {currentIndex >= 0 ? currentIndex + 1 : 1} / {totalCount}
                     </span>
                   )}
-                  {currentSub.is_selected && (
-                    <span className="bg-amber-500 text-black font-black text-[9px] sm:text-[10px] uppercase tracking-wider px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full flex items-center gap-1 shrink-0">
-                      <Star size={11} className="fill-black" /> <span className="hidden min-[400px]:inline">Voting</span> Entry
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -2835,7 +2830,7 @@ interface UserSubmissionStat {
                 {/* Main Image View Container - Always Hero Protagonist */}
                 <div 
                   className={cn(
-                    "relative bg-black flex items-center justify-center p-2 sm:p-4 md:p-8 select-none group cursor-pointer transition-all duration-200",
+                    "relative bg-black flex items-center justify-center p-2 sm:p-4 md:p-8 select-none group cursor-pointer transition-all duration-200 min-w-0",
                     lightboxMobileView === 'image-only'
                       ? "w-full h-full flex-1 overflow-hidden"
                       : "w-full h-[44vh] min-h-[200px] max-h-[48vh] shrink-0 md:shrink md:w-auto md:h-full md:flex-1 md:max-h-none overflow-hidden"
@@ -2926,8 +2921,8 @@ interface UserSubmissionStat {
                   className={cn(
                     "bg-[#121215] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between overflow-hidden cursor-default transition-all duration-200",
                     lightboxMobileView === 'image-only'
-                      ? "hidden md:flex md:w-96 md:h-full md:shrink-0"
-                      : "w-full flex-1 min-h-0 md:w-96 md:h-full md:shrink-0"
+                      ? "hidden md:flex md:flex-none md:w-[450px] md:h-full md:shrink-0"
+                      : "w-full flex-1 min-h-0 md:flex-none md:w-[450px] md:h-full md:shrink-0"
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -2972,16 +2967,24 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {currentSub.user_team && currentSub.user_team !== 'none' && (
-                        <span className={cn(
-                          "text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md border shrink-0",
-                          TEAM_COLORS[currentSub.user_team as Team]?.secondary,
-                          TEAM_COLORS[currentSub.user_team as Team]?.primary,
-                          TEAM_COLORS[currentSub.user_team as Team]?.border
-                        )}>
-                          Team {currentSub.user_team}
-                        </span>
-                      )}
+                      {/* Team & Voting Entry Badges */}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {currentSub.user_team && currentSub.user_team !== 'none' && (
+                          <span className={cn(
+                            "text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md border shrink-0",
+                            TEAM_COLORS[currentSub.user_team as Team]?.secondary,
+                            TEAM_COLORS[currentSub.user_team as Team]?.primary,
+                            TEAM_COLORS[currentSub.user_team as Team]?.border
+                          )}>
+                            Team {currentSub.user_team}
+                          </span>
+                        )}
+                        {currentSub.is_selected && (
+                          <span className="bg-amber-500 text-black font-black text-[9px] sm:text-[10px] uppercase tracking-wider px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-full flex items-center gap-1 shrink-0 shadow-sm">
+                            <Star size={10} className="fill-black" /> Entry
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Admin User Submission Stats Pill */}
