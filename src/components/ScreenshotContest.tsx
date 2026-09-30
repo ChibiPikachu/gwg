@@ -217,12 +217,14 @@ export default function ScreenshotContest({
   const [mobileAdminMenuSubId, setMobileAdminMenuSubId] = useState<string | null>(null);
   const [isMobileImageOnly, setIsMobileImageOnly] = useState(false);
 
-  // Close mobile admin menu when tapping outside
+  // Close mobile admin modal on Escape key
   useEffect(() => {
     if (!mobileAdminMenuSubId) return;
-    const handleGlobalClick = () => setMobileAdminMenuSubId(null);
-    window.addEventListener('click', handleGlobalClick);
-    return () => window.removeEventListener('click', handleGlobalClick);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileAdminMenuSubId(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mobileAdminMenuSubId]);
 
   const safeParseResponse = async (res: Response) => {
@@ -1772,83 +1774,6 @@ interface UserSubmissionStat {
                           >
                             <Settings size={13} />
                           </button>
-
-                          {/* Mobile Admin Dropdown Menu */}
-                          {mobileAdminMenuSubId === sub.id && (
-                            <div 
-                              className="absolute right-0 top-full mt-1.5 w-44 p-1.5 rounded-xl bg-slate-900/95 border border-white/10 shadow-2xl z-50 flex flex-col gap-1 backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 text-[11px]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white/40 border-b border-white/10">
-                                Admin Tools
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setMobileAdminMenuSubId(null);
-                                  handleAdminSetStatus(sub.id, 'approved');
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg font-bold text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
-                                <Check size={12} />
-                                <span>Mark Approved</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setMobileAdminMenuSubId(null);
-                                  handleAdminSetStatus(sub.id, 'pending');
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg font-bold text-amber-400 hover:bg-amber-500/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
-                                <Clock size={12} />
-                                <span>Mark Pending</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setMobileAdminMenuSubId(null);
-                                  handleAdminSetStatus(sub.id, 'rejected');
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg font-bold text-rose-400 hover:bg-rose-500/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
-                                <XCircle size={12} />
-                                <span>Mark Rejected</span>
-                              </button>
-                              <div className="h-px bg-white/10 my-0.5" />
-                              <button
-                                onClick={() => {
-                                  setMobileAdminMenuSubId(null);
-                                  handleAdminToggleSpoiler(sub);
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg font-bold text-slate-300 hover:bg-white/5 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
-                                <Eye size={12} />
-                                <span>{sub.is_spoiler ? "Unmark Spoiler" : "Force Spoiler"}</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setMobileAdminMenuSubId(null);
-                                  setEditingSub(sub);
-                                  setEditCaption(sub.caption);
-                                  setEditGameName(sub.game_name);
-                                  setEditIsSpoiler(sub.is_spoiler);
-                                  setEditStatus(sub.status as any || 'approved');
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg font-bold text-sky-400 hover:bg-sky-500/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
-                                <Edit3 size={12} />
-                                <span>Edit Submission</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setMobileAdminMenuSubId(null);
-                                  handleAdminDelete(sub.id);
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg font-bold text-red-400 hover:bg-red-500/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              >
-                                <Trash2 size={12} />
-                                <span>Delete Submission</span>
-                              </button>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
@@ -2220,75 +2145,92 @@ interface UserSubmissionStat {
                   {/* Admin Quick Toolbar */}
                   {user?.isAdmin && (
                     <div className="flex items-center gap-1 mt-1">
+                      {/* Mobile Admin Gear Button */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleAdminSetStatus(sub.id, 'approved');
+                          setMobileAdminMenuSubId(sub.id);
                         }}
-                        title={`Approve (Will record your approval as ${user?.steamName || user?.discordName || 'Admin'})`}
-                        className={cn(
-                          "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          (sub.status === 'approved' || sub.status === 'verified')
-                            ? "bg-emerald-500 text-black border-emerald-400"
-                            : "bg-black/5 dark:bg-white/5 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
-                        )}
+                        className="sm:hidden p-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500 hover:text-black transition-colors cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                        title="Admin tools"
+                        aria-label="Admin tools"
                       >
-                        <Check size={11} />
+                        <Settings size={12} />
+                        <span>Admin</span>
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAdminSetStatus(sub.id, 'pending');
-                        }}
-                        title="Pending"
-                        className={cn(
-                          "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          (sub.status === 'pending' || !sub.status)
-                            ? "bg-slate-600 text-white border-slate-500"
-                            : "bg-black/5 dark:bg-white/5 text-slate-400 border-slate-700 hover:bg-slate-800/50"
-                        )}
-                      >
-                        <Clock size={11} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAdminSetStatus(sub.id, 'rejected');
-                        }}
-                        title="Reject"
-                        className={cn(
-                          "p-1.5 rounded-lg border transition-colors cursor-pointer",
-                          sub.status === 'rejected'
-                            ? "bg-rose-500 text-white border-rose-400"
-                            : "bg-black/5 dark:bg-white/5 text-rose-400 border-rose-500/30 hover:bg-rose-500/20"
-                        )}
-                      >
-                        <XCircle size={11} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingSub(sub);
-                          setEditCaption(sub.caption);
-                          setEditGameName(sub.game_name);
-                          setEditIsSpoiler(sub.is_spoiler);
-                          setEditStatus(sub.status as any || 'approved');
-                        }}
-                        title="Edit Submission"
-                        className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
-                      >
-                        <Edit3 size={11} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAdminDelete(sub.id);
-                        }}
-                        title="Delete Submission"
-                        className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+
+                      {/* Desktop Quick Buttons */}
+                      <div className="hidden sm:flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdminSetStatus(sub.id, 'approved');
+                          }}
+                          title={`Approve (Will record your approval as ${user?.steamName || user?.discordName || 'Admin'})`}
+                          className={cn(
+                            "p-1.5 rounded-lg border transition-colors cursor-pointer",
+                            (sub.status === 'approved' || sub.status === 'verified')
+                              ? "bg-emerald-500 text-black border-emerald-400"
+                              : "bg-black/5 dark:bg-white/5 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                          )}
+                        >
+                          <Check size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdminSetStatus(sub.id, 'pending');
+                          }}
+                          title="Pending"
+                          className={cn(
+                            "p-1.5 rounded-lg border transition-colors cursor-pointer",
+                            (sub.status === 'pending' || !sub.status)
+                              ? "bg-slate-600 text-white border-slate-500"
+                              : "bg-black/5 dark:bg-white/5 text-slate-400 border-slate-700 hover:bg-slate-800/50"
+                          )}
+                        >
+                          <Clock size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdminSetStatus(sub.id, 'rejected');
+                          }}
+                          title="Reject"
+                          className={cn(
+                            "p-1.5 rounded-lg border transition-colors cursor-pointer",
+                            sub.status === 'rejected'
+                              ? "bg-rose-500 text-white border-rose-400"
+                              : "bg-black/5 dark:bg-white/5 text-rose-400 border-rose-500/30 hover:bg-rose-500/20"
+                          )}
+                        >
+                          <XCircle size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingSub(sub);
+                            setEditCaption(sub.caption);
+                            setEditGameName(sub.game_name);
+                            setEditIsSpoiler(sub.is_spoiler);
+                            setEditStatus(sub.status as any || 'approved');
+                          }}
+                          title="Edit Submission"
+                          className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
+                        >
+                          <Edit3 size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdminDelete(sub.id);
+                          }}
+                          title="Delete Submission"
+                          className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2863,6 +2805,17 @@ interface UserSubmissionStat {
                       </>
                     )}
                   </button>
+
+                  {user?.isAdmin && (
+                    <button
+                      onClick={() => setMobileAdminMenuSubId(currentSub.id)}
+                      className="p-1.5 sm:p-2 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black rounded-full border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1"
+                      title="Admin Tools"
+                      aria-label="Admin Tools"
+                    >
+                      <Settings size={15} />
+                    </button>
+                  )}
 
                   <span className="hidden md:inline-block text-[11px] text-white/40 font-mono">
                     Use ← → to navigate, Esc to close
@@ -3544,6 +3497,229 @@ interface UserSubmissionStat {
             </motion.div>
           </div>
         )}
+        {/* Freed Mobile Admin Action Sheet Modal - Unconstrained by card container */}
+        {mobileAdminMenuSubId && (() => {
+          const targetSub = submissions.find(s => s.id === mobileAdminMenuSubId);
+          if (!targetSub) return null;
+          const userCount = userSubmissionCounts[targetSub.user_id]?.count || 1;
+          const isTargetSpoilerHidden = targetSub.is_spoiler && !revealedSpoilers[targetSub.id];
+
+          return (
+            <motion.div 
+              key="mobile-admin-modal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm"
+              onClick={() => setMobileAdminMenuSubId(null)}
+            >
+              <motion.div 
+                initial={{ y: "100%", opacity: 0.5 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="w-full sm:max-w-md bg-slate-900 border border-white/15 rounded-t-3xl sm:rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 text-white max-h-[90vh] overflow-y-auto overscroll-contain"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Drag handle for mobile */}
+                <div className="w-12 h-1 bg-white/20 rounded-full mx-auto sm:hidden -mt-1 mb-1" />
+
+                {/* Header: Submitter info & Screenshot Preview */}
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-black">
+                      <img 
+                        src={targetSub.image_url} 
+                        alt="" 
+                        className={cn("w-full h-full object-cover", isTargetSpoilerHidden && "blur-sm opacity-60")} 
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                          <ShieldCheck size={11} /> Admin Tools
+                        </span>
+                        {targetSub.user_team && targetSub.user_team !== 'none' && (
+                          <span className={cn(
+                            "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border",
+                            TEAM_COLORS[targetSub.user_team as Team]?.secondary,
+                            TEAM_COLORS[targetSub.user_team as Team]?.primary,
+                            TEAM_COLORS[targetSub.user_team as Team]?.border
+                          )}>
+                            {targetSub.user_team}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-sm font-bold text-white truncate mt-0.5">
+                        {targetSub.game_name}
+                      </h4>
+                      <p className="text-xs text-white/50 truncate">
+                        by {targetSub.user_name}
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setMobileAdminMenuSubId(null)}
+                    className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0 cursor-pointer"
+                    title="Close"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Status Selection: Approve / Pending / Reject */}
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-white/50 mb-1.5 block">
+                    Submission Status
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileAdminMenuSubId(null);
+                        handleAdminSetStatus(targetSub.id, 'approved');
+                      }}
+                      className={cn(
+                        "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
+                        (targetSub.status === 'approved' || targetSub.status === 'verified')
+                          ? "bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20 font-black"
+                          : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+                      )}
+                    >
+                      <Check size={16} />
+                      <span>Approve</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileAdminMenuSubId(null);
+                        handleAdminSetStatus(targetSub.id, 'pending');
+                      }}
+                      className={cn(
+                        "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
+                        (targetSub.status === 'pending' || !targetSub.status)
+                          ? "bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20 font-black"
+                          : "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+                      )}
+                    >
+                      <Clock size={16} />
+                      <span>Pending</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileAdminMenuSubId(null);
+                        handleAdminSetStatus(targetSub.id, 'rejected');
+                      }}
+                      className={cn(
+                        "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
+                        targetSub.status === 'rejected'
+                          ? "bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-500/20 font-black"
+                          : "bg-rose-500/10 text-rose-300 border-rose-500/30 hover:bg-rose-500/20"
+                      )}
+                    >
+                      <XCircle size={16} />
+                      <span>Reject</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Additional Admin Tools */}
+                <div className="space-y-2 pt-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-white/50 block">
+                    Manage Entry
+                  </label>
+
+                  {/* Toggle Spoiler */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileAdminMenuSubId(null);
+                      handleAdminToggleSpoiler(targetSub);
+                    }}
+                    className="w-full text-left p-3 rounded-xl font-bold text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Eye size={16} className="text-amber-400 shrink-0" />
+                      <span>{targetSub.is_spoiler ? "Unmark as Spoiler" : "Force Mark as Spoiler"}</span>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-white/70">
+                      {targetSub.is_spoiler ? "Spoiler: YES" : "Spoiler: NO"}
+                    </span>
+                  </button>
+
+                  {/* Edit Submission (Caption, Game Name, Spoiler, Status) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileAdminMenuSubId(null);
+                      setEditingSub(targetSub);
+                      setEditCaption(targetSub.caption);
+                      setEditGameName(targetSub.game_name);
+                      setEditIsSpoiler(targetSub.is_spoiler);
+                      setEditStatus(targetSub.status as any || 'approved');
+                    }}
+                    className="w-full text-left p-3 rounded-xl font-bold text-xs bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-300 flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Edit3 size={16} className="shrink-0" />
+                      <span>Edit Caption, Game & Status</span>
+                    </div>
+                    <span className="text-[10px] text-sky-400/70">Open Editor →</span>
+                  </button>
+
+                  {/* Filter Submissions by this User */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileAdminMenuSubId(null);
+                      setAdminFilterUserId(adminFilterUserId === targetSub.user_id ? null : targetSub.user_id);
+                    }}
+                    className={cn(
+                      "w-full text-left p-3 rounded-xl font-bold text-xs border flex items-center justify-between transition-colors cursor-pointer",
+                      adminFilterUserId === targetSub.user_id
+                        ? "bg-amber-500 text-black border-amber-400 font-black"
+                        : "bg-white/5 hover:bg-white/10 border-white/10 text-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Camera size={16} className={adminFilterUserId === targetSub.user_id ? "text-black" : "text-amber-400"} />
+                      <span>{adminFilterUserId === targetSub.user_id ? "Clear User Filter" : `Filter User's Submissions (${userCount}/10)`}</span>
+                    </div>
+                    <span className="text-[10px] opacity-70">
+                      {adminFilterUserId === targetSub.user_id ? "Active" : `${userCount}/10`}
+                    </span>
+                  </button>
+
+                  {/* Delete Submission */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileAdminMenuSubId(null);
+                      handleAdminDelete(targetSub.id);
+                    }}
+                    className="w-full text-left p-3 rounded-xl font-bold text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Trash2 size={16} className="shrink-0" />
+                      <span>Delete Submission</span>
+                    </div>
+                    <span className="text-[10px] text-red-400/70">Permanently Remove</span>
+                  </button>
+                </div>
+
+                {/* Dismiss Button */}
+                <button
+                  type="button"
+                  onClick={() => setMobileAdminMenuSubId(null)}
+                  className="w-full mt-1 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 font-bold text-xs transition-colors cursor-pointer text-center"
+                >
+                  Done
+                </button>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

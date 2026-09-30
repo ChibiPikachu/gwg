@@ -324,26 +324,33 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         className={cn(
-          "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-[100dvh] max-h-[100dvh] flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:z-[60] shadow-xl dark:shadow-none overflow-hidden",
+          "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-[100dvh] max-h-[100dvh] flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:z-[60] shadow-xl dark:shadow-none overflow-hidden lg:overflow-visible",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           effectiveCollapsed ? "w-72 lg:w-20" : "w-72"
         )}
       >
         
-        {/* Desktop Collapse Toggle */}
+        {/* Desktop Collapse Toggle - on top of the sidebar so it's never cut off by the rest of the content */}
         {!isLandingPage && (
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex absolute -right-5 top-12 items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#1a1a1a] border-2 border-slate-200 dark:border-white/20 text-slate-700 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-white/40 hover:scale-105 z-150 transition-all shadow-md"
+            title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className={cn(
+              "hidden lg:flex absolute z-[150] items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/20 text-slate-700 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-400 dark:hover:border-white/40 shadow-md hover:scale-105 transition-all cursor-pointer",
+              effectiveCollapsed
+                ? "top-3 left-1/2 -translate-x-1/2 w-8 h-8"
+                : "top-5 right-4 w-8 h-8"
+            )}
           >
-            {effectiveCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            {effectiveCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
         )}
 
         {/* INNER SCROLL WRAPPER: Handles the scrolling and padding */}
         <div className={cn(
           "flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y",
-          effectiveCollapsed ? "lg:p-4 p-6 pb-20" : "p-6 pb-24 lg:pb-8"
+          effectiveCollapsed ? "lg:p-4 lg:pt-14 p-6 pb-20" : "p-6 pb-24 lg:pb-8"
         )}>
           
           <div className={cn("flex items-center mb-10 transition-all", effectiveCollapsed ? "lg:justify-center justify-between" : "justify-between")}>
