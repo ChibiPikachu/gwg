@@ -29,29 +29,50 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
   // Swipe-to-close gesture state for mobile
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
+  const [touchCurrentY, setTouchCurrentY] = useState<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
+    setTouchStartY(e.touches[0].clientY);
     setTouchCurrentX(e.touches[0].clientX);
+    setTouchCurrentY(e.touches[0].clientY);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (touchStartX !== null) {
       setTouchCurrentX(e.touches[0].clientX);
+      setTouchCurrentY(e.touches[0].clientY);
     }
   };
 
   const handleTouchEnd = () => {
-    if (touchStartX !== null && touchCurrentX !== null) {
+    if (touchStartX !== null && touchCurrentX !== null && touchStartY !== null && touchCurrentY !== null) {
       const diffX = touchStartX - touchCurrentX;
-      if (diffX > 40 && isOpen && onClose) {
+      const diffY = touchStartY - touchCurrentY;
+      // Only close if clearly a deliberate horizontal swipe to the left (diffX > 75)
+      // and horizontal movement clearly exceeds vertical scroll movement
+      if (diffX > 75 && Math.abs(diffX) > Math.abs(diffY) * 2.5 && isOpen && onClose) {
         onClose();
       }
     }
     setTouchStartX(null);
+    setTouchStartY(null);
     setTouchCurrentX(null);
+    setTouchCurrentY(null);
   };
+
+  // Lock body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (isOpen && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
 
   const [isCountdownCollapsed, setIsCountdownCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -303,7 +324,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         className={cn(
-          "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-screen flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:z-[60] shadow-xl dark:shadow-none",
+          "fixed inset-y-0 left-0 z-[110] dark:bg-[#0c0c0c] bg-white border-r border-black/5 dark:border-white/5 h-[100dvh] max-h-[100dvh] flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:z-[60] shadow-xl dark:shadow-none overflow-hidden",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           effectiveCollapsed ? "w-72 lg:w-20" : "w-72"
         )}
@@ -321,8 +342,8 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
 
         {/* INNER SCROLL WRAPPER: Handles the scrolling and padding */}
         <div className={cn(
-          "flex-1 flex flex-col overflow-y-auto",
-          effectiveCollapsed ? "lg:p-4 p-6" : "p-6"
+          "flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y",
+          effectiveCollapsed ? "lg:p-4 p-6 pb-20" : "p-6 pb-24 lg:pb-8"
         )}>
           
           <div className={cn("flex items-center mb-10 transition-all", effectiveCollapsed ? "lg:justify-center justify-between" : "justify-between")}>

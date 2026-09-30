@@ -14,19 +14,6 @@ interface TopBarProps {
   onNavigateToScreenshot?: (submissionId: string, metadata?: any) => void;
 }
 
-const TAB_TITLES: Record<string, string> = {
-  submissions: 'My Submissions',
-  profile: 'Profile',
-  team: 'My Team',
-  games: 'Game Submissions',
-  leaderboard: 'Leaderboard',
-  events: 'Events',
-  screenshots: 'Screenshot Contest',
-  'admin-users': 'Admin: Users',
-  'admin-submissions': 'Admin: Submissions',
-  'admin-team_points': 'Admin: Team Points',
-};
-
 export default function TopBar({ user, activeTab = 'submissions', onLogout, onProfileClick, onMenuClick, onNavigateToScreenshot }: TopBarProps) {
   const { theme, isDarkMode, toggleDarkMode } = useAuth();
   const colors = user ? TEAM_COLORS[user.team] : null;
@@ -182,22 +169,6 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
     setShowNotifications(false);
   };
 
-  const Logo = () => (
-    <div className="flex items-center gap-3 group cursor-pointer" onClick={() => window.location.href = '/'}>
-      <div className="w-10 h-10 rounded-full flex items-center justify-center p-1 dark:bg-white/5 bg-slate-100 border border-black/10 dark:border-white/10 group-hover:border-black/20 dark:group-hover:border-white/20 transition-all overflow-hidden shrink-0 shadow-lg">
-        <img 
-          src="https://64.media.tumblr.com/4cc7b39b35387b1cf8814cb69b4317de/9e872b03ce8fba32-13/s128x128u_c1/fa8978589ebd3c0d46250356d6a63ad428a76b80.png" 
-          alt="Logo" 
-          className="w-full h-full rounded-full object-cover"
-          referrerPolicy="no-referrer"
-        />
-      </div>
-      <div className="flex flex-col">
-        <span className="font-display text-sm dark:text-white text-slate-800 leading-tight tracking-tighter">Girls Who</span>
-        <span className={cn("font-display text-sm leading-tight tracking-tighter", theme.text)}>Game</span>
-      </div>
-    </div>
-  );
 
   React.useEffect(() => {
     if (!user?.steamId && !user?.uid && !user?.discordId) return;
@@ -454,30 +425,23 @@ export default function TopBar({ user, activeTab = 'submissions', onLogout, onPr
 
   return (
     <div className="h-16 flex items-center justify-between px-4 md:px-8 gap-4 relative">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         {user && (
           <button 
             onClick={onMenuClick}
             className="lg:hidden p-2 text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors"
             id="mobile-menu-trigger"
+            aria-label="Toggle navigation menu"
           >
             <Menu size={24} />
           </button>
         )}
-        <div className="flex-1 flex items-center gap-2">
-          <Logo />
-          {activeTab && TAB_TITLES[activeTab] && (
-            <span className="lg:hidden text-xs font-black tracking-wide dark:text-purple-300 text-purple-700 bg-purple-500/10 px-2.5 py-1 rounded-xl border border-purple-500/20 whitespace-nowrap">
-              {TAB_TITLES[activeTab]}
-            </span>
-          )}
-          {activeEventToUse && (
-            <div className="hidden sm:flex lg:hidden items-center gap-1.5 px-2 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
-              <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
-              <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
-            </div>
-          )}
-        </div>
+        {activeEventToUse && (
+          <div className="hidden sm:flex lg:hidden items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase dark:bg-[#111111] bg-slate-100 border border-black/5 dark:border-white/10 shadow-sm text-slate-800 dark:text-white select-none whitespace-nowrap">
+            <span className={cn("w-2 h-2 rounded-full animate-pulse", theme.bg || "bg-emerald-500")} />
+            <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
+          </div>
+        )}
       </div>
       
       <div className="flex items-center gap-2 md:gap-4">
