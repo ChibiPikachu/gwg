@@ -456,22 +456,54 @@ export default async function handler(req: Request, res: Response) {
 
       // 1. Get Event, Submissions, Votes, Comments
       if (supabase) {
-        let { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
-        const savedPts = getSavedSubmissionPoints();
+        // Fetch competition events from events table first to tie screenshot contest to active event
+        let compEvents: any[] = [];
+        let activeCompEvent: any = null;
+        try {
+          const { data: allEvts } = await supabase
+            .from('events')
+            .select('*')
+            .order('start_date', { ascending: false });
+          compEvents = allEvts || [];
+          activeCompEvent = compEvents.find(e => e.is_active) || null;
+        } catch (e) {
+          console.warn('Failed to load competition events in screenshot api:', e);
+        }
 
-        if (!evt) {
-          // seed event with persistent points
-          const seedEvent = {
-            ...memoryEvent,
-            submission_points: savedPts,
-            description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${savedPts}-->`
-          };
-          try {
-            const { data: newEvt } = await supabase.from('screenshot_events').insert([seedEvent]).select().single();
-            evt = newEvt || seedEvent;
-          } catch (e) {
-            evt = seedEvent;
+        const savedPts = getSavedSubmissionPoints();
+        let evt: any = null;
+
+        if (activeCompEvent) {
+          // Look up screenshot event record corresponding to this active competition event
+          const { data: se } = await supabase.from('screenshot_events').select('*').eq('id', activeCompEvent.id).maybeSingle();
+          if (se) {
+            evt = se;
+          } else {
+            // Check if legacy row exists or create new row for this event
+            const newEvt = {
+              id: activeCompEvent.id,
+              title: `${activeCompEvent.title || 'Competition Event'} - Screenshot Contest`,
+              description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${savedPts}-->`,
+              status: 'submissions_open',
+              is_admin_only: true,
+              max_submissions_per_user: 10,
+              created_at: new Date().toISOString()
+            };
+            try {
+              const { data: insertedEvt } = await supabase.from('screenshot_events').upsert([newEvt]).select().maybeSingle();
+              evt = insertedEvt || newEvt;
+            } catch (e) {
+              evt = newEvt;
+            }
           }
+        } else {
+          // No active event currently in events table
+          const { data: latestEvt } = await supabase.from('screenshot_events').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
+          evt = latestEvt || {
+            ...memoryEvent,
+            status: 'concluded',
+            title: 'Screenshot Submissions (No Active Event)'
+          };
         }
 
         const currentPoints = extractSubmissionPoints(evt);
@@ -490,9 +522,9 @@ export default async function handler(req: Request, res: Response) {
         const { data: votes } = await supabase.from('screenshot_votes').select('*');
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
-        // Ensure at most ONE submission per user has is_selected: true (self-heal any past duplicates)
+        // Ensure at most ONE submission per user has is_selected: true per event (scoped by event)
         // and parse approval metadata from caption
-        const seenSelectedUsers = new Set<string>();
+        const seenSelectedPerEvent = new Set<string>();
         const sanitizedSubs = (subs || []).map((sub: any) => {
           const parsed = parseSubmissionCaption(sub.caption);
           const effectiveStatus = (parsed.status === 'rejected' || sub.status === 'rejected')
@@ -516,14 +548,18 @@ export default async function handler(req: Request, res: Response) {
           }
           const rawUid = String(processedSub.user_id || '').trim();
           const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
-          if (seenSelectedUsers.has(rawUid) || seenSelectedUsers.has(cleanUid)) {
+          const eventScopeId = String(processedSub.event_id || 'active');
+          const key1 = `${eventScopeId}_${rawUid}`;
+          const key2 = `${eventScopeId}_${cleanUid}`;
+
+          if (seenSelectedPerEvent.has(key1) || seenSelectedPerEvent.has(key2)) {
             if (supabase && processedSub.id) {
               supabase.from('screenshot_submissions').update({ is_selected: false }).eq('id', processedSub.id).then();
             }
             return { ...processedSub, is_selected: false };
           }
-          seenSelectedUsers.add(rawUid);
-          seenSelectedUsers.add(cleanUid);
+          seenSelectedPerEvent.add(key1);
+          seenSelectedPerEvent.add(key2);
           return processedSub;
         });
 
@@ -538,13 +574,21 @@ export default async function handler(req: Request, res: Response) {
         });
 
         const eventData = evt || memoryEvent;
+        const isVotingActive = eventData.status === 'voting_active' || Boolean(eventData.is_voting_active);
+        const submissionsAllowed = Boolean(activeCompEvent) && !isVotingActive && eventData.status !== 'concluded';
 
         return res.status(200).json({
           event: {
             ...eventData,
             submission_points: currentPoints,
-            is_voting_active: eventData.status === 'voting_active'
+            is_voting_active: isVotingActive,
+            has_active_event: Boolean(activeCompEvent),
+            active_event_id: activeCompEvent?.id || null,
+            active_event_title: activeCompEvent?.title || null,
+            submissions_allowed: submissionsAllowed
           },
+          events: compEvents,
+          activeEvent: activeCompEvent,
           submissions: sanitizedSubs,
           votes: votes || [],
           comments: sanitizedComments
@@ -575,8 +619,14 @@ export default async function handler(req: Request, res: Response) {
           event: {
             ...memoryEvent,
             submission_points: currentPoints,
-            is_voting_active: memoryEvent.status === 'voting_active'
+            is_voting_active: memoryEvent.status === 'voting_active',
+            has_active_event: true,
+            active_event_id: memoryEvent.id,
+            active_event_title: memoryEvent.title,
+            submissions_allowed: memoryEvent.status !== 'voting_active' && memoryEvent.status !== 'concluded'
           },
+          events: [memoryEvent],
+          activeEvent: memoryEvent,
           submissions: memorySubsProcessed,
           votes: memoryVotes,
           comments: memoryCommentsProcessed
@@ -601,26 +651,75 @@ export default async function handler(req: Request, res: Response) {
         const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
         const candidateIds = Array.from(new Set([rawUid, cleanUid, `discord_${cleanUid}`]));
 
-        // Check submission count for this user
+        // 1. Verify that a competition event is currently active
+        let activeCompEvent: any = null;
+        if (supabase) {
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {
+            console.warn('Error checking active competition event in screenshot submit:', e);
+          }
+        } else {
+          activeCompEvent = memoryEvent;
+        }
+
+        if (!activeCompEvent) {
+          return res.status(400).json({
+            error: 'No active competition event. Screenshot submissions are closed until the next event starts in the Events panel.'
+          });
+        }
+
+        // 2. Verify that voting is NOT active (submissions are blocked once voting begins until next event)
+        let isVotingActive = false;
+        let eventStatus = 'submissions_open';
+        if (supabase) {
+          try {
+            const { data: se } = await supabase.from('screenshot_events').select('*').eq('id', activeCompEvent.id).maybeSingle();
+            if (se) {
+              eventStatus = se.status;
+              isVotingActive = se.status === 'voting_active' || Boolean(se.is_voting_active);
+            }
+          } catch (e) {}
+        } else {
+          eventStatus = memoryEvent.status;
+          isVotingActive = memoryEvent.status === 'voting_active';
+        }
+
+        if (isVotingActive || eventStatus === 'voting_active') {
+          return res.status(400).json({
+            error: 'The voting period is currently active. Screenshot submissions are closed until the next event starts.'
+          });
+        }
+
+        if (eventStatus === 'concluded') {
+          return res.status(400).json({
+            error: 'The screenshot contest has concluded. Screenshot submissions are closed until the next event starts.'
+          });
+        }
+
+        // 3. Check submission count for this user specifically for this active event
         let userSubCount = 0;
         if (supabase) {
           const { data: existing } = await supabase
             .from('screenshot_submissions')
             .select('id, is_selected')
+            .eq('event_id', activeCompEvent.id)
             .in('user_id', candidateIds);
 
           userSubCount = (existing || []).length;
           if (userSubCount >= 10) {
-            return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions!' });
+            return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions for this event!' });
           }
 
           const shouldBeSelected = Boolean(isSelected);
 
-          // If user specifically marked this as for voting, unselect all other submissions by this user
+          // If user specifically marked this as for voting, unselect all other submissions by this user for this event
           if (shouldBeSelected) {
             await supabase
               .from('screenshot_submissions')
               .update({ is_selected: false })
+              .eq('event_id', activeCompEvent.id)
               .in('user_id', candidateIds);
           }
 
@@ -631,7 +730,7 @@ export default async function handler(req: Request, res: Response) {
           });
 
           const newSub: Record<string, any> = {
-            event_id: memoryEvent.id,
+            event_id: activeCompEvent.id,
             user_id: userId,
             user_name: userName || 'Anonymous User',
             user_avatar: userAvatar || '',
@@ -662,20 +761,20 @@ export default async function handler(req: Request, res: Response) {
             }
           });
         } else {
-          userSubCount = memorySubmissions.filter(s => candidateIds.includes(String(s.user_id))).length;
+          userSubCount = memorySubmissions.filter(s => s.event_id === activeCompEvent.id && candidateIds.includes(String(s.user_id))).length;
           if (userSubCount >= 10) {
-            return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions!' });
+            return res.status(400).json({ error: 'You have reached the maximum limit of 10 screenshot submissions for this event!' });
           }
 
           const shouldBeSelected = Boolean(isSelected);
 
           if (shouldBeSelected) {
-            memorySubmissions = memorySubmissions.map(s => candidateIds.includes(String(s.user_id)) ? { ...s, is_selected: false } : s);
+            memorySubmissions = memorySubmissions.map(s => (s.event_id === activeCompEvent.id && candidateIds.includes(String(s.user_id))) ? { ...s, is_selected: false } : s);
           }
 
           const newSub = {
             id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-            event_id: memoryEvent.id,
+            event_id: activeCompEvent.id,
             user_id: userId,
             user_name: userName || 'Anonymous User',
             user_avatar: userAvatar || '',
@@ -710,7 +809,7 @@ export default async function handler(req: Request, res: Response) {
         if (supabase) {
           const { data: targetSub } = await supabase
             .from('screenshot_submissions')
-            .select('id, user_id, is_selected')
+            .select('id, user_id, event_id, is_selected')
             .eq('id', submissionId)
             .maybeSingle();
 
@@ -725,11 +824,15 @@ export default async function handler(req: Request, res: Response) {
 
           const willSelect = !targetSub.is_selected;
 
-          // Always unselect ALL existing submissions for this user first
-          await supabase
+          // Always unselect ALL existing submissions for this user in this event scope first
+          let unselectQuery = supabase
             .from('screenshot_submissions')
             .update({ is_selected: false })
             .in('user_id', uniqueCandidateIds);
+          if (targetSub.event_id) {
+            unselectQuery = unselectQuery.eq('event_id', targetSub.event_id);
+          }
+          await unselectQuery;
 
           let updated = null;
           if (willSelect) {
@@ -972,9 +1075,18 @@ export default async function handler(req: Request, res: Response) {
       if (action === 'vote') {
         const { submissionId, userId, eventStatus } = req.body;
         
+        let activeCompEvent: any = null;
+        if (supabase) {
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {}
+        }
+        const targetEventId = activeCompEvent ? activeCompEvent.id : memoryEvent.id;
+
         let currentStatus = memoryEvent.status;
         if (supabase) {
-          const { data: evt } = await supabase.from('screenshot_events').select('status').eq('id', memoryEvent.id).maybeSingle();
+          const { data: evt } = await supabase.from('screenshot_events').select('status').eq('id', targetEventId).maybeSingle();
           if (evt) currentStatus = evt.status;
         }
 
@@ -1018,7 +1130,7 @@ export default async function handler(req: Request, res: Response) {
               return res.status(400).json({ error: 'You have used all 5 of your votes!' });
             }
             await supabase.from('screenshot_votes').insert([{
-              event_id: memoryEvent.id,
+              event_id: targetEventId,
               submission_id: submissionId,
               user_id: userId,
               created_at: new Date().toISOString()
@@ -1416,14 +1528,30 @@ export default async function handler(req: Request, res: Response) {
 
       // ADMIN: TOGGLE VOTING PERIOD
       if (action === 'admin-toggle-voting') {
-        let targetId = memoryEvent.id;
+        let activeCompEvent: any = null;
+        if (supabase) {
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {}
+        }
+        const targetId = activeCompEvent ? activeCompEvent.id : memoryEvent.id;
         let currentStatus = memoryEvent.status;
         if (supabase) {
-          const { data: evt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
+          const { data: evt } = await supabase.from('screenshot_events').select('*').eq('id', targetId).maybeSingle();
           if (evt) {
-            targetId = evt.id;
             currentStatus = evt.status;
             memoryEvent = { ...memoryEvent, ...evt };
+          } else if (activeCompEvent) {
+            const newEvt = {
+              id: targetId,
+              title: `${activeCompEvent.title || 'Competition Event'} - Screenshot Contest`,
+              status: 'submissions_open',
+              is_admin_only: true,
+              max_submissions_per_user: 10
+            };
+            await supabase.from('screenshot_events').upsert([newEvt]);
+            currentStatus = 'submissions_open';
           }
         }
 
@@ -1449,6 +1577,7 @@ export default async function handler(req: Request, res: Response) {
           is_voting_active: memoryEvent.status === 'voting_active',
           event: {
             ...memoryEvent,
+            id: targetId,
             submission_points: memoryEvent.submission_points !== undefined ? Number(memoryEvent.submission_points) : getSavedSubmissionPoints(),
             is_voting_active: memoryEvent.status === 'voting_active'
           }
@@ -1457,7 +1586,16 @@ export default async function handler(req: Request, res: Response) {
 
       // ADMIN: UPDATE EVENT STATUS & SETTINGS ('draft' | 'submissions_open' | 'voting_active' | 'concluded', submission_points)
       if (action === 'admin-event-status' || action === 'admin-update-event') {
-        const { status, isAdminOnly, submissionPoints } = req.body;
+        const { status, isAdminOnly, submissionPoints, eventId } = req.body;
+
+        let activeCompEvent: any = null;
+        if (supabase) {
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {}
+        }
+        const targetId = eventId || (activeCompEvent ? activeCompEvent.id : memoryEvent.id);
 
         const updateData: any = {};
         if (status) {
@@ -1484,10 +1622,8 @@ export default async function handler(req: Request, res: Response) {
 
         if (supabase) {
           try {
-            let targetId = memoryEvent.id;
-            const { data: existingEvt } = await supabase.from('screenshot_events').select('*').limit(1).maybeSingle();
+            const { data: existingEvt } = await supabase.from('screenshot_events').select('*').eq('id', targetId).maybeSingle();
             if (existingEvt) {
-              targetId = existingEvt.id;
               if (updateData.description && existingEvt.description) {
                 const baseDesc = existingEvt.description.replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim();
                 const currentPts = updateData.submission_points !== undefined ? updateData.submission_points : persistentDefaultSubmissionPoints;
@@ -1505,7 +1641,6 @@ export default async function handler(req: Request, res: Response) {
               if (!error && updated) {
                 memoryEvent = { ...memoryEvent, ...updated };
               } else if (error) {
-                // If update failed due to missing submission_points column, fallback to description-only update
                 const fallbackData = { ...updateData };
                 delete fallbackData.submission_points;
                 const { data: fallbackUpdated } = await supabase
@@ -1519,27 +1654,15 @@ export default async function handler(req: Request, res: Response) {
                 }
               }
             } else {
-              // Insert seed record with updateData
-              const seedEvt = { ...memoryEvent, ...updateData };
+              const seedEvt = { ...memoryEvent, id: targetId, ...updateData };
               const { data: inserted, error } = await supabase
                 .from('screenshot_events')
-                .insert([seedEvt])
+                .upsert([seedEvt])
                 .select()
                 .maybeSingle();
 
               if (!error && inserted) {
                 memoryEvent = { ...memoryEvent, ...inserted };
-              } else if (error) {
-                const fallbackSeed = { ...seedEvt };
-                delete fallbackSeed.submission_points;
-                const { data: fallbackInserted } = await supabase
-                  .from('screenshot_events')
-                  .insert([fallbackSeed])
-                  .select()
-                  .maybeSingle();
-                if (fallbackInserted) {
-                  memoryEvent = { ...memoryEvent, ...fallbackInserted, submission_points: persistentDefaultSubmissionPoints };
-                }
               }
             }
           } catch (dbErr) {
@@ -1553,6 +1676,7 @@ export default async function handler(req: Request, res: Response) {
           success: true,
           event: {
             ...memoryEvent,
+            id: targetId,
             submission_points: effectivePts,
             is_voting_active: memoryEvent.status === 'voting_active'
           }
@@ -1563,17 +1687,27 @@ export default async function handler(req: Request, res: Response) {
       if (action === 'admin-tally-points') {
         const { adminName, adminId } = req.body;
 
+        let activeCompEvent: any = null;
+        if (supabase) {
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {}
+        }
+        const targetId = activeCompEvent ? activeCompEvent.id : memoryEvent.id;
+
         let subs: any[] = [];
         let votes: any[] = [];
 
         if (supabase) {
           const { data: s } = await supabase.from('screenshot_submissions').select('*').eq('is_selected', true);
           const { data: v } = await supabase.from('screenshot_votes').select('*');
-          subs = s || [];
-          votes = v || [];
+          // Filter to target event
+          subs = (s || []).filter(sub => !targetId || sub.event_id === targetId || sub.event_id === 'evt_screenshot_01');
+          votes = (v || []).filter(vote => !targetId || vote.event_id === targetId || vote.event_id === 'evt_screenshot_01');
         } else {
-          subs = memorySubmissions.filter(s => s.is_selected);
-          votes = memoryVotes;
+          subs = memorySubmissions.filter(s => s.is_selected && (!targetId || s.event_id === targetId));
+          votes = memoryVotes.filter(v => !targetId || v.event_id === targetId);
         }
 
         // Count votes per submission
@@ -1623,7 +1757,7 @@ export default async function handler(req: Request, res: Response) {
 
         // Set event status to concluded
         if (supabase) {
-          await supabase.from('screenshot_events').update({ status: 'concluded' }).eq('id', memoryEvent.id);
+          await supabase.from('screenshot_events').update({ status: 'concluded' }).eq('id', targetId);
         } else {
           memoryEvent.status = 'concluded';
         }

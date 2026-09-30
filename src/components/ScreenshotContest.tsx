@@ -4,7 +4,7 @@ import {
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
   Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, Users, BarChart3, UserCheck, Search, ListFilter,
-  Clock, XCircle, Check, LayoutGrid, List
+  Clock, XCircle, Check, LayoutGrid, List, Calendar
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -139,7 +139,15 @@ export default function ScreenshotContest({
   const userTeamColors = TEAM_COLORS[userTeam as Team] || TEAM_COLORS['none'];
 
   const [event, setEvent] = useState<ScreenshotEvent | null>(null);
+  // Competition Events state (linked with Events component)
+  const [competitionEvents, setCompetitionEvents] = useState<any[]>([]);
+  const [activeCompetitionEvent, setActiveCompetitionEvent] = useState<any | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string>('active'); // 'active' | 'all' | specific event id
+
+  const hasActiveEvent = Boolean(activeCompetitionEvent);
   const isVotingActive = event?.status === 'voting_active' || Boolean(event?.is_voting_active);
+  const areSubmissionsAllowed = hasActiveEvent && !isVotingActive && event?.status !== 'concluded';
+
   const [submissions, setSubmissions] = useState<ScreenshotSubmission[]>([]);
   const [votes, setVotes] = useState<ScreenshotVote[]>([]);
   const [comments, setComments] = useState<ScreenshotComment[]>([]);
@@ -249,6 +257,13 @@ export default function ScreenshotContest({
       if (res.ok) {
         const data = await safeParseResponse(res);
         setEvent(data.event || null);
+        if (data.events && Array.isArray(data.events)) {
+          setCompetitionEvents(data.events);
+          const actEvt = data.events.find((e: any) => e.is_active);
+          setActiveCompetitionEvent(actEvt || data.activeEvent || null);
+        } else if (data.activeEvent !== undefined) {
+          setActiveCompetitionEvent(data.activeEvent);
+        }
         if (data.event?.submission_points !== undefined && data.event?.submission_points !== null) {
           const pts = Number(data.event.submission_points);
           setEditSubmissionPoints(pts);
@@ -258,6 +273,19 @@ export default function ScreenshotContest({
         setVotes(data.votes || []);
         setComments(data.comments || []);
       }
+
+      // Also ensure competition events are synchronized from /api/events
+      try {
+        const evRes = await fetch('/api/events');
+        if (evRes.ok) {
+          const evData = await safeParseResponse(evRes);
+          if (Array.isArray(evData)) {
+            setCompetitionEvents(evData);
+            const actEvt = evData.find((e: any) => e.is_active);
+            setActiveCompetitionEvent(actEvt || null);
+          }
+        }
+      } catch (e) {}
     } catch (err) {
       console.error('Failed to load screenshot event data:', err);
     } finally {
@@ -267,6 +295,12 @@ export default function ScreenshotContest({
 
   useEffect(() => {
     fetchData(true);
+
+    const handleEventUpdate = () => {
+      fetchData(false);
+    };
+    window.addEventListener('active-event-updated', handleEventUpdate);
+    return () => window.removeEventListener('active-event-updated', handleEventUpdate);
   }, []);
 
   useEffect(() => {
@@ -296,11 +330,35 @@ export default function ScreenshotContest({
     }
   }, [targetSubmission, initialSubmissionId, submissions]);
 
-  // Calculate user submissions count
+  // Event scoped submissions (based on selectedEventId filter)
+  const eventScopedSubmissions = useMemo(() => {
+    if (selectedEventId === 'all') {
+      return submissions;
+    }
+    if (selectedEventId === 'active') {
+      if (!activeCompetitionEvent) {
+        return submissions;
+      }
+      return submissions.filter(s => {
+        if (s.event_id && s.event_id === activeCompetitionEvent.id) return true;
+        // Fallback for untagged / initial screenshot event
+        if (!s.event_id || s.event_id === 'evt_screenshot_01') {
+          return true;
+        }
+        return false;
+      });
+    }
+    return submissions.filter(s => 
+      s.event_id === selectedEventId || 
+      (s.event_id === 'evt_screenshot_01' && selectedEventId === activeCompetitionEvent?.id)
+    );
+  }, [submissions, selectedEventId, activeCompetitionEvent]);
+
+  // Calculate user submissions count for currently selected event scope
   const mySubmissions = useMemo(() => {
     if (!currentUserId) return [];
-    return submissions.filter(s => s.user_id === currentUserId);
-  }, [submissions, currentUserId]);
+    return eventScopedSubmissions.filter(s => s.user_id === currentUserId);
+  }, [eventScopedSubmissions, currentUserId]);
 
 interface UserSubmissionStat {
   userId: string;
@@ -317,7 +375,7 @@ interface UserSubmissionStat {
   const userSubmissionCounts = useMemo<Record<string, UserSubmissionStat>>(() => {
     const map: Record<string, UserSubmissionStat> = {};
 
-    submissions.forEach(s => {
+    eventScopedSubmissions.forEach(s => {
       const uid = s.user_id;
       if (!map[uid]) {
         map[uid] = {
@@ -342,7 +400,7 @@ interface UserSubmissionStat {
     });
 
     return map;
-  }, [submissions]);
+  }, [eventScopedSubmissions]);
 
   const userSubmissionsList = useMemo<UserSubmissionStat[]>(() => {
     const list: UserSubmissionStat[] = Object.values(userSubmissionCounts);
@@ -463,18 +521,45 @@ interface UserSubmissionStat {
     }
   };
 
-  // Find current user's existing voting entry if any
+  // Find current user's existing voting entry if any within current event scope
   const userExistingVotingEntry = useMemo(() => {
     if (!currentUserId) return null;
     const cleanCurrent = String(currentUserId).replace('discord_', '');
-    return submissions.find(s => {
+    const targetScope = selectedEventId === 'all'
+      ? (activeCompetitionEvent ? submissions.filter(s => s.event_id === activeCompetitionEvent.id) : submissions)
+      : eventScopedSubmissions;
+    return targetScope.find(s => {
       const rawSubUid = String(s.user_id || '').trim();
       const cleanSubUid = rawSubUid.replace('discord_', '');
       return (rawSubUid === currentUserId || cleanSubUid === cleanCurrent) && s.is_selected;
     }) || null;
-  }, [submissions, currentUserId]);
+  }, [submissions, eventScopedSubmissions, selectedEventId, activeCompetitionEvent, currentUserId]);
 
   const openSubmitModal = () => {
+    if (!areSubmissionsAllowed) {
+      if (!hasActiveEvent) {
+        setVotingNotice({
+          title: "Submissions Closed",
+          message: "Screenshot submissions are tied to competition events. There is no active event currently in the Events tab; submissions will open automatically once a new event begins!"
+        });
+        return;
+      }
+      if (isVotingActive) {
+        setVotingNotice({
+          title: "Submissions Closed (Voting Active)",
+          message: "The voting period is currently active! Screenshot submissions are closed while votes are being cast for contestants. Submissions will reopen when the next event begins."
+        });
+        return;
+      }
+      if (event?.status === 'concluded') {
+        setVotingNotice({
+          title: "Submissions Concluded",
+          message: "This event's screenshot contest has concluded. Submissions will reopen when the next competition event begins!"
+        });
+        return;
+      }
+    }
+
     setImageFile(null);
     setImagePreview('');
     setImageUrlInput('');
@@ -1040,14 +1125,14 @@ interface UserSubmissionStat {
     }
   };
 
-  // Featured Approved Screenshots for top showcase
+  // Featured Approved Screenshots for top showcase within selected event scope
   const featuredSubmissions = useMemo(() => {
-    return submissions.filter(s => (s.status === 'approved' || s.status === 'verified')).slice(0, 6);
-  }, [submissions]);
+    return eventScopedSubmissions.filter(s => (s.status === 'approved' || s.status === 'verified')).slice(0, 6);
+  }, [eventScopedSubmissions]);
 
   // Filtered Submissions list
   const filteredSubmissions = useMemo(() => {
-    return submissions.filter(sub => {
+    return eventScopedSubmissions.filter(sub => {
       // Rejected submissions: only admins can see them, and ONLY in the 'rejected' panel
       if (sub.status === 'rejected') {
         if (!user?.isAdmin) return false;
@@ -1062,14 +1147,14 @@ interface UserSubmissionStat {
       if (activeTab === 'mine' && sub.user_id !== currentUserId) return false;
       if (searchGame.trim()) {
         const query = searchGame.toLowerCase();
-        const gName = sub.game_name.toLowerCase();
-        const cap = sub.caption.toLowerCase();
-        const uName = sub.user_name.toLowerCase();
+        const gName = (sub.game_name || '').toLowerCase();
+        const cap = (sub.caption || '').toLowerCase();
+        const uName = (sub.user_name || '').toLowerCase();
         return gName.includes(query) || cap.includes(query) || uName.includes(query);
       }
       return true;
     });
-  }, [submissions, activeTab, currentUserId, searchGame, adminFilterUserId, user?.isAdmin]);
+  }, [eventScopedSubmissions, activeTab, currentUserId, searchGame, adminFilterUserId, user?.isAdmin]);
 
   // Lightbox Navigation Handlers
   const handlePrevLightbox = () => {
@@ -1211,15 +1296,36 @@ interface UserSubmissionStat {
                 <Camera size={12} /> Screenshot Submission
               </span>
               <span className={cn(
-                "text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border",
-                event?.status === 'voting_active' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
-                event?.status === 'submissions_open' ? "bg-sky-500/10 text-sky-400 border-sky-500/30" :
-                event?.status === 'concluded' ? "bg-purple-500/10 text-purple-400 border-purple-500/30" :
-                "bg-slate-500/10 text-slate-400 border-slate-500/30"
+                "text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border flex items-center gap-1.5 shadow-sm",
+                !hasActiveEvent ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
+                isVotingActive ? "bg-purple-500/10 text-purple-400 border-purple-500/30" :
+                event?.status === 'concluded' ? "bg-slate-500/10 text-slate-400 border-slate-500/30" :
+                "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
               )}>
-                {event?.status === 'voting_active' ? '⚡ Voting Period Active' :
-                 event?.status === 'submissions_open' ? '🟢 Submissions Open' :
-                 event?.status === 'concluded' ? '🏆 Submissions Concluded' : '📝 Draft Mode'}
+                {!hasActiveEvent ? (
+                  <>
+                    <Lock size={11} className="text-amber-400" />
+                    Submissions Closed (Waiting for Next Event)
+                  </>
+                ) : isVotingActive ? (
+                  <>
+                    <Star size={11} className="text-purple-400" />
+                    Voting Period Active (Submissions Paused)
+                  </>
+                ) : event?.status === 'concluded' ? (
+                  <>
+                    <Trophy size={11} className="text-slate-400" />
+                    Submissions Concluded
+                  </>
+                ) : (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    Submissions Open ({activeCompetitionEvent?.title || 'Current Event'})
+                  </>
+                )}
               </span>
             </div>
 
@@ -1234,10 +1340,28 @@ interface UserSubmissionStat {
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <button
               onClick={openSubmitModal}
-              className={cn("w-full sm:w-auto font-bold text-sm px-6 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer", teamSolidBtn)}
+              title={
+                !hasActiveEvent
+                  ? "Screenshot submissions are tied to competition events. There is no active event currently in the Events tab."
+                  : isVotingActive
+                    ? "The voting period is currently active. Submissions are paused until the next event starts."
+                    : "Submit a screenshot for the current event"
+              }
+              className={cn(
+                "w-full sm:w-auto font-bold text-sm px-6 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-lg",
+                areSubmissionsAllowed
+                  ? teamSolidBtn
+                  : "bg-slate-700/80 hover:bg-slate-700 text-slate-300 border border-slate-600 shadow-none"
+              )}
             >
               <Plus size={18} />
-              Submit Screenshot
+              {areSubmissionsAllowed
+                ? "Submit Screenshot"
+                : !hasActiveEvent
+                  ? "Submissions Closed (No Event)"
+                  : isVotingActive
+                    ? "Submissions Closed (Voting Active)"
+                    : "Submissions Closed"}
             </button>
           </div>
         </div>
@@ -1364,6 +1488,91 @@ interface UserSubmissionStat {
         </div>
       )}
 
+      {/* Event Filter & Switcher Bar */}
+      <div className="bg-black/5 dark:bg-white/[0.03] border border-black/5 dark:border-white/10 rounded-2xl p-3 sm:px-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 dark:text-white/40 shrink-0 mr-1">
+            <Filter size={13} />
+            <span>Event:</span>
+          </div>
+
+          {/* Active Event Option */}
+          {activeCompetitionEvent && (
+            <button
+              onClick={() => setSelectedEventId('active')}
+              className={cn(
+                "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border",
+                selectedEventId === 'active'
+                  ? teamActiveTab
+                  : "border-transparent text-slate-500 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5"
+              )}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>Current Event ({activeCompetitionEvent.title || 'Live'})</span>
+              <span className="text-[10px] opacity-60">
+                ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length})
+              </span>
+            </button>
+          )}
+
+          {/* All Events Combined Option */}
+          <button
+            onClick={() => setSelectedEventId('all')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border",
+              selectedEventId === 'all'
+                ? teamActiveTab
+                : "border-transparent text-slate-500 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5"
+            )}
+          >
+            <Layers size={13} />
+            <span>All Events</span>
+            <span className="text-[10px] opacity-60">({submissions.length})</span>
+          </button>
+
+          {/* Individual Competition Events */}
+          {competitionEvents.map((evt) => {
+            const isLive = evt.id === activeCompetitionEvent?.id;
+            const count = submissions.filter(s => s.event_id === evt.id || (isLive && (!s.event_id || s.event_id === 'evt_screenshot_01'))).length;
+            return (
+              <button
+                key={evt.id}
+                onClick={() => setSelectedEventId(evt.id)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border",
+                  selectedEventId === evt.id
+                    ? teamActiveTab
+                    : "border-transparent text-slate-500 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5"
+                )}
+              >
+                <span>{evt.title || evt.name || 'Event'}</span>
+                {isLive && (
+                  <span className="text-[9px] font-black uppercase px-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    Live
+                  </span>
+                )}
+                <span className="text-[10px] opacity-60">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Current Scope Indicator */}
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-white/40 shrink-0">
+          <span>Viewing:</span>
+          <span className="font-bold text-slate-800 dark:text-white">
+            {selectedEventId === 'all'
+              ? 'All Events Submissions'
+              : selectedEventId === 'active'
+                ? (activeCompetitionEvent ? `${activeCompetitionEvent.title || 'Current Event'}` : 'All Submissions')
+                : (competitionEvents.find(e => e.id === selectedEventId)?.title || 'Selected Event')}
+          </span>
+        </div>
+      </div>
+
       {/* Navigation & Controls Bar */}
       <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-black/5 dark:border-white/5 pb-4">
         {/* Tabs */}
@@ -1378,7 +1587,7 @@ interface UserSubmissionStat {
             )}
           >
             <Layers size={14} />
-            All Submissions ({submissions.filter(s => s.status !== 'rejected').length})
+            All Submissions ({eventScopedSubmissions.filter(s => s.status !== 'rejected').length})
           </button>
 
           <button
@@ -1404,7 +1613,7 @@ interface UserSubmissionStat {
             )}
           >
             <Star size={14} className="text-amber-400" />
-            For Voting ({submissions.filter(s => s.is_selected && s.status !== 'rejected').length})
+            For Voting ({eventScopedSubmissions.filter(s => s.is_selected && s.status !== 'rejected').length})
           </button>
 
           {user?.isAdmin && (
@@ -1418,7 +1627,7 @@ interface UserSubmissionStat {
               )}
             >
               <XCircle size={14} className="text-rose-400" />
-              Rejected ({submissions.filter(s => s.status === 'rejected').length})
+              Rejected ({eventScopedSubmissions.filter(s => s.status === 'rejected').length})
             </button>
           )}
         </div>
