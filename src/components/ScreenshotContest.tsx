@@ -2785,7 +2785,7 @@ interface UserSubmissionStat {
                   {/* Mobile toggle between split view and pure full-screen image view */}
                   <button
                     onClick={() => setLightboxMobileView(prev => prev === 'split' ? 'image-only' : 'split')}
-                    className="md:hidden p-1.5 px-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                    className="md:hidden landscape:hidden p-1.5 px-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
                     title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments & details"}
                   >
                     {lightboxMobileView === 'split' ? (
@@ -2825,19 +2825,19 @@ interface UserSubmissionStat {
                 </div>
               </div>
 
-              {/* Lightbox Main Container: split on desktop, responsive protagonist stack on mobile */}
-              <div className="flex-1 relative flex flex-col md:flex-row min-h-0 overflow-hidden">
+              {/* Lightbox Main Container: split on desktop and landscape, responsive protagonist stack on mobile portrait */}
+              <div className="flex-1 relative flex flex-col md:flex-row landscape:flex-row min-h-0 overflow-hidden">
                 {/* Main Image View Container - Always Hero Protagonist */}
                 <div 
                   className={cn(
                     "relative bg-black flex items-center justify-center p-2 sm:p-4 md:p-8 select-none group cursor-pointer transition-all duration-200 min-w-0",
                     lightboxMobileView === 'image-only'
                       ? "w-full h-full flex-1 overflow-hidden"
-                      : "w-full h-[44vh] min-h-[200px] max-h-[48vh] shrink-0 md:shrink md:w-auto md:h-full md:flex-1 md:max-h-none overflow-hidden"
+                      : "w-full h-[44vh] min-h-[200px] max-h-[48vh] shrink-0 md:shrink landscape:shrink md:w-auto landscape:w-auto md:h-full landscape:h-full md:flex-1 landscape:flex-1 md:max-h-none landscape:max-h-none overflow-hidden"
                   )}
                   onClick={(e) => {
-                    // On mobile, tapping the backdrop/image toggles full-screen protagonist mode
-                    if (window.innerWidth < 768) {
+                    // On mobile portrait, tapping the backdrop/image toggles full-screen protagonist mode
+                    if (window.innerWidth < 768 && window.innerHeight > window.innerWidth) {
                       setLightboxMobileView(prev => prev === 'split' ? 'image-only' : 'split');
                     } else if (e.target === e.currentTarget) {
                       setLightboxSubId(null);
@@ -2919,17 +2919,17 @@ interface UserSubmissionStat {
                 {/* Details & Comments Section - Scrollable and constrained so it NEVER covers the image */}
                 <div 
                   className={cn(
-                    "bg-[#121215] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between overflow-hidden cursor-default transition-all duration-200",
+                    "bg-[#121215] border-t md:border-t-0 landscape:border-t-0 md:border-l landscape:border-l border-white/10 flex flex-col justify-between overflow-hidden cursor-default transition-all duration-200",
                     lightboxMobileView === 'image-only'
-                      ? "hidden md:flex md:flex-none md:w-[450px] md:h-full md:shrink-0"
-                      : "w-full flex-1 min-h-0 md:flex-none md:w-[450px] md:h-full md:shrink-0"
+                      ? "hidden md:flex landscape:flex md:flex-none landscape:flex-none md:w-[28%] landscape:w-[28%] min-[1200px]:w-[450px] md:h-full landscape:h-full md:shrink-0 landscape:shrink-0"
+                      : "w-full flex-1 min-h-0 md:flex-none landscape:flex-none md:w-[28%] landscape:w-[28%] min-[1200px]:w-[450px] md:h-full landscape:h-full md:shrink-0 landscape:shrink-0"
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Mobile drag handle bar to toggle full image */}
                   <div 
                     onClick={() => setLightboxMobileView('image-only')}
-                    className="md:hidden pt-2.5 pb-1 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-colors shrink-0"
+                    className="md:hidden landscape:hidden pt-2.5 pb-1 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-colors shrink-0"
                     title="Tap to view photo in full screen"
                   >
                     <div className="w-10 h-1 rounded-full bg-white/25 hover:bg-white/40 transition-colors" />
@@ -2939,7 +2939,7 @@ interface UserSubmissionStat {
                   </div>
 
                   {/* Inner Scroll Area for Details and Comments */}
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 md:p-6 space-y-4 sm:space-y-5">
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-4 min-[1200px]:p-6 space-y-3.5 sm:space-y-4 min-[1200px]:space-y-5">
                     {/* Contributor Profile */}
                     <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
                       <div 
