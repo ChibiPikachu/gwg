@@ -59,14 +59,16 @@ export function serializeNotesMeta(
 
 export function isScreenshotEntry(s: any): boolean {
   if (!s) return false;
-  const platform = String(s.platform || '').toLowerCase();
-  const gameName = String(s.game_name || '').toLowerCase();
+  const platform = String(s.platform || '').toLowerCase().trim();
+  const gameName = String(s.game_name || '').toLowerCase().trim();
   const notes = String(s.notes || '').toLowerCase();
   return (
-    platform.includes('screenshot') ||
-    gameName.includes('screenshot') ||
-    notes.includes('screenshotid') ||
-    notes.includes('screenshot')
+    gameName === 'screenshot points' ||
+    platform === 'screenshot points' ||
+    platform === 'screenshot contest' ||
+    platform === 'screenshot' ||
+    notes.includes('screenshot_adjustment') ||
+    notes.includes('screenshotid:')
   );
 }
 
@@ -124,17 +126,17 @@ export default function MySubmissions() {
   const [submitting, setSubmitting] = React.useState(false);
   const [syncingSteam, setSyncingSteam] = React.useState(false);
   const [syncResult, setSyncResult] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [completionFilter, setCompletionFilter] = React.useState<'all' | 'unfinished' | 'beaten' | 'completed' | 'abandoned' | 'pending'>('all');
+  const [completionFilter, setCompletionFilter] = React.useState<'all' | 'pending' | 'rejected' | 'unfinished' | 'beaten' | 'completed' | 'abandoned'>('all');
   const [submissionsSearchQuery, setSubmissionsSearchQuery] = React.useState('');
   const [activeMobileCard, setActiveMobileCard] = React.useState<string | null>(null);
 
   const getAuthHeaders = React.useCallback(() => {
-    const userIdHeader = user?.steamId || user?.uid || user?.discordId || '';
+    const userIdHeader = user?.steamId || user?.steamid || user?.uid || user?.id || user?.discordId || user?.discord_id || '';
     return {
       'Content-Type': 'application/json',
       'x-user-id': userIdHeader,
-      'x-steam-id': user?.steamId || '',
-      'x-discord-id': user?.discordId || '',
+      'x-steam-id': user?.steamId || user?.steamid || '',
+      'x-discord-id': user?.discordId || user?.discord_id || '',
     };
   }, [user]);
 
@@ -212,23 +214,46 @@ export default function MySubmissions() {
   }, [formData.hoursPlayed, formData.hoursBefore]);
 
   const filteredSubmissions = React.useMemo(() => {
-    const currentUserIdCandidates = [user?.steamId, user?.uid, user?.discordId, user?.discordId ? `discord_${user.discordId}` : null].filter(Boolean);
+    const currentUserIdCandidates = [
+      user?.steamId,
+      user?.steamid,
+      user?.id,
+      user?.uid,
+      user?.discordId,
+      user?.discord_id,
+      user?.discordId ? `discord_${user.discordId}` : null,
+      user?.discord_id ? `discord_${user.discord_id}` : null
+    ].filter(Boolean).map(String);
 
     // Filter out system notifications, screenshot contest entries, and team point adjustments from entries
-    let result = submissions.filter(s => 
-      (currentUserIdCandidates.length === 0 || currentUserIdCandidates.includes(s.user_id)) &&
-      s.game_name !== 'Event Update' && 
-      s.game_name !== 'Screenshot Points' && 
-      s.game_name !== 'Bingo Points' &&
-      s.game_name !== 'Team Award' &&
-      s.platform !== 'System' &&
-      s.user_id !== 'system_notification' &&
-      !String(s.user_id || '').startsWith('team_pts_') &&
-      !isScreenshotEntry(s)
-    );
+    let result = submissions.filter(s => {
+      if (!s) return false;
+      const subUserId = String(s.user_id || '');
+      if (subUserId === 'system_notification' || subUserId.startsWith('team_pts_')) return false;
+      if (s.platform === 'System') return false;
+      if (
+        s.game_name === 'Event Update' || 
+        s.game_name === 'Screenshot Points' || 
+        s.game_name === 'Bingo Points' || 
+        s.game_name === 'Team Award'
+      ) return false;
+      if (isScreenshotEntry(s)) return false;
+
+      // Ensure submission belongs to the current user if candidate IDs exist
+      if (currentUserIdCandidates.length > 0 && !currentUserIdCandidates.includes(subUserId)) {
+        // If s was returned by user-scoped endpoint and has matching username, keep it
+        if (!s.user_name || !user?.displayName || s.user_name.toLowerCase() !== user.displayName.toLowerCase()) {
+          return false;
+        }
+      }
+      return true;
+    });
+
     if (completionFilter !== 'all') {
       if (completionFilter === 'pending') {
         result = result.filter(s => s.status === 'pending');
+      } else if (completionFilter === 'rejected') {
+        result = result.filter(s => s.status === 'rejected');
       } else {
         result = result.filter(s => s.completion_status === completionFilter);
       }
@@ -240,37 +265,30 @@ export default function MySubmissions() {
     return result;
   }, [submissions, completionFilter, submissionsSearchQuery, user]);
 
-  const activeEventIds = React.useMemo(() => {
-    return new Set(events.filter(e => e.is_active).map(e => e.id));
-  }, [events]);
-
-  const inactiveEventIds = React.useMemo(() => {
-    return new Set(events.filter(e => !e.is_active).map(e => e.id));
-  }, [events]);
-
   const currentEventSubmissions = React.useMemo(() => {
     const active = events.find(e => e.is_active);
-    const startTime = active ? new Date(active.start_date || active.start_date).getTime() : Infinity;
+    if (!active) {
+      return filteredSubmissions;
+    }
+    const startTime = active.start_date ? new Date(active.start_date).getTime() : 0;
     return filteredSubmissions.filter(sub => {
-      if (events.length === 0) return true;
+      // Pending submissions are actively under review and should ALWAYS appear in the Current Event section
+      if (sub.status === 'pending') return true;
+      // Submissions tagged with the active event ID
+      if (sub.event_id && sub.event_id === active.id) return true;
+      // Submissions created during or after the active event start date
       const subTime = new Date(sub.created_at || 0).getTime();
-      if (subTime >= startTime) return true;
+      if (startTime > 0 && subTime >= startTime) return true;
+      // Submissions with no event_id default to current event
       if (!sub.event_id) return true;
-      return activeEventIds.has(sub.event_id);
+      return false;
     });
-  }, [filteredSubmissions, events, activeEventIds]);
+  }, [filteredSubmissions, events]);
 
   const pastEventSubmissions = React.useMemo(() => {
-    const active = events.find(e => e.is_active);
-    const startTime = active ? new Date(active.start_date || active.start_date).getTime() : Infinity;
-    return filteredSubmissions.filter(sub => {
-      if (events.length === 0) return false;
-      const subTime = new Date(sub.created_at || 0).getTime();
-      if (subTime >= startTime) return false;
-      if (!sub.event_id) return false;
-      return inactiveEventIds.has(sub.event_id);
-    });
-  }, [filteredSubmissions, events, inactiveEventIds]);
+    const currentSet = new Set(currentEventSubmissions.map(s => s.id));
+    return filteredSubmissions.filter(sub => !currentSet.has(sub.id));
+  }, [filteredSubmissions, currentEventSubmissions]);
 
   const pastItemsPerPage = cols * 3;
   const totalPastPages = Math.ceil(pastEventSubmissions.length / pastItemsPerPage);
@@ -309,15 +327,27 @@ export default function MySubmissions() {
   }, [formData.hasNoAchievements, formData.platform, formData.level, formData.hoursPlayed, formData.hoursBefore, selectedGame, hltbData, formData.achievementsEarned, formData.achievementsBefore, multiplierPreview, formData.completionStatus, formData.beatenPrevious]);
 
   const fetchSubmissions = React.useCallback(async () => {
-    if (isSupabaseConfigured && supabase && user?.steamId) {
+    const candidateIds = Array.from(new Set([
+      user?.steamId,
+      user?.steamid,
+      user?.id,
+      user?.uid,
+      user?.discordId,
+      user?.discord_id,
+      user?.discordId ? `discord_${user.discordId}` : null,
+      user?.discord_id ? `discord_${user.discord_id}` : null
+    ].filter(Boolean))).map(String);
+
+    if (isSupabaseConfigured && supabase && candidateIds.length > 0) {
       try {
+        const filterStr = candidateIds.map(id => `user_id.eq.${id}`).join(',');
         const { data, error } = await supabase
           .from('submissions')
           .select('*')
-          .eq('user_id', user.steamId)
+          .or(filterStr)
           .order('created_at', { ascending: false });
 
-        if (!error && data) {
+        if (!error && Array.isArray(data) && data.length > 0) {
           setSubmissions(data.filter((s: any) => !isScreenshotEntry(s)));
           setLoading(false);
           return;
@@ -342,22 +372,38 @@ export default function MySubmissions() {
     } finally {
       setLoading(false);
     }
-  }, [user?.steamId]);
+  }, [user, getAuthHeaders]);
 
   React.useEffect(() => {
     fetchSubmissions();
 
-    if (!user?.steamId || !isSupabaseConfigured) return;
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const candidateIds = Array.from(new Set([
+      user?.steamId,
+      user?.steamid,
+      user?.id,
+      user?.uid,
+      user?.discordId,
+      user?.discord_id,
+      user?.discordId ? `discord_${user.discordId}` : null,
+      user?.discord_id ? `discord_${user.discord_id}` : null
+    ].filter(Boolean))).map(String);
+
+    if (candidateIds.length === 0) return;
 
     // Listen for changes to MY submissions
     const channel = supabase
-      .channel(`my-submissions-${user.steamId}`)
+      .channel(`my-submissions-${user?.steamId || user?.id || user?.uid || 'user'}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'submissions',
-        filter: `user_id=eq.${user.steamId}`
+        table: 'submissions'
       }, (payload) => {
+        const item = (payload.new || payload.old) as any;
+        if (!item || !candidateIds.includes(String(item.user_id))) {
+          return;
+        }
         console.log('Real-time submission update:', payload);
         if (payload.eventType === 'INSERT') {
           const newSub = payload.new as Submission;
@@ -384,7 +430,7 @@ export default function MySubmissions() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchSubmissions, user?.steamId]);
+  }, [fetchSubmissions, user]);
 
   // Debounced real-time search
   React.useEffect(() => {
@@ -1225,7 +1271,7 @@ export default function MySubmissions() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
-          {(['all', 'pending', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((status) => (
+          {(['all', 'pending', 'rejected', 'unfinished', 'beaten', 'completed', 'abandoned'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setCompletionFilter(status)}
