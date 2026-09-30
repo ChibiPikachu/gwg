@@ -1223,9 +1223,9 @@ export default function Profile({ steamId }: { steamId?: string }) {
                     return (
                       <div 
                         key={sub.id} 
-                        className="group py-2.5 px-4 dark:bg-[#111111] bg-white rounded-xl border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10 transition-all flex items-center justify-between gap-3 shadow-sm"
+                        className="group p-3 sm:py-2.5 sm:px-4 dark:bg-[#111111] bg-white rounded-xl border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 shadow-sm"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
                           <h3 className="font-bold text-sm md:text-base dark:text-white text-slate-800 leading-snug">
                             Screenshot Points
                           </h3>
@@ -1236,7 +1236,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                           )}
                         </div>
 
-                        <div className="flex items-center justify-end gap-3 shrink-0">
+                        <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-1 sm:pt-0 border-t border-black/5 dark:border-white/5 sm:border-0">
                           <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 border border-emerald-500/20 uppercase font-black tracking-wider text-[9px] flex items-center gap-1 shadow-sm">
                             <CheckCircle2 size={10} /> Approved
                           </span>

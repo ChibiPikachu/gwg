@@ -302,7 +302,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     { id: 'admin-users', label: 'All users', icon: Users, section: 'admin' },
     { id: 'admin-submissions', label: 'All submissions', icon: ListChecks, section: 'admin' },
     { id: 'admin-team_points', label: 'Team points', icon: ShieldCheck, section: 'admin' },
-    { id: 'screenshots', label: 'Screenshot Contest 🔒', icon: Camera, section: 'admin' },
+    { id: 'screenshots', label: 'Screenshot Submission 🔒', icon: Camera, section: 'admin' },
   ];
 
   return (

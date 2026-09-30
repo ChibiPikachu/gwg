@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter, RotateCw, RefreshCw, CheckCircle } from 'lucide-react';
+import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter, RotateCw, RefreshCw, CheckCircle, Settings } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn, parseEventNumber } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -12,6 +12,27 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   
   // Tabs: 'current' | 'previous'
   const [activeTab, setActiveTab] = React.useState<'current' | 'previous'>('current');
+  const [showMobileAdminMenu, setShowMobileAdminMenu] = React.useState(false);
+  const [showPrevMobileAdminMenu, setShowPrevMobileAdminMenu] = React.useState(false);
+  const mobileAdminMenuRef = React.useRef<HTMLDivElement>(null);
+  const prevMobileAdminMenuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileAdminMenuRef.current && !mobileAdminMenuRef.current.contains(e.target as Node)) {
+        setShowMobileAdminMenu(false);
+      }
+      if (prevMobileAdminMenuRef.current && !prevMobileAdminMenuRef.current.contains(e.target as Node)) {
+        setShowPrevMobileAdminMenu(false);
+      }
+    };
+    if (showMobileAdminMenu || showPrevMobileAdminMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showMobileAdminMenu, showPrevMobileAdminMenu]);
   
   // Current Event state
   const [users, setUsers] = React.useState<any[]>([]);
@@ -1093,27 +1114,76 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               <div className="flex items-center gap-2">
                 {activeEvent && isAdmin && (
                   <>
-                    <button
-                      onClick={() => handleResyncEventScores(activeEvent.id, activeEvent.title)}
-                      disabled={resyncingEventId === activeEvent.id}
-                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
-                      title="Re-sync current event scores from snapshot data & verified submissions"
-                    >
-                      <RotateCw size={13} className={cn(resyncingEventId === activeEvent.id && "animate-spin")} />
-                      <span>{resyncingEventId === activeEvent.id ? 'Re-syncing...' : 'Re-sync Scores'}</span>
-                    </button>
-                    <button
-                      onClick={() => openForceScoresModal(activeEvent.id, activeEvent.title)}
-                      className={cn("px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer", theme.secondary, theme.text, theme.border)}
-                      title="Force & lock exact score numbers for this event"
-                    >
-                      <Sparkles size={13} />
-                      <span>Force Scores Mode</span>
-                    </button>
+                    {/* Desktop direct action buttons */}
+                    <div className="hidden sm:flex items-center gap-2">
+                      <button
+                        onClick={() => handleResyncEventScores(activeEvent.id, activeEvent.title)}
+                        disabled={resyncingEventId === activeEvent.id}
+                        className="px-3 py-1.5 rounded-full text-xs font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                        title="Re-sync current event scores from snapshot data & verified submissions"
+                      >
+                        <RotateCw size={13} className={cn(resyncingEventId === activeEvent.id && "animate-spin")} />
+                        <span>{resyncingEventId === activeEvent.id ? 'Re-syncing...' : 'Re-sync Scores'}</span>
+                      </button>
+                      <button
+                        onClick={() => openForceScoresModal(activeEvent.id, activeEvent.title)}
+                        className={cn("px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer", theme.secondary, theme.text, theme.border)}
+                        title="Force & lock exact score numbers for this event"
+                      >
+                        <Sparkles size={13} />
+                        <span>Force Scores Mode</span>
+                      </button>
+                    </div>
+
+                    {/* Mobile Admin Gear Button */}
+                    <div className="sm:hidden relative" ref={mobileAdminMenuRef}>
+                      <button
+                        onClick={() => setShowMobileAdminMenu(!showMobileAdminMenu)}
+                        className={cn(
+                          "p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center shadow-sm",
+                          showMobileAdminMenu
+                            ? "bg-sky-500/20 text-sky-400 border-sky-500/40"
+                            : "bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                        )}
+                        title="Admin Leaderboard Tools"
+                        aria-label="Admin Tools"
+                      >
+                        <Settings size={18} />
+                      </button>
+
+                      {showMobileAdminMenu && (
+                        <div className="absolute right-0 top-full mt-2 w-52 p-2 rounded-2xl dark:bg-[#151515] bg-white border border-black/10 dark:border-white/10 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-white/40 border-b border-black/5 dark:border-white/5">
+                            Admin Tools
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowMobileAdminMenu(false);
+                              handleResyncEventScores(activeEvent.id, activeEvent.title);
+                            }}
+                            disabled={resyncingEventId === activeEvent.id}
+                            className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-sky-400 hover:bg-sky-500/10 flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCw size={14} className={cn(resyncingEventId === activeEvent.id && "animate-spin")} />
+                            <span>{resyncingEventId === activeEvent.id ? 'Re-syncing...' : 'Resync Scores'}</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowMobileAdminMenu(false);
+                              openForceScoresModal(activeEvent.id, activeEvent.title);
+                            }}
+                            className={cn("w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer hover:bg-black/5 dark:hover:bg-white/5", theme.text)}
+                          >
+                            <Sparkles size={14} />
+                            <span>Force Scores Mode</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
                 {activeEvent && (
-                  <span className={cn("text-xs font-black px-3 py-1.5 rounded-full border", theme.bg + "/10", theme.border, theme.text)}>
+                  <span className={cn("text-xs font-black px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full border truncate max-w-[130px] sm:max-w-none", theme.bg + "/10", theme.border, theme.text)}>
                     {activeEvent.title}
                   </span>
                 )}
@@ -1543,23 +1613,72 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     <div className="flex flex-wrap items-center gap-3">
                       {isAdmin && previousEventData?.event && (
                         <>
-                          <button
-                            onClick={() => handleResyncEventScores(previousEventData.event.id, previousEventData.event.title)}
-                            disabled={resyncingEventId === previousEventData.event.id}
-                            className="px-4 py-2.5 rounded-2xl text-xs font-black bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 shrink-0"
-                            title="Re-sync and recalculate event scores from verified submissions and snapshots"
-                          >
-                            <RotateCw size={14} className={cn(resyncingEventId === previousEventData.event.id && "animate-spin")} />
-                            <span>{resyncingEventId === previousEventData.event.id ? 'Re-syncing Scores...' : 'Re-sync Event Scores'}</span>
-                          </button>
-                          <button
-                            onClick={() => openForceScoresModal(previousEventData.event.id, previousEventData.event.title)}
-                            className={cn("px-4 py-2.5 rounded-2xl text-xs font-black border flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0", theme.secondary, theme.text, theme.border)}
-                            title="Force exact score numbers for this event (Useful for Event #4)"
-                          >
-                            <Sparkles size={14} />
-                            <span>Force Scores Mode</span>
-                          </button>
+                          {/* Desktop direct action buttons */}
+                          <div className="hidden sm:flex items-center gap-3">
+                            <button
+                              onClick={() => handleResyncEventScores(previousEventData.event.id, previousEventData.event.title)}
+                              disabled={resyncingEventId === previousEventData.event.id}
+                              className="px-4 py-2.5 rounded-2xl text-xs font-black bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                              title="Re-sync and recalculate event scores from verified submissions and snapshots"
+                            >
+                              <RotateCw size={14} className={cn(resyncingEventId === previousEventData.event.id && "animate-spin")} />
+                              <span>{resyncingEventId === previousEventData.event.id ? 'Re-syncing Scores...' : 'Re-sync Event Scores'}</span>
+                            </button>
+                            <button
+                              onClick={() => openForceScoresModal(previousEventData.event.id, previousEventData.event.title)}
+                              className={cn("px-4 py-2.5 rounded-2xl text-xs font-black border flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0", theme.secondary, theme.text, theme.border)}
+                              title="Force exact score numbers for this event (Useful for Event #4)"
+                            >
+                              <Sparkles size={14} />
+                              <span>Force Scores Mode</span>
+                            </button>
+                          </div>
+
+                          {/* Mobile Admin Gear Button */}
+                          <div className="sm:hidden relative" ref={prevMobileAdminMenuRef}>
+                            <button
+                              onClick={() => setShowPrevMobileAdminMenu(!showPrevMobileAdminMenu)}
+                              className={cn(
+                                "p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center shadow-sm",
+                                showPrevMobileAdminMenu
+                                  ? "bg-sky-500/20 text-sky-400 border-sky-500/40"
+                                  : "bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                              )}
+                              title="Admin Leaderboard Tools"
+                              aria-label="Admin Tools"
+                            >
+                              <Settings size={20} />
+                            </button>
+
+                            {showPrevMobileAdminMenu && (
+                              <div className="absolute right-0 top-full mt-2 w-52 p-2 rounded-2xl dark:bg-[#151515] bg-white border border-black/10 dark:border-white/10 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-white/40 border-b border-black/5 dark:border-white/5">
+                                  Admin Tools
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setShowPrevMobileAdminMenu(false);
+                                    handleResyncEventScores(previousEventData.event.id, previousEventData.event.title);
+                                  }}
+                                  disabled={resyncingEventId === previousEventData.event.id}
+                                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-sky-400 hover:bg-sky-500/10 flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  <RotateCw size={14} className={cn(resyncingEventId === previousEventData.event.id && "animate-spin")} />
+                                  <span>{resyncingEventId === previousEventData.event.id ? 'Re-syncing...' : 'Resync Scores'}</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setShowPrevMobileAdminMenu(false);
+                                    openForceScoresModal(previousEventData.event.id, previousEventData.event.title);
+                                  }}
+                                  className={cn("w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer hover:bg-black/5 dark:hover:bg-white/5", theme.text)}
+                                >
+                                  <Sparkles size={14} />
+                                  <span>Force Scores Mode</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </>
                       )}
 

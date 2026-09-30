@@ -1178,7 +1178,7 @@ interface UserSubmissionStat {
               )}>
                 {event?.status === 'voting_active' ? '⚡ Voting Period Active' :
                  event?.status === 'submissions_open' ? '🟢 Submissions Open' :
-                 event?.status === 'concluded' ? '🏆 Contest Concluded' : '📝 Draft Mode'}
+                 event?.status === 'concluded' ? '🏆 Submissions Concluded' : '📝 Draft Mode'}
               </span>
             </div>
 
@@ -1224,7 +1224,7 @@ interface UserSubmissionStat {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {featuredSubmissions.slice(0, 4).map((sub) => {
               const isSpoilerHidden = sub.is_spoiler && !revealedSpoilers[sub.id];
               const team = sub.user_team || 'none';
@@ -1457,7 +1457,7 @@ interface UserSubmissionStat {
         </div>
       ) : viewMode === 'gallery' ? (
         /* GALLERY VIEW: Large Card-Based Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-6 md:gap-7">
+        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-2.5 sm:gap-6 md:gap-7">
           {filteredSubmissions.map((sub) => {
             const isSpoilerHidden = sub.is_spoiler && !revealedSpoilers[sub.id];
             const voteCount = voteCounts[sub.id] || 0;
@@ -1472,7 +1472,7 @@ interface UserSubmissionStat {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className={cn(
-                  "group relative bg-white dark:bg-[#111111] rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden shadow-md dark:shadow-none flex flex-col justify-between transition-all",
+                  "group relative bg-white dark:bg-[#111111] rounded-xl sm:rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden shadow-md dark:shadow-none flex flex-col justify-between transition-all",
                   hoverBorderClass
                 )}
               >
@@ -1518,12 +1518,12 @@ interface UserSubmissionStat {
                   )}
 
                   {/* Top Badges */}
-                  <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-20 pointer-events-none">
-                    <span className="bg-black/70 backdrop-blur-md text-white/90 font-bold text-[11px] px-2.5 py-1 rounded-lg border border-white/10 truncate max-w-[160px]">
+                  <div className="absolute top-2 left-2 right-2 sm:top-3 sm:left-3 sm:right-3 flex items-center justify-between gap-1 sm:gap-2 z-20 pointer-events-none">
+                    <span className="bg-black/70 backdrop-blur-md text-white/90 font-bold text-[9px] sm:text-[11px] px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg border border-white/10 truncate max-w-[80px] sm:max-w-[160px]">
                       {sub.game_name}
                     </span>
 
-                    <div className="flex items-center gap-1.5 pointer-events-auto">
+                    <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto">
                       {/* Color-Coded Status Badge matching Team Palette with Tooltip */}
                       {(() => {
                         const status = sub.status || 'pending';
@@ -1537,14 +1537,14 @@ interface UserSubmissionStat {
                               <span
                                 title={`Approved by ${approver}${sub.approved_at ? ` (${new Date(sub.approved_at).toLocaleDateString()})` : ''}`}
                                 className={cn(
-                                  "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md cursor-help transition-all",
+                                  "text-[8px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg border flex items-center gap-0.5 sm:gap-1 shadow-sm backdrop-blur-md cursor-help transition-all",
                                   team !== 'none'
                                     ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
                                     : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
                                 )}
                               >
                                 <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
-                                Approved
+                                <span className="hidden min-[400px]:inline">Approved</span>
                               </span>
                               {/* Hover Tooltip showing Admin who approved */}
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center pointer-events-none z-50 animate-in fade-in zoom-in-95 duration-150">
@@ -1565,27 +1565,27 @@ interface UserSubmissionStat {
                         if (status === 'pending') {
                           return (
                             <span
-                              className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md"
+                              className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[8px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg flex items-center gap-0.5 sm:gap-1 shadow-sm backdrop-blur-md"
                             >
-                              <Clock size={10} className="text-amber-400 animate-pulse" />
-                              Pending
+                              <Clock size={9} className="text-amber-400 animate-pulse" />
+                              <span className="hidden min-[400px]:inline">Pending</span>
                             </span>
                           );
                         }
                         return (
                           <span
                             title="Rejected"
-                            className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm backdrop-blur-md"
+                            className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[8px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg flex items-center gap-0.5 sm:gap-1 shadow-sm backdrop-blur-md"
                           >
-                            <XCircle size={10} className="text-rose-400" />
-                            Rejected
+                            <XCircle size={9} className="text-rose-400" />
+                            <span className="hidden min-[400px]:inline">Rejected</span>
                           </span>
                         );
                       })()}
 
                       {sub.is_selected && (
-                        <span className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-lg shadow-md flex items-center gap-1">
-                          <Star size={10} className="fill-black" /> Voting Entry
+                        <span className="bg-amber-500 text-black font-black text-[8px] sm:text-[10px] uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg shadow-md flex items-center gap-0.5 sm:gap-1">
+                          <Star size={9} className="fill-black" /> <span className="hidden min-[400px]:inline">Voting</span> Entry
                         </span>
                       )}
 
@@ -1595,9 +1595,9 @@ interface UserSubmissionStat {
                             e.stopPropagation();
                             setRevealedSpoilers(prev => ({ ...prev, [sub.id]: false }));
                           }}
-                          className="bg-black/70 hover:bg-black text-red-400 font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-lg border border-red-500/30 flex items-center gap-1 cursor-pointer"
+                          className="bg-black/70 hover:bg-black text-red-400 font-bold text-[8px] sm:text-[10px] uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg border border-red-500/30 flex items-center gap-0.5 sm:gap-1 cursor-pointer"
                         >
-                          <EyeOff size={10} /> Blur
+                          <EyeOff size={9} /> Blur
                         </button>
                       )}
                     </div>
@@ -1692,32 +1692,32 @@ interface UserSubmissionStat {
                 </div>
 
                 {/* Card Body */}
-                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                <div className="p-2.5 sm:p-4 space-y-2 sm:space-y-3 flex-1 flex flex-col justify-between">
                   <div>
                     {/* User info */}
-                    <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center justify-between gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
                       <div 
                         onClick={(e) => {
                           e.stopPropagation();
                           if (sub.user_id) onViewProfile?.(sub.user_id);
                         }}
-                        className="flex items-center gap-2 truncate cursor-pointer hover:opacity-80 transition-opacity"
+                        className="flex items-center gap-1.5 sm:gap-2 min-w-0 truncate cursor-pointer hover:opacity-80 transition-opacity"
                         title={`View ${sub.user_name}'s profile`}
                       >
                         {sub.user_avatar ? (
-                          <img src={sub.user_avatar} alt="" className="w-6 h-6 rounded-full border border-white/10 shrink-0" />
+                          <img src={sub.user_avatar} alt="" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-white/10 shrink-0" />
                         ) : (
-                          <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px] shrink-0">
+                          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[9px] sm:text-[10px] shrink-0">
                             {sub.user_name?.[0]?.toUpperCase() || 'U'}
                           </div>
                         )}
-                        <span className="text-xs font-bold dark:text-white text-slate-800 truncate hover:underline">
+                        <span className="text-[11px] sm:text-xs font-bold dark:text-white text-slate-800 truncate hover:underline">
                           {sub.user_name}
                         </span>
                       </div>
 
                       {/* Team badge and Admin User Submission Count */}
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                         {user?.isAdmin && (
                           <button
                             type="button"
@@ -1727,25 +1727,25 @@ interface UserSubmissionStat {
                             }}
                             title={`Admin View: ${sub.user_name} has submitted ${userSubmissionCounts[sub.user_id]?.count || 1}/10 screenshots. Click to filter.`}
                             className={cn(
-                              "text-[9px] font-black px-1.5 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1",
+                              "text-[8px] sm:text-[9px] font-black px-1 sm:px-1.5 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-0.5 sm:gap-1",
                               adminFilterUserId === sub.user_id
                                 ? "bg-amber-500 text-black border-amber-400"
                                 : "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
                             )}
                           >
-                            <Camera size={10} />
+                            <Camera size={9} />
                             <span>{userSubmissionCounts[sub.user_id]?.count || 1}/10</span>
                           </button>
                         )}
 
                         {sub.user_team && sub.user_team !== 'none' && (
                           <span className={cn(
-                            "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0",
+                            "text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded border shrink-0",
                             TEAM_COLORS[sub.user_team as Team]?.secondary,
                             TEAM_COLORS[sub.user_team as Team]?.primary,
                             TEAM_COLORS[sub.user_team as Team]?.border
                           )}>
-                            Team {sub.user_team}
+                            <span className="hidden min-[400px]:inline">Team </span>{sub.user_team}
                           </span>
                         )}
                       </div>
@@ -1753,45 +1753,45 @@ interface UserSubmissionStat {
 
                     {/* Caption */}
                     {sub.caption ? (
-                      <p className="text-xs dark:text-white/80 text-slate-600 line-clamp-2 leading-relaxed">
+                      <p className="text-[11px] sm:text-xs dark:text-white/80 text-slate-600 line-clamp-2 leading-tight sm:leading-relaxed">
                         "{sub.caption}"
                       </p>
                     ) : (
-                      <p className="text-xs italic dark:text-white/30 text-slate-400">
-                        No caption provided
+                      <p className="text-[11px] sm:text-xs italic dark:text-white/30 text-slate-400">
+                        No caption
                       </p>
                     )}
                   </div>
 
                   {/* Actions & Footer */}
-                  <div className="pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-2">
+                  <div className="pt-2 sm:pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1 sm:gap-2">
                     {/* Set for Voting toggle if it's user's submission */}
                     {isMine ? (
                       <button
                         onClick={() => handleSetForVoting(sub.id)}
                         className={cn(
-                          "text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 cursor-pointer",
+                          "text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg border transition-all flex items-center gap-0.5 sm:gap-1 cursor-pointer",
                           sub.is_selected
                             ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
                             : "bg-black/5 dark:bg-white/5 text-slate-500 dark:text-white/50 border-black/10 dark:border-white/10 hover:border-amber-500/40"
                         )}
                       >
-                        <Star size={12} className={sub.is_selected ? "fill-amber-400 text-amber-400" : ""} />
-                        {sub.is_selected ? "Voting Entry" : "Set for Voting"}
+                        <Star size={11} className={sub.is_selected ? "fill-amber-400 text-amber-400" : ""} />
+                        <span>{sub.is_selected ? "Entry" : "Vote Entry"}</span>
                       </button>
                     ) : (
-                      <span className="text-[10px] opacity-40 font-medium">
+                      <span className="text-[9px] sm:text-[10px] opacity-40 font-medium truncate">
                         {new Date(sub.created_at).toLocaleDateString()}
                       </span>
                     )}
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2">
                       {/* Comments count button */}
                       <button
                         onClick={() => setActiveCommentSubId(sub.id)}
-                        className="text-xs font-bold text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1 p-1 cursor-pointer"
+                        className="text-[11px] sm:text-xs font-bold text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 cursor-pointer"
                       >
-                        <MessageSquare size={14} />
+                        <MessageSquare size={13} />
                         <span>{subComments.length}</span>
                       </button>
 
@@ -1809,7 +1809,7 @@ interface UserSubmissionStat {
                               : "Vote for this entry"
                           }
                           className={cn(
-                            "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95",
+                            "px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer shadow-sm active:scale-95",
                             !isVotingActive
                               ? "opacity-50 grayscale bg-slate-200 dark:bg-white/5 text-slate-400 dark:text-white/40 border border-black/5 dark:border-white/10 hover:opacity-75"
                               : hasVoted
@@ -1817,7 +1817,7 @@ interface UserSubmissionStat {
                               : "bg-black/5 dark:bg-white/10 hover:bg-rose-500/20 text-slate-700 dark:text-white hover:text-rose-400"
                           )}
                         >
-                          <Heart size={14} className={cn(hasVoted && isVotingActive && "fill-white")} />
+                          <Heart size={13} className={cn(hasVoted && isVotingActive && "fill-white")} />
                           <span>{voteCount}</span>
                         </button>
                       )}
