@@ -71,7 +71,7 @@ let persistentDefaultSubmissionPoints = getSavedSubmissionPoints();
 // In-memory fallback for local dev when Supabase is not connected
 let memoryEvent: any = {
   id: 'evt_screenshot_01',
-  title: 'Screenshot Showcase & Contest',
+  title: 'Screenshot Submissions',
   description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${persistentDefaultSubmissionPoints}-->`,
   status: 'submissions_open', // 'draft' | 'submissions_open' | 'voting_active' | 'concluded'
   is_voting_active: false,
@@ -482,8 +482,8 @@ export default async function handler(req: Request, res: Response) {
             // Check if legacy row exists or create new row for this event
             const newEvt = {
               id: activeCompEvent.id,
-              title: `${activeCompEvent.title || 'Competition Event'} - Screenshot Contest`,
-              description: `Submit up to 10 screenshots from Steam or other platforms. Mark 1 for voting! <!--SUBMISSION_POINTS:${savedPts}-->`,
+              title: `${activeCompEvent.title || 'Competition Event'} - Screenshot Submissions`,
+              description: `Submit up to 10 screenshots from Steam or other platforms. Mark one of them for voting! <!--SUBMISSION_POINTS:${savedPts}-->`,
               status: 'submissions_open',
               is_admin_only: true,
               max_submissions_per_user: 10,
