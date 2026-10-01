@@ -1519,11 +1519,11 @@ interface UserSubmissionStat {
             >
               {activeCompetitionEvent && (
                 <option value="active" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-bold">
-                  🟢 Current Event: {activeCompetitionEvent.title || 'Live Event'} ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length} screenshots)
+                  Current Event: {activeCompetitionEvent.title || 'Live Event'} ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length} screenshots)
                 </option>
               )}
               <option value="all" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-bold">
-                🌐 All Events Combined ({submissions.length} screenshots)
+                All Events Combined ({submissions.length} screenshots)
               </option>
 
               {pastEvents.length > 0 && (
@@ -1536,7 +1536,7 @@ interface UserSubmissionStat {
                         value={evt.id}
                         className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-medium"
                       >
-                        📁 {evt.title || evt.name || 'Event'} ({count} screenshots)
+                        {evt.title || evt.name || 'Event'} ({count} screenshots)
                       </option>
                     );
                   })}

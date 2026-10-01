@@ -294,6 +294,7 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     { id: 'profile', label: 'My profile', icon: Users, section: 'member' },
     { id: 'team', label: 'My team', icon: Users, section: 'member' },
     { id: 'games', label: 'Games', icon: Gamepad2, section: 'member' },
+    { id: 'screenshots', label: 'Screenshot submissions', icon: Camera, section: 'member' },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy, section: 'member' },
     { id: 'events', label: 'Events', icon: Calendar, section: 'member' },
   ];
@@ -302,7 +303,6 @@ export default function Sidebar({ userTeam, isAdmin, activeTab, setActiveTab, is
     { id: 'admin-users', label: 'All users', icon: Users, section: 'admin' },
     { id: 'admin-submissions', label: 'All submissions', icon: ListChecks, section: 'admin' },
     { id: 'admin-team_points', label: 'Team points', icon: ShieldCheck, section: 'admin' },
-    { id: 'screenshots', label: 'Screenshot Submission 🔒', icon: Camera, section: 'admin' },
   ];
 
   return (
