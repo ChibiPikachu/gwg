@@ -565,7 +565,7 @@ interface UserSubmissionStat {
       if (event?.status === 'concluded') {
         setVotingNotice({
           title: "Submissions Concluded",
-          message: "This event's screenshot contest has concluded. Submissions will reopen when the next competition event begins!"
+          message: "This event's screenshot submission has concluded. Submissions will reopen when the next competition event begins!"
         });
         return;
       }

@@ -1673,7 +1673,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                               const res = await fetch('/api/screenshots?action=admin-toggle-voting', { method: 'POST', headers });
                               const d = await res.json();
                               if (res.ok) {
-                                alert(`Screenshot Contest Voting Period is now ${d.is_voting_active ? 'ACTIVE (Open)' : 'PAUSED / CLOSED'}!`);
+                                alert(`Screenshot Submission Voting Period is now ${d.is_voting_active ? 'ACTIVE (Open)' : 'PAUSED / CLOSED'}!`);
                               } else {
                                 alert(`Error toggling voting: ${d.error}`);
                               }

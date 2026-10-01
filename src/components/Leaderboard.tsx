@@ -1342,10 +1342,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                     const p = (adj.platform || '').toLowerCase().trim();
                     return g === 'screenshot points' || 
                            p === 'screenshot points' || 
+                           g.startsWith('screenshot submission') || 
                            g.startsWith('screenshot contest') || 
                            p === 'screenshot event' ||
-                           g.includes('screenshot contest submission') ||
-                           g.includes('screenshot submission');
+                           g.includes('screenshot submission') ||
+                           g.includes('screenshot contest submission');
                   });
 
                   const hasBingoPoints = userAdjs.some(adj => {
@@ -1462,10 +1463,11 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                   const pName = (adj.platform || '').toLowerCase().trim();
                   const isScreenshot = gName === 'screenshot points' || 
                                        pName === 'screenshot points' || 
+                                       gName.startsWith('screenshot submission') || 
                                        gName.startsWith('screenshot contest') || 
                                        pName === 'screenshot event' ||
-                                       gName.includes('screenshot contest submission') ||
-                                       gName.includes('screenshot submission');
+                                       gName.includes('screenshot submission') ||
+                                       gName.includes('screenshot contest submission');
                   const isBingo = gName === 'bingo points' || 
                                   pName === 'bingo points' || 
                                   gName.startsWith('bingo contest') || 

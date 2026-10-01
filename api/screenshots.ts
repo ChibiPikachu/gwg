@@ -208,8 +208,9 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
       const isScreenshot = sub.platform === 'Screenshot Event' ||
         sub.platform === 'Screenshot Points' ||
         sub.game_name === 'Screenshot Points' ||
-        (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
         (sub.game_name && sub.game_name.includes('Screenshot Submission')) ||
+        (sub.game_name && sub.game_name.includes('Screenshot Contest Submission')) ||
+        (sub.game_name && sub.game_name.startsWith('Screenshot Submission')) ||
         (sub.game_name && sub.game_name.startsWith('Screenshot Contest'));
       return isScreenshot;
     });
@@ -288,8 +289,9 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
       const isScreenshot = s.platform === 'Screenshot Event' ||
         s.platform === 'Screenshot Points' ||
         s.game_name === 'Screenshot Points' ||
-        (s.game_name && s.game_name.includes('Screenshot Contest Submission')) ||
         (s.game_name && s.game_name.includes('Screenshot Submission')) ||
+        (s.game_name && s.game_name.includes('Screenshot Contest Submission')) ||
+        (s.game_name && s.game_name.startsWith('Screenshot Submission')) ||
         (s.game_name && s.game_name.startsWith('Screenshot Contest'));
 
       if (isScreenshot) {
@@ -394,13 +396,13 @@ export default async function handler(req: Request, res: Response) {
                       type: 'screenshot_approved',
                       submission_id: sub.id,
                       submissionId: sub.id,
-                      game_name: sub.game_name || 'Screenshot Contest',
-                      gameName: sub.game_name || 'Screenshot Contest',
+                      game_name: sub.game_name || 'Screenshot Submission',
+                      gameName: sub.game_name || 'Screenshot Submission',
                       image_url: sub.image_url || '',
                       imageUrl: sub.image_url || '',
                       title: 'Screenshot Submission Approved',
-                      message: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
-                      content: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
+                      message: `Your screenshot for ${sub.game_name || 'Screenshot Submission'} has been approved!`,
+                      content: `Your screenshot for ${sub.game_name || 'Screenshot Submission'} has been approved!`,
                       points: sub.points || persistentDefaultSubmissionPoints || 20,
                       created_at: parsed.approved_at || sub.created_at || new Date().toISOString(),
                       read: false,
@@ -435,13 +437,13 @@ export default async function handler(req: Request, res: Response) {
                 type: 'screenshot_approved',
                 submission_id: sub.id,
                 submissionId: sub.id,
-                game_name: sub.game_name || 'Screenshot Contest',
-                gameName: sub.game_name || 'Screenshot Contest',
+                game_name: sub.game_name || 'Screenshot Submission',
+                gameName: sub.game_name || 'Screenshot Submission',
                 image_url: sub.image_url || '',
                 imageUrl: sub.image_url || '',
                 title: 'Screenshot Submission Approved',
-                message: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
-                content: `Your screenshot for ${sub.game_name || 'Screenshot Contest'} has been approved!`,
+                message: `Your screenshot for ${sub.game_name || 'Screenshot Submission'} has been approved!`,
+                content: `Your screenshot for ${sub.game_name || 'Screenshot Submission'} has been approved!`,
                 points: sub.points || persistentDefaultSubmissionPoints || 20,
                 created_at: sub.approved_at || sub.created_at || new Date().toISOString(),
                 read: false,
@@ -694,7 +696,7 @@ export default async function handler(req: Request, res: Response) {
 
         if (eventStatus === 'concluded') {
           return res.status(400).json({
-            error: 'The screenshot contest has concluded. Screenshot submissions are closed until the next event starts.'
+            error: 'This screenshot submission event has concluded. Submissions will reopen when the next competition event begins.'
           });
         }
 
@@ -953,7 +955,7 @@ export default async function handler(req: Request, res: Response) {
             } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
               await supabase.from('submissions').insert([{
                 user_id: targetSub.user_id,
-                game_name: `Screenshot Contest Submission (+${ptsToAward} pts)`,
+                game_name: `Screenshot Submission (+${ptsToAward} pts)`,
                 platform: 'Screenshot Event',
                 points: ptsToAward,
                 calculated_score: ptsToAward,
@@ -1046,13 +1048,13 @@ export default async function handler(req: Request, res: Response) {
                   type: 'screenshot_approved',
                   submission_id: targetSub.id,
                   submissionId: targetSub.id,
-                  game_name: targetSub.game_name || 'Screenshot Contest',
-                  gameName: targetSub.game_name || 'Screenshot Contest',
+                  game_name: targetSub.game_name || 'Screenshot Submission',
+                  gameName: targetSub.game_name || 'Screenshot Submission',
                   image_url: targetSub.image_url || '',
                   imageUrl: targetSub.image_url || '',
                   title: 'Screenshot Submission Approved',
-                  message: `Your screenshot for ${targetSub.game_name || 'Screenshot Contest'} has been approved!`,
-                  content: `Your screenshot for ${targetSub.game_name || 'Screenshot Contest'} has been approved!`,
+                  message: `Your screenshot for ${targetSub.game_name || 'Screenshot Submission'} has been approved!`,
+                  content: `Your screenshot for ${targetSub.game_name || 'Screenshot Submission'} has been approved!`,
                   points: targetSub.points || persistentDefaultSubmissionPoints || 20,
                   created_at: new Date().toISOString(),
                   read: false,
@@ -1545,7 +1547,7 @@ export default async function handler(req: Request, res: Response) {
           } else if (activeCompEvent) {
             const newEvt = {
               id: targetId,
-              title: `${activeCompEvent.title || 'Competition Event'} - Screenshot Contest`,
+              title: `${activeCompEvent.title || 'Competition Event'} - Screenshot Submission`,
               status: 'submissions_open',
               is_admin_only: true,
               max_submissions_per_user: 10
@@ -1730,12 +1732,12 @@ export default async function handler(req: Request, res: Response) {
           const rankName = i === 0 ? '1st Place' : i === 1 ? '2nd Place' : i === 2 ? '3rd Place' : i === 3 ? '4th Place' : '5th Place';
 
           if (sub.user_team && sub.user_team !== 'none' && pts > 0) {
-            const notes = `__META_START__${JSON.stringify({ userNotes: `Bingo / Screenshot Contest ${rankName} Winner (${sub.user_name}) - ${sub.game_name}` })}__META_END__`;
+            const notes = `__META_START__${JSON.stringify({ userNotes: `Bingo / Screenshot Submission ${rankName} Winner (${sub.user_name}) - ${sub.game_name}` })}__META_END__`;
 
             if (supabase) {
               await supabase.from('submissions').insert([{
                 user_id: sub.user_id,
-                game_name: `Screenshot Contest ${rankName} (+${pts} pts)`,
+                game_name: `Screenshot Submission ${rankName} (+${pts} pts)`,
                 platform: 'Bingo Points',
                 points: pts,
                 calculated_score: pts,

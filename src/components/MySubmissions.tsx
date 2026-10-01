@@ -65,6 +65,8 @@ export function isScreenshotEntry(s: any): boolean {
   return (
     gameName === 'screenshot points' ||
     platform === 'screenshot points' ||
+    platform === 'screenshot submission' ||
+    platform === 'screenshot submissions' ||
     platform === 'screenshot contest' ||
     platform === 'screenshot' ||
     notes.includes('screenshot_adjustment') ||
@@ -225,7 +227,7 @@ export default function MySubmissions() {
       user?.discord_id ? `discord_${user.discord_id}` : null
     ].filter(Boolean).map(String);
 
-    // Filter out system notifications, screenshot contest entries, and team point adjustments from entries
+    // Filter out system notifications, screenshot submission entries, and team point adjustments from entries
     let result = submissions.filter(s => {
       if (!s) return false;
       const subUserId = String(s.user_id || '');
