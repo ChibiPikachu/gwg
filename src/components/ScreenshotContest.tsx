@@ -4,7 +4,7 @@ import {
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
   Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, Users, BarChart3, UserCheck, Search, ListFilter,
-  Clock, XCircle, Check, LayoutGrid, List, Calendar
+  Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -353,6 +353,17 @@ export default function ScreenshotContest({
       (s.event_id === 'evt_screenshot_01' && selectedEventId === activeCompetitionEvent?.id)
     );
   }, [submissions, selectedEventId, activeCompetitionEvent]);
+
+  // List of past competition events (excluding currently active event)
+  const pastEvents = useMemo(() => {
+    return competitionEvents.filter(e => !e.is_active && e.id !== activeCompetitionEvent?.id);
+  }, [competitionEvents, activeCompetitionEvent]);
+
+  // Whether user is currently viewing a specific past event
+  const isViewingPastEvent = useMemo(() => {
+    if (selectedEventId === 'all' || selectedEventId === 'active') return false;
+    return selectedEventId !== activeCompetitionEvent?.id;
+  }, [selectedEventId, activeCompetitionEvent]);
 
   // Calculate user submissions count for currently selected event scope
   const mySubmissions = useMemo(() => {
@@ -1488,88 +1499,83 @@ interface UserSubmissionStat {
         </div>
       )}
 
-      {/* Event Filter & Switcher Bar */}
-      <div className="bg-black/5 dark:bg-white/[0.03] border border-black/5 dark:border-white/10 rounded-2xl p-3 sm:px-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 dark:text-white/40 shrink-0 mr-1">
-            <Filter size={13} />
-            <span>Event:</span>
+      {/* Event Filter Dropdown Bar */}
+      <div className="bg-black/5 dark:bg-white/[0.03] border border-black/5 dark:border-white/10 rounded-2xl p-3 sm:px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-white/50 shrink-0">
+            <Calendar size={15} className={teamTextAccent} />
+            <span>Event Filter:</span>
           </div>
 
-          {/* Active Event Option */}
-          {activeCompetitionEvent && (
+          {/* Event Filter Dropdown */}
+          <div className="relative flex items-center min-w-[260px] sm:min-w-[320px]">
+            <select
+              value={selectedEventId}
+              onChange={(e) => setSelectedEventId(e.target.value)}
+              className={cn(
+                "w-full appearance-none bg-white dark:bg-[#181818] border border-black/15 dark:border-white/15 rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-bold text-slate-800 dark:text-white shadow-sm focus:outline-none cursor-pointer transition-colors hover:border-black/30 dark:hover:border-white/30",
+                teamFocusBorder
+              )}
+            >
+              {activeCompetitionEvent && (
+                <option value="active" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-bold">
+                  🟢 Current Event: {activeCompetitionEvent.title || 'Live Event'} ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length} screenshots)
+                </option>
+              )}
+              <option value="all" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-bold">
+                🌐 All Events Combined ({submissions.length} screenshots)
+              </option>
+
+              {pastEvents.length > 0 && (
+                <optgroup label="Past Events" className="bg-white dark:bg-[#1a1a1a] text-slate-500 dark:text-white/60 font-black">
+                  {pastEvents.map((evt) => {
+                    const count = submissions.filter(s => s.event_id === evt.id).length;
+                    return (
+                      <option
+                        key={evt.id}
+                        value={evt.id}
+                        className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-medium"
+                      >
+                        📁 {evt.title || evt.name || 'Event'} ({count} screenshots)
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
+            </select>
+            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-white/40" />
+          </div>
+
+          {/* Quick Return to Current Event button when viewing a past event or all */}
+          {activeCompetitionEvent && selectedEventId !== 'active' && selectedEventId !== activeCompetitionEvent.id && (
             <button
               onClick={() => setSelectedEventId('active')}
-              className={cn(
-                "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border",
-                selectedEventId === 'active'
-                  ? teamActiveTab
-                  : "border-transparent text-slate-500 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5"
-              )}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 active:scale-95"
             >
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span>Current Event ({activeCompetitionEvent.title || 'Live'})</span>
-              <span className="text-[10px] opacity-60">
-                ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length})
-              </span>
+              <span>Back to Current Event</span>
             </button>
           )}
-
-          {/* All Events Combined Option */}
-          <button
-            onClick={() => setSelectedEventId('all')}
-            className={cn(
-              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border",
-              selectedEventId === 'all'
-                ? teamActiveTab
-                : "border-transparent text-slate-500 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5"
-            )}
-          >
-            <Layers size={13} />
-            <span>All Events</span>
-            <span className="text-[10px] opacity-60">({submissions.length})</span>
-          </button>
-
-          {/* Individual Competition Events */}
-          {competitionEvents.map((evt) => {
-            const isLive = evt.id === activeCompetitionEvent?.id;
-            const count = submissions.filter(s => s.event_id === evt.id || (isLive && (!s.event_id || s.event_id === 'evt_screenshot_01'))).length;
-            return (
-              <button
-                key={evt.id}
-                onClick={() => setSelectedEventId(evt.id)}
-                className={cn(
-                  "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border",
-                  selectedEventId === evt.id
-                    ? teamActiveTab
-                    : "border-transparent text-slate-500 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5"
-                )}
-              >
-                <span>{evt.title || evt.name || 'Event'}</span>
-                {isLive && (
-                  <span className="text-[9px] font-black uppercase px-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    Live
-                  </span>
-                )}
-                <span className="text-[10px] opacity-60">({count})</span>
-              </button>
-            );
-          })}
         </div>
 
-        {/* Current Scope Indicator */}
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-white/40 shrink-0">
-          <span>Viewing:</span>
+        {/* Selected Event Context Badge */}
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-white/40 shrink-0">
+          <span>Displaying:</span>
           <span className="font-bold text-slate-800 dark:text-white">
             {selectedEventId === 'all'
-              ? 'All Events Submissions'
+              ? `All Events (${submissions.length} Total)`
               : selectedEventId === 'active'
-                ? (activeCompetitionEvent ? `${activeCompetitionEvent.title || 'Current Event'}` : 'All Submissions')
-                : (competitionEvents.find(e => e.id === selectedEventId)?.title || 'Selected Event')}
+                ? `${activeCompetitionEvent?.title || 'Current Event'} (${eventScopedSubmissions.length} Screenshots)`
+                : `${competitionEvents.find(e => e.id === selectedEventId)?.title || 'Selected Event'} (${eventScopedSubmissions.length} Screenshots)`}
           </span>
+          {isViewingPastEvent && (
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              Past Event
+            </span>
+          )}
         </div>
       </div>
 
