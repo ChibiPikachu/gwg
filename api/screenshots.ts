@@ -524,22 +524,6 @@ export default async function handler(req: Request, res: Response) {
         const { data: votes } = await supabase.from('screenshot_votes').select('*');
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
-        // Load profiles to ensure submissions strictly reflect user's current live team (or unassigned/none)
-        const { data: profiles } = await supabase.from('profiles').select('steamid, discord_id, id, team');
-        const profileTeamMap = new Map<string, string>();
-        (profiles || []).forEach((p: any) => {
-          const t = (!p.team || p.team === 'none') ? 'none' : p.team;
-          if (p.steamid) profileTeamMap.set(String(p.steamid).trim(), t);
-          if (p.discord_id) {
-            const rawDid = String(p.discord_id).trim();
-            const cleanDid = rawDid.replace('discord_', '');
-            profileTeamMap.set(rawDid, t);
-            profileTeamMap.set(cleanDid, t);
-            profileTeamMap.set(`discord_${cleanDid}`, t);
-          }
-          if (p.id) profileTeamMap.set(String(p.id).trim(), t);
-        });
-
         // Ensure at most ONE submission per user has is_selected: true per event (scoped by event)
         // and parse approval metadata from caption
         const seenSelectedPerEvent = new Set<string>();
@@ -551,31 +535,8 @@ export default async function handler(req: Request, res: Response) {
               ? 'approved'
               : 'pending';
 
-          const rawUid = String(sub.user_id || '').trim();
-          const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
-          const candidateKeys = [rawUid, cleanUid, `discord_${cleanUid}`];
-
-          // Determine current reflected team:
-          // For submissions in the active competition event (or if no event_id or event is active),
-          // reflect the user's current live profile team from admins/profile updates
-          let liveTeam = sub.user_team || 'none';
-          const isCurrentActive = !sub.event_id || (activeCompEvent && String(sub.event_id) === String(activeCompEvent.id));
-          if (isCurrentActive) {
-            for (const k of candidateKeys) {
-              if (profileTeamMap.has(k)) {
-                liveTeam = profileTeamMap.get(k) || 'none';
-                break;
-              }
-            }
-            // If the database column has an outdated team, sync it asynchronously
-            if (supabase && sub.id && sub.user_team !== liveTeam) {
-              supabase.from('screenshot_submissions').update({ user_team: liveTeam }).eq('id', sub.id).then();
-            }
-          }
-
           const processedSub = {
             ...sub,
-            user_team: liveTeam,
             caption: parsed.caption,
             status: effectiveStatus,
             approved_by: parsed.approved_by,
@@ -770,23 +731,12 @@ export default async function handler(req: Request, res: Response) {
             approved_at: null
           });
 
-          let effectiveSubmitterTeam = userTeam || 'none';
-          const cleanUId = String(userId).replace('discord_', '');
-          const { data: creatorProf } = await supabase
-            .from('profiles')
-            .select('team')
-            .or(`steamid.eq.${cleanUId},discord_id.eq.${cleanUId},id.eq.${cleanUId}`)
-            .maybeSingle();
-          if (creatorProf) {
-            effectiveSubmitterTeam = (!creatorProf.team || creatorProf.team === 'none') ? 'none' : creatorProf.team;
-          }
-
           const newSub: Record<string, any> = {
             event_id: activeCompEvent.id,
             user_id: userId,
             user_name: userName || 'Anonymous User',
             user_avatar: userAvatar || '',
-            user_team: effectiveSubmitterTeam,
+            user_team: userTeam || 'none',
             image_url: imageUrl,
             caption: initialCaption,
             game_name: gameName || 'Steam Game',

@@ -274,18 +274,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      // Synchronize all screenshot_submissions for this user in active event to reflect team changes immediately
-      const teamForSub = (!finalTeam || finalTeam === 'none') ? 'none' : finalTeam;
-      const cleanTarget = String(targetId).replace('discord_', '');
-      let subQuery = supabase
-        .from('screenshot_submissions')
-        .update({ user_team: teamForSub })
-        .or(`user_id.eq.${targetId},user_id.eq.${cleanTarget},user_id.eq.discord_${cleanTarget}`);
-      if (targetEvtId) {
-        subQuery = subQuery.eq('event_id', targetEvtId);
-      }
-      await subQuery.catch(() => {});
-
       return res.status(200).json({ success: true, team: finalTeam });
     }
 
