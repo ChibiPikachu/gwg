@@ -1494,7 +1494,11 @@ export default async function handler(req: Request, res: Response) {
 
       // ADMIN OR USER: DELETE SUBMISSION (removes points awarded & updates leaderboard)
       if (action === 'admin-delete-submission' || action === 'delete-submission') {
-        const { submissionId } = req.body;
+        const { submissionId, userId, isAdmin } = req.body;
+
+        if (!submissionId) {
+          return res.status(400).json({ error: 'Submission ID is required' });
+        }
 
         if (supabase) {
           // Fetch target submission details to identify user
@@ -1504,7 +1508,29 @@ export default async function handler(req: Request, res: Response) {
             .eq('id', submissionId)
             .maybeSingle();
 
+          if (!targetSub) {
+            return res.status(404).json({ error: 'Submission not found' });
+          }
+
           const targetUserId = targetSub?.user_id;
+
+          // Verify ownership if not admin
+          if (!isAdmin) {
+            const reqUid = String(userId || '').trim();
+            const cleanReq = reqUid.replace(/^discord_/, '');
+            const cleanTarget = String(targetUserId || '').replace(/^discord_/, '');
+            const isOwner = Boolean(
+              reqUid && (
+                targetUserId === reqUid ||
+                cleanTarget === cleanReq ||
+                cleanTarget === reqUid ||
+                targetUserId === cleanReq
+              )
+            );
+            if (!isOwner) {
+              return res.status(403).json({ error: 'You are only allowed to delete your own submissions.' });
+            }
+          }
 
           await supabase.from('screenshot_comments').delete().eq('submission_id', submissionId);
           await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
@@ -1521,6 +1547,18 @@ export default async function handler(req: Request, res: Response) {
 
           return res.status(200).json({ success: true, message: 'Submission deleted and points reconciled' });
         } else {
+          const targetSub = memorySubmissions.find(s => s.id === submissionId);
+          if (!targetSub) {
+            return res.status(404).json({ error: 'Submission not found' });
+          }
+          if (!isAdmin) {
+            const reqUid = String(userId || '').trim();
+            const cleanReq = reqUid.replace(/^discord_/, '');
+            const cleanTarget = String(targetSub.user_id || '').replace(/^discord_/, '');
+            if (targetSub.user_id !== reqUid && cleanTarget !== cleanReq) {
+              return res.status(403).json({ error: 'You are only allowed to delete your own submissions.' });
+            }
+          }
           memorySubmissions = memorySubmissions.filter(s => s.id !== submissionId);
           memoryVotes = memoryVotes.filter(v => v.submission_id !== submissionId);
           memoryComments = memoryComments.filter(c => c.submission_id !== submissionId);

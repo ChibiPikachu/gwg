@@ -153,6 +153,21 @@ export default function ScreenshotContest({
   const [comments, setComments] = useState<ScreenshotComment[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Check if a submission belongs to the current user (handles steamId, discordId, and uid variations)
+  const isUserSubmission = (subUserId: string | undefined | null): boolean => {
+    if (!subUserId || !user) return false;
+    const rawSub = String(subUserId).trim();
+    const cleanSub = rawSub.replace(/^discord_/, '');
+    const cleanCurrent = String(currentUserId).replace(/^discord_/, '');
+    return Boolean(
+      rawSub === currentUserId ||
+      cleanSub === cleanCurrent ||
+      (user?.steamId && (rawSub === user.steamId || cleanSub === user.steamId)) ||
+      (user?.discordId && (rawSub === user.discordId || cleanSub === user.discordId)) ||
+      (user?.uid && (rawSub === user.uid || cleanSub === user.uid))
+    );
+  };
+
   // Filter & view state
   const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine' | 'rejected'>('all');
   const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
@@ -368,8 +383,8 @@ export default function ScreenshotContest({
   // Calculate user submissions count for currently selected event scope
   const mySubmissions = useMemo(() => {
     if (!currentUserId) return [];
-    return eventScopedSubmissions.filter(s => s.user_id === currentUserId);
-  }, [eventScopedSubmissions, currentUserId]);
+    return eventScopedSubmissions.filter(s => isUserSubmission(s.user_id));
+  }, [eventScopedSubmissions, currentUserId, user]);
 
 interface UserSubmissionStat {
   userId: string;
@@ -443,42 +458,112 @@ interface UserSubmissionStat {
     return new Set(votes.filter(v => v.user_id === currentUserId).map(v => v.submission_id));
   }, [votes, currentUserId]);
 
-  // Helper to compress/resize image file using canvas to keep payload small and fast
+  // Mindful image helper: Avoids corrupting screenshots via canvas/GPU texture race conditions
   const processImageFile = async (file: File): Promise<string> => {
+    // 1. If file is reasonably sized (<= 2MB), keep original data URL pristine with zero compression/canvas risk
+    if (file.size <= 2 * 1024 * 1024) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e.target?.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 2. For larger files (> 2MB), carefully resize/compress while preventing texture decode glitches
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         const rawResult = (e.target?.result as string) || '';
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const maxDim = 1920;
-            let { width, height } = img;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round((height * maxDim) / width);
-                width = maxDim;
-              } else {
-                width = Math.round((width * maxDim) / height);
-                height = maxDim;
+        try {
+          let bitmapWidth = 0;
+          let bitmapHeight = 0;
+          let imageSource: ImageBitmap | HTMLImageElement | null = null;
+
+          // Prefer createImageBitmap: performs background decoding without onload race conditions
+          if (typeof createImageBitmap === 'function') {
+            try {
+              const bmp = await createImageBitmap(file);
+              bitmapWidth = bmp.width;
+              bitmapHeight = bmp.height;
+              imageSource = bmp;
+            } catch {
+              // fallback to HTMLImageElement
+            }
+          }
+
+          if (!imageSource) {
+            const img = new Image();
+            await new Promise<void>((imgResolve, imgReject) => {
+              img.onload = () => imgResolve();
+              img.onerror = () => imgReject(new Error('Image failed to load'));
+              img.src = rawResult;
+            });
+            // Ensure bitmap is fully decoded in hardware buffer before canvas drawing (prevents Firefox striped noise)
+            if ('decode' in img) {
+              try {
+                await img.decode();
+              } catch {
+                // Ignore decode error if onload already succeeded
               }
             }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              return resolve(rawResult);
+            bitmapWidth = img.naturalWidth || img.width;
+            bitmapHeight = img.naturalHeight || img.height;
+            imageSource = img;
+          }
+
+          if (!bitmapWidth || !bitmapHeight) {
+            return resolve(rawResult);
+          }
+
+          const maxDim = 1920;
+          let targetWidth = bitmapWidth;
+          let targetHeight = bitmapHeight;
+
+          if (targetWidth > maxDim || targetHeight > maxDim) {
+            if (targetWidth > targetHeight) {
+              targetHeight = Math.round((targetHeight * maxDim) / targetWidth);
+              targetWidth = maxDim;
+            } else {
+              targetWidth = Math.round((targetWidth * maxDim) / targetHeight);
+              targetHeight = maxDim;
             }
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressed = canvas.toDataURL('image/jpeg', 0.85);
-            resolve(compressed && compressed.length < rawResult.length ? compressed : rawResult);
-          } catch {
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext('2d', { willReadFrequently: false });
+          if (!ctx) {
+            return resolve(rawResult);
+          }
+
+          // Fill clean neutral solid background to avoid uninitialized framebuffer memory / alpha corruption
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+
+          ctx.drawImage(imageSource, 0, 0, targetWidth, targetHeight);
+
+          // Close ImageBitmap if applicable to free memory
+          if ('close' in imageSource && typeof (imageSource as any).close === 'function') {
+            (imageSource as any).close();
+          }
+
+          // Use high quality JPEG (0.88)
+          const compressed = canvas.toDataURL('image/jpeg', 0.88);
+
+          // Sanity check: must be a valid non-empty JPEG data URL
+          if (compressed && compressed.startsWith('data:image/jpeg;base64,') && compressed.length > 1000) {
+            resolve(compressed.length < rawResult.length ? compressed : rawResult);
+          } else {
             resolve(rawResult);
           }
-        };
-        img.onerror = () => resolve(rawResult);
-        img.src = rawResult;
+        } catch (err) {
+          console.warn('Image processing fallback triggered:', err);
+          resolve(rawResult);
+        }
       };
       reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
@@ -1066,23 +1151,35 @@ interface UserSubmissionStat {
     }
   };
 
-  const handleAdminDelete = async (subId: string) => {
-    if (!confirm('Are you sure you want to delete this screenshot submission?')) return;
+  const handleDeleteSubmission = async (subId: string) => {
+    if (!confirm('Are you sure you want to delete this screenshot submission? This will also remove any points awarded.')) return;
     try {
-      const res = await fetch('/api/screenshots?action=admin-delete-submission', {
+      const res = await fetch('/api/screenshots?action=delete-submission', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId: subId })
+        body: JSON.stringify({
+          submissionId: subId,
+          userId: currentUserId,
+          isAdmin: user?.isAdmin
+        })
       });
       if (res.ok) {
+        setSubmissions(prev => prev.filter(s => s.id !== subId));
+        if (lightboxSubId === subId) setLightboxSubId(null);
+        if (mobileAdminMenuSubId === subId) setMobileAdminMenuSubId(null);
         fetchData();
         // Dispatch custom event to notify other components (e.g. Leaderboard)
         window.dispatchEvent(new Event('leaderboard-updated'));
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(`Failed to delete submission: ${d.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error('Failed to delete submission:', err);
     }
   };
+
+  const handleAdminDelete = (subId: string) => handleDeleteSubmission(subId);
 
   const handleAdminSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1155,7 +1252,7 @@ interface UserSubmissionStat {
 
       if (adminFilterUserId && sub.user_id !== adminFilterUserId) return false;
       if (activeTab === 'voting' && !sub.is_selected) return false;
-      if (activeTab === 'mine' && sub.user_id !== currentUserId) return false;
+      if (activeTab === 'mine' && !isUserSubmission(sub.user_id)) return false;
       if (searchGame.trim()) {
         const query = searchGame.toLowerCase();
         const gName = (sub.game_name || '').toLowerCase();
@@ -1519,11 +1616,11 @@ interface UserSubmissionStat {
             >
               {activeCompetitionEvent && (
                 <option value="active" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-bold">
-                  Current Event: {activeCompetitionEvent.title || 'Live Event'} ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length} screenshots)
+                  🟢 Current Event: {activeCompetitionEvent.title || 'Live Event'} ({submissions.filter(s => s.event_id === activeCompetitionEvent.id || (!s.event_id || s.event_id === 'evt_screenshot_01')).length} screenshots)
                 </option>
               )}
               <option value="all" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-bold">
-                All Events Combined ({submissions.length} screenshots)
+                🌐 All Events Combined ({submissions.length} screenshots)
               </option>
 
               {pastEvents.length > 0 && (
@@ -1536,7 +1633,7 @@ interface UserSubmissionStat {
                         value={evt.id}
                         className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white font-medium"
                       >
-                        {evt.title || evt.name || 'Event'} ({count} screenshots)
+                        📁 {evt.title || evt.name || 'Event'} ({count} screenshots)
                       </option>
                     );
                   })}
@@ -1933,7 +2030,7 @@ interface UserSubmissionStat {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleAdminDelete(sub.id);
+                          handleDeleteSubmission(sub.id);
                         }}
                         title="Delete Submission"
                         className="p-1.5 bg-black/80 hover:bg-black text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
@@ -1942,12 +2039,29 @@ interface UserSubmissionStat {
                       </button>
                     </div>
                   )}
+
+                  {/* Desktop delete button for non-admin submission owner */}
+                  {!user?.isAdmin && isUserSubmission(sub.user_id) && (
+                    <div className="hidden sm:flex absolute bottom-3 right-3 items-center gap-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSubmission(sub.id);
+                        }}
+                        title="Delete Submission"
+                        className="p-1.5 bg-black/80 hover:bg-red-600 text-red-400 hover:text-white rounded-lg border border-red-500/40 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold shadow-md"
+                      >
+                        <Trash2 size={12} />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Body */}
                 <div className="p-2.5 sm:p-4 space-y-2 sm:space-y-3 flex-1 flex flex-col justify-between">
                   <div className="space-y-1.5 sm:space-y-2">
-                    {/* Row 1: Name of user with profile picture + Admin gear button on mobile */}
+                    {/* Row 1: Name of user with profile picture + Gear button on mobile */}
                     <div className="flex items-center justify-between gap-1.5 min-w-0">
                       <div 
                         onClick={(e) => {
@@ -1969,8 +2083,8 @@ interface UserSubmissionStat {
                         </span>
                       </div>
 
-                      {/* Mobile Admin Gear Button */}
-                      {user?.isAdmin && (
+                      {/* Mobile Gear Button for Admin or Submission Owner */}
+                      {(user?.isAdmin || isUserSubmission(sub.user_id)) && (
                         <div className="relative sm:hidden shrink-0">
                           <button
                             type="button"
@@ -1984,8 +2098,8 @@ interface UserSubmissionStat {
                                 ? "bg-amber-500 text-black border-amber-400"
                                 : "bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
                             )}
-                            title="Admin actions"
-                            aria-label="Admin actions"
+                            title={user?.isAdmin ? "Admin actions" : "Submission options"}
+                            aria-label={user?.isAdmin ? "Admin actions" : "Submission options"}
                           >
                             <Settings size={13} />
                           </button>
@@ -2438,12 +2552,46 @@ interface UserSubmissionStat {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAdminDelete(sub.id);
+                            handleDeleteSubmission(sub.id);
                           }}
                           title="Delete Submission"
                           className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
                         >
                           <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Non-admin Submission Owner Toolbar */}
+                  {!user?.isAdmin && isUserSubmission(sub.user_id) && (
+                    <div className="flex items-center gap-1 mt-1">
+                      {/* Mobile Gear Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMobileAdminMenuSubId(sub.id);
+                        }}
+                        className="sm:hidden p-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500 hover:text-black transition-colors cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                        title="Submission options"
+                        aria-label="Submission options"
+                      >
+                        <Settings size={12} />
+                        <span>Options</span>
+                      </button>
+
+                      {/* Desktop Delete Button */}
+                      <div className="hidden sm:flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSubmission(sub.id);
+                          }}
+                          title="Delete Submission"
+                          className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                        >
+                          <Trash2 size={11} />
+                          <span>Delete</span>
                         </button>
                       </div>
                     </div>
@@ -2497,12 +2645,19 @@ interface UserSubmissionStat {
                     Screenshot File or Image
                   </label>
                   {imagePreview ? (
-                    <div className="relative rounded-2xl overflow-hidden aspect-video bg-black/50 border border-white/10 group">
-                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                    <div className="relative rounded-2xl overflow-hidden aspect-video bg-black border border-white/10 group flex items-center justify-center">
+                      <img src={imagePreview} alt="Preview" className="w-full h-full object-contain bg-black" />
+                      {imageFile && (
+                        <div className="absolute bottom-2 left-2 bg-black/85 backdrop-blur-sm text-[10px] text-white/90 font-mono px-2.5 py-1 rounded-lg border border-white/15 shadow-lg flex items-center gap-1.5">
+                          <Check size={11} className="text-emerald-400" />
+                          <span>{(imageFile.size / (1024 * 1024)).toFixed(2)} MB • {imageFile.name}</span>
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => { setImagePreview(''); setImageFile(null); }}
                         className="absolute top-2 right-2 bg-black/80 text-white p-1.5 rounded-xl border border-white/20 hover:bg-red-600 transition-colors cursor-pointer"
+                        title="Remove image"
                       >
                         <X size={14} />
                       </button>
@@ -3016,12 +3171,12 @@ interface UserSubmissionStat {
                     )}
                   </button>
 
-                  {user?.isAdmin && (
+                  {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
                     <button
                       onClick={() => setMobileAdminMenuSubId(currentSub.id)}
                       className="p-1.5 sm:p-2 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black rounded-full border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1"
-                      title="Admin Tools"
-                      aria-label="Admin Tools"
+                      title={user?.isAdmin ? "Admin Tools" : "Submission Options"}
+                      aria-label={user?.isAdmin ? "Admin Tools" : "Submission Options"}
                     >
                       <Settings size={15} />
                     </button>
@@ -3429,13 +3584,15 @@ interface UserSubmissionStat {
                       </button>
                     </div>
 
-                    {/* Admin Delete Action inside Lightbox */}
-                    {user?.isAdmin && (
+                    {/* Delete Action inside Lightbox */}
+                    {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
                       <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-400 font-mono">Admin Action</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {user?.isAdmin ? "Admin Action" : "Your Submission"}
+                        </span>
                         <button
                           onClick={() => {
-                            handleAdminDelete(currentSub.id);
+                            handleDeleteSubmission(currentSub.id);
                             setLightboxSubId(null);
                           }}
                           className="text-[11px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer"
@@ -3754,9 +3911,15 @@ interface UserSubmissionStat {
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-                          <ShieldCheck size={11} /> Admin Tools
-                        </span>
+                        {user?.isAdmin ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                            <ShieldCheck size={11} /> Admin Tools
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 flex items-center gap-1 bg-sky-400/10 px-2 py-0.5 rounded border border-sky-400/20">
+                            <Camera size={11} /> Submission Options
+                          </span>
+                        )}
                         {targetSub.user_team && targetSub.user_team !== 'none' && (
                           <span className={cn(
                             "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border",
@@ -3785,146 +3948,155 @@ interface UserSubmissionStat {
                   </button>
                 </div>
 
-                {/* Status Selection: Approve / Pending / Reject */}
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-white/50 mb-1.5 block">
-                    Submission Status
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
+                {/* Admin Status & Tools: Only visible to Admins */}
+                {user?.isAdmin && (
+                  <>
+                    {/* Status Selection: Approve / Pending / Reject */}
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-white/50 mb-1.5 block">
+                        Submission Status
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileAdminMenuSubId(null);
+                            handleAdminSetStatus(targetSub.id, 'approved');
+                          }}
+                          className={cn(
+                            "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
+                            (targetSub.status === 'approved' || targetSub.status === 'verified')
+                              ? "bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20 font-black"
+                              : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+                          )}
+                        >
+                          <Check size={16} />
+                          <span>Approve</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileAdminMenuSubId(null);
+                            handleAdminSetStatus(targetSub.id, 'pending');
+                          }}
+                          className={cn(
+                            "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
+                            (targetSub.status === 'pending' || !targetSub.status)
+                              ? "bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20 font-black"
+                              : "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+                          )}
+                        >
+                          <Clock size={16} />
+                          <span>Pending</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileAdminMenuSubId(null);
+                            handleAdminSetStatus(targetSub.id, 'rejected');
+                          }}
+                          className={cn(
+                            "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
+                            targetSub.status === 'rejected'
+                              ? "bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-500/20 font-black"
+                              : "bg-rose-500/10 text-rose-300 border-rose-500/30 hover:bg-rose-500/20"
+                          )}
+                        >
+                          <XCircle size={16} />
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Additional Admin Tools */}
+                    <div className="space-y-2 pt-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-white/50 block">
+                        Manage Entry
+                      </label>
+
+                      {/* Toggle Spoiler */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileAdminMenuSubId(null);
+                          handleAdminToggleSpoiler(targetSub);
+                        }}
+                        className="w-full text-left p-3 rounded-xl font-bold text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Eye size={16} className="text-amber-400 shrink-0" />
+                          <span>{targetSub.is_spoiler ? "Unmark as Spoiler" : "Force Mark as Spoiler"}</span>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-white/70">
+                          {targetSub.is_spoiler ? "Spoiler: YES" : "Spoiler: NO"}
+                        </span>
+                      </button>
+
+                      {/* Edit Submission (Caption, Game Name, Spoiler, Status) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileAdminMenuSubId(null);
+                          setEditingSub(targetSub);
+                          setEditCaption(targetSub.caption);
+                          setEditGameName(targetSub.game_name);
+                          setEditIsSpoiler(targetSub.is_spoiler);
+                          setEditStatus(targetSub.status as any || 'approved');
+                        }}
+                        className="w-full text-left p-3 rounded-xl font-bold text-xs bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-300 flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Edit3 size={16} className="shrink-0" />
+                          <span>Edit Caption, Game & Status</span>
+                        </div>
+                        <span className="text-[10px] text-sky-400/70">Open Editor →</span>
+                      </button>
+
+                      {/* Filter Submissions by this User */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileAdminMenuSubId(null);
+                          setAdminFilterUserId(adminFilterUserId === targetSub.user_id ? null : targetSub.user_id);
+                        }}
+                        className={cn(
+                          "w-full text-left p-3 rounded-xl font-bold text-xs border flex items-center justify-between transition-colors cursor-pointer",
+                          adminFilterUserId === targetSub.user_id
+                            ? "bg-amber-500 text-black border-amber-400 font-black"
+                            : "bg-white/5 hover:bg-white/10 border-white/10 text-slate-200"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Camera size={16} className={adminFilterUserId === targetSub.user_id ? "text-black" : "text-amber-400"} />
+                          <span>{adminFilterUserId === targetSub.user_id ? "Clear User Filter" : `Filter User's Submissions (${userCount}/10)`}</span>
+                        </div>
+                        <span className="text-[10px] opacity-70">
+                          {adminFilterUserId === targetSub.user_id ? "Active" : `${userCount}/10`}
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Delete Submission - available for Admins or the Submission Owner */}
+                {(user?.isAdmin || isUserSubmission(targetSub.user_id)) && (
+                  <div className="pt-1">
                     <button
                       type="button"
                       onClick={() => {
                         setMobileAdminMenuSubId(null);
-                        handleAdminSetStatus(targetSub.id, 'approved');
+                        handleDeleteSubmission(targetSub.id);
                       }}
-                      className={cn(
-                        "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
-                        (targetSub.status === 'approved' || targetSub.status === 'verified')
-                          ? "bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20 font-black"
-                          : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
-                      )}
+                      className="w-full text-left p-3 rounded-xl font-bold text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-between transition-colors cursor-pointer"
                     >
-                      <Check size={16} />
-                      <span>Approve</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMobileAdminMenuSubId(null);
-                        handleAdminSetStatus(targetSub.id, 'pending');
-                      }}
-                      className={cn(
-                        "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
-                        (targetSub.status === 'pending' || !targetSub.status)
-                          ? "bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20 font-black"
-                          : "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
-                      )}
-                    >
-                      <Clock size={16} />
-                      <span>Pending</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMobileAdminMenuSubId(null);
-                        handleAdminSetStatus(targetSub.id, 'rejected');
-                      }}
-                      className={cn(
-                        "py-2.5 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95",
-                        targetSub.status === 'rejected'
-                          ? "bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-500/20 font-black"
-                          : "bg-rose-500/10 text-rose-300 border-rose-500/30 hover:bg-rose-500/20"
-                      )}
-                    >
-                      <XCircle size={16} />
-                      <span>Reject</span>
+                      <div className="flex items-center gap-2.5">
+                        <Trash2 size={16} className="shrink-0" />
+                        <span>Delete Submission</span>
+                      </div>
+                      <span className="text-[10px] text-red-400/70">Permanently Remove</span>
                     </button>
                   </div>
-                </div>
-
-                {/* Additional Admin Tools */}
-                <div className="space-y-2 pt-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-white/50 block">
-                    Manage Entry
-                  </label>
-
-                  {/* Toggle Spoiler */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileAdminMenuSubId(null);
-                      handleAdminToggleSpoiler(targetSub);
-                    }}
-                    className="w-full text-left p-3 rounded-xl font-bold text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Eye size={16} className="text-amber-400 shrink-0" />
-                      <span>{targetSub.is_spoiler ? "Unmark as Spoiler" : "Force Mark as Spoiler"}</span>
-                    </div>
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-white/70">
-                      {targetSub.is_spoiler ? "Spoiler: YES" : "Spoiler: NO"}
-                    </span>
-                  </button>
-
-                  {/* Edit Submission (Caption, Game Name, Spoiler, Status) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileAdminMenuSubId(null);
-                      setEditingSub(targetSub);
-                      setEditCaption(targetSub.caption);
-                      setEditGameName(targetSub.game_name);
-                      setEditIsSpoiler(targetSub.is_spoiler);
-                      setEditStatus(targetSub.status as any || 'approved');
-                    }}
-                    className="w-full text-left p-3 rounded-xl font-bold text-xs bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-300 flex items-center justify-between transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Edit3 size={16} className="shrink-0" />
-                      <span>Edit Caption, Game & Status</span>
-                    </div>
-                    <span className="text-[10px] text-sky-400/70">Open Editor →</span>
-                  </button>
-
-                  {/* Filter Submissions by this User */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileAdminMenuSubId(null);
-                      setAdminFilterUserId(adminFilterUserId === targetSub.user_id ? null : targetSub.user_id);
-                    }}
-                    className={cn(
-                      "w-full text-left p-3 rounded-xl font-bold text-xs border flex items-center justify-between transition-colors cursor-pointer",
-                      adminFilterUserId === targetSub.user_id
-                        ? "bg-amber-500 text-black border-amber-400 font-black"
-                        : "bg-white/5 hover:bg-white/10 border-white/10 text-slate-200"
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Camera size={16} className={adminFilterUserId === targetSub.user_id ? "text-black" : "text-amber-400"} />
-                      <span>{adminFilterUserId === targetSub.user_id ? "Clear User Filter" : `Filter User's Submissions (${userCount}/10)`}</span>
-                    </div>
-                    <span className="text-[10px] opacity-70">
-                      {adminFilterUserId === targetSub.user_id ? "Active" : `${userCount}/10`}
-                    </span>
-                  </button>
-
-                  {/* Delete Submission */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileAdminMenuSubId(null);
-                      handleAdminDelete(targetSub.id);
-                    }}
-                    className="w-full text-left p-3 rounded-xl font-bold text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-between transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Trash2 size={16} className="shrink-0" />
-                      <span>Delete Submission</span>
-                    </div>
-                    <span className="text-[10px] text-red-400/70">Permanently Remove</span>
-                  </button>
-                </div>
+                )}
 
                 {/* Dismiss Button */}
                 <button
