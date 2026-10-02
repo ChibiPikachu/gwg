@@ -250,6 +250,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (p.id) profileMap.set(String(p.id).trim(), p);
     });
 
+    const { data: uets } = eventId
+      ? await supabase.from('user_event_teams').select('steamid, team').eq('event_id', eventId)
+      : { data: [] };
+    const uetMap = new Map<string, string>();
+    (uets || []).forEach((u: any) => {
+      if (u.steamid && u.team && u.team !== 'none') {
+        uetMap.set(String(u.steamid).trim(), u.team);
+      }
+    });
+
     // Aggregate user scores
     const userScores: Record<string, number> = {};
     const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(savedScores?.teamAdjustments || {}) };
@@ -324,8 +334,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           userTeam = savedScores.userTeams[k];
           break;
         }
+        if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+          userTeam = uetMap.get(k)!;
+          break;
+        }
       }
-      if (userTeam === 'none' && p.team && p.team !== 'none') {
+      if (userTeam === 'none' && isCurrentOrActive && p.team && p.team !== 'none') {
         userTeam = p.team;
       }
       if (userTeam !== 'none') {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2, History, XCircle } from 'lucide-react';
+import { Calendar, Plus, Edit2, Clock, CheckCircle2, AlertCircle, Loader2, History, XCircle, Users } from 'lucide-react';
 import { CompetitionEvent, TEAM_COLORS } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -305,16 +305,51 @@ export default function EventsPanel() {
       }
 
       if (saved) {
+        if (editingEvent.is_active || isNew) {
+          const targetId = editingEvent.id || (window as any).__lastSavedEventId;
+          await fetch('/api/admin/start-new-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventId: targetId })
+          }).catch(() => {});
+        }
         setIsEditing(false);
         setEditingEvent(null);
         await fetchEvents();
         window.dispatchEvent(new Event('active-event-updated'));
+        window.dispatchEvent(new Event('leaderboard-updated'));
       }
     } catch (err: any) {
       console.error('Save error:', err);
       alert(`Error saving event: ${err.message || 'Check console'}`);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResetMembersToUnassigned = async () => {
+    if (!currentEvent) return;
+    if (!window.confirm('Save previous event teams and set all members to "Unassigned" for this active event? Previous event data will remain 100% saved and preserved.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/start-new-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: currentEvent.id })
+      });
+      if (res.ok) {
+        alert('Previous event teams have been saved, and all members are now unassigned for this event!');
+        await fetchEvents();
+        window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(`Failed: ${d.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
     }
   };
 
@@ -467,6 +502,14 @@ export default function EventsPanel() {
                         >
                           <Edit2 size={14} />
                           Modify Event
+                        </button>
+                        <button 
+                          onClick={handleResetMembersToUnassigned}
+                          className="w-full py-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl font-bold text-amber-500 text-xs transition-all flex items-center justify-center gap-2"
+                          title="Save previous event teams and set all members to Unassigned for this event"
+                        >
+                          <Users size={14} />
+                          Reset Members to Unassigned
                         </button>
                         <button 
                           onClick={handleCloseActiveEvent}

@@ -213,9 +213,6 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           break;
         }
       }
-      if (userTeam === 'none' && prof?.team && prof.team !== 'none') {
-        userTeam = prof.team;
-      }
 
       if (prof || userPoints > 0 || userTeam !== 'none') {
         topUsersList.push({
@@ -252,10 +249,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     }
 
     const teamStandings = (['blue', 'purple', 'green', 'red'] as const).map(team => {
-      let memberCount = topUsersList.filter(u => u.team === team).length;
-      if (memberCount === 0 && profiles.length > 0) {
-        memberCount = profiles.filter((p: any) => p.team === team).length;
-      }
+      const memberCount = topUsersList.filter(u => u.team === team).length;
       return {
         team,
         points: teamTotals[team] || 0,
@@ -1330,11 +1324,26 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
                   const userAdjs = adjustments.filter(adj => {
                     const adjUserId = String(adj.user_id || adj.userId || '');
-                    return Boolean(
+                    const isUserMatch = Boolean(
                       (uSteamId && adjUserId === uSteamId) ||
                       (uDiscordId && (adjUserId === uDiscordId || adjUserId === `discord_${uDiscordId}`)) ||
                       (uUid && adjUserId === uUid)
                     );
+                    if (!isUserMatch) return false;
+
+                    // Badges DO NOT carry over to new events!
+                    // Only show if earned in the current active event:
+                    if (!activeEvent || !activeEvent.id) return false;
+                    if (adj.event_id) {
+                      return String(adj.event_id) === String(activeEvent.id);
+                    }
+                    if (activeEvent.start_date && adj.created_at) {
+                      const adjTime = new Date(adj.created_at).getTime();
+                      const startTime = new Date(activeEvent.start_date).getTime();
+                      const endTime = activeEvent.end_date ? new Date(activeEvent.end_date).getTime() : Infinity;
+                      return adjTime >= startTime && adjTime <= endTime;
+                    }
+                    return false;
                   });
 
                   const hasScreenshotPoints = userAdjs.some(adj => {

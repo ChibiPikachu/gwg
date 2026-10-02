@@ -39,11 +39,12 @@ const getUserTeamForEvent = (evt: any, user: any): string => {
       if (snapshot.userTeams[clean]) return snapshot.userTeams[clean];
     }
   }
-  // 3. For active event or fallback
+  // 3. For active event, return user's current team
   if (evt.is_active || evt.isActive) {
     return user.team || 'none';
   }
-  return user.team || 'none';
+  // For historical/past events, never fall back to live user.team
+  return 'none';
 };
 
 const getWinnerTeamForEvent = (evt: any): string | null => {

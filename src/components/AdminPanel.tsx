@@ -817,6 +817,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         headers,
         body: JSON.stringify({
           targetSteamId,
+          steamId: targetSteamId,
           team,
           adminId: currentAdminId,
           userId: currentAdminId

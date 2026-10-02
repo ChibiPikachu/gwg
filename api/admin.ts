@@ -1,5 +1,6 @@
 import type { Request as VercelRequest, Response as VercelResponse } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { savePreviousEventAndResetTeams } from './events';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -248,15 +249,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 9. Update User Team: POST /api/admin/update-user-team
     if (path.includes('update-user-team')) {
-      const { steamId, team } = req.body || {};
-      if (!steamId) return res.status(400).json({ error: 'Missing steamId' });
+      const { steamId, targetSteamId, userId, team, eventId } = req.body || {};
+      const targetId = targetSteamId || steamId || userId;
+      if (!targetId) return res.status(400).json({ error: 'Missing steamId' });
+
+      const finalTeam = (!team || team === 'none' || team === 'unassigned') ? null : team;
 
       await supabase
         .from('profiles')
-        .update({ team: team || 'none' })
-        .eq('steamid', steamId);
+        .update({ team: finalTeam })
+        .or(`steamid.eq.${targetId},id.eq.${targetId},discord_id.eq.${targetId}`);
 
-      return res.status(200).json({ success: true });
+      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      const targetEvtId = eventId || activeEvent?.id;
+      if (targetEvtId) {
+        if (!finalTeam || finalTeam === 'none') {
+          await supabase.from('user_event_teams').delete().match({ steamid: targetId, event_id: targetEvtId });
+        } else {
+          await supabase.from('user_event_teams').upsert({
+            steamid: targetId,
+            event_id: targetEvtId,
+            team: finalTeam
+          }, { onConflict: 'steamid,event_id' });
+        }
+      }
+
+      return res.status(200).json({ success: true, team: finalTeam });
     }
 
     // 10. Update User Role: POST /api/admin/update-user-role
@@ -495,6 +513,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true });
     }
 
+    // 15.3 Start New Event / Reset Event Teams: POST /api/admin/start-new-event or /api/admin/reset-event-teams
+    if (path.includes('start-new-event') || path.includes('reset-event-teams')) {
+      const { eventId, targetEventId } = req.body || {};
+      let activeEvtId = eventId || targetEventId;
+      if (!activeEvtId) {
+        const { data: act } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+        activeEvtId = act?.id;
+      }
+      if (!activeEvtId) return res.status(400).json({ error: 'No active event specified or found' });
+
+      await savePreviousEventAndResetTeams(supabase, activeEvtId);
+      return res.status(200).json({ success: true, message: 'Saved previous event teams and reset current users to unassigned' });
+    }
+
     // 16. Manage Events: /api/admin/events or /api/admin?action=events
     if (path.includes('events') || path.includes('event')) {
       if (req.method === 'GET') {
@@ -519,7 +551,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (error) throw error;
 
         if (isAct && data?.id) {
-          await supabase.from('events').update({ is_active: false }).neq('id', data.id);
+          await savePreviousEventAndResetTeams(supabase, data.id);
         }
 
         return res.status(200).json(data);
@@ -546,7 +578,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (error) throw error;
 
         if (updateData.is_active && eventId) {
-          await supabase.from('events').update({ is_active: false }).neq('id', eventId);
+          await savePreviousEventAndResetTeams(supabase, eventId);
         }
 
         return res.status(200).json(data || { success: true });
