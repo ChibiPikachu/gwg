@@ -329,18 +329,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       let userTeam = 'none';
-      for (const k of candidateKeys) {
-        if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
-          userTeam = savedScores.userTeams[k];
-          break;
+      if (isCurrentOrActive) {
+        for (const k of candidateKeys) {
+          if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+            userTeam = uetMap.get(k)!;
+            break;
+          }
         }
-        if (uetMap.get(k) && uetMap.get(k) !== 'none') {
-          userTeam = uetMap.get(k)!;
-          break;
+        if (userTeam === 'none' && p.team && p.team !== 'none') {
+          userTeam = p.team;
         }
-      }
-      if (userTeam === 'none' && isCurrentOrActive && p.team && p.team !== 'none') {
-        userTeam = p.team;
+        if (userTeam === 'none' && savedScores?.userTeams) {
+          for (const k of candidateKeys) {
+            if (savedScores.userTeams[k] && savedScores.userTeams[k] !== 'none') {
+              userTeam = savedScores.userTeams[k];
+              break;
+            }
+          }
+        }
+      } else {
+        for (const k of candidateKeys) {
+          if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+            userTeam = uetMap.get(k)!;
+            break;
+          }
+          if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
+            userTeam = savedScores.userTeams[k];
+            break;
+          }
+        }
       }
       if (userTeam !== 'none') {
         userTeamsMap[primaryId] = userTeam;

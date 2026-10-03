@@ -10,6 +10,8 @@ import { createClient } from '@supabase/supabase-js';
 import screenshotHandler from './api/screenshots.js';
 import leaderboardsHandler from './api/leaderboards.js';
 import gamesHandler from './api/games.js';
+import teamsHandler from './api/teams.js';
+import { savePreviousEventAndResetTeams } from './api/events.js';
 
 let supabaseClient: any = null;
 
@@ -2935,6 +2937,30 @@ async function createServer() {
 
   app.all('/api/leaderboards', (req, res) => leaderboardsHandler(req as any, res as any));
   app.all('/api/screenshots', (req, res) => screenshotHandler(req as any, res as any));
+  app.all('/api/teams', (req, res) => teamsHandler(req as any, res as any));
+
+  app.post(['/api/admin/start-new-event', '/api/admin/reset-event-teams'], async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+    const { eventId, targetEventId } = req.body || {};
+    let activeEvtId = eventId || targetEventId;
+    if (!activeEvtId) {
+      const { data: act } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      activeEvtId = act?.id;
+    }
+    if (!activeEvtId) return res.status(400).json({ error: 'No active event specified or found' });
+    await savePreviousEventAndResetTeams(supabase, activeEvtId);
+    return res.status(200).json({ success: true, message: 'Saved previous event teams and reset users for new event' });
+  });
+
+  app.post('/api/admin/close-event', async (req, res) => {
+    const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+    const eventId = req.body?.id || req.body?.eventId;
+    if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+    await supabase.from('events').update({ is_active: false }).eq('id', eventId);
+    return res.status(200).json({ success: true });
+  });
 
   app.get('/api/leaderboard/games', async (req, res) => {
     const supabase = getSupabase();
@@ -3299,18 +3325,35 @@ async function createServer() {
 
         // Determine user team
         let userTeam = 'none';
-        for (const k of candidateKeys) {
-          if (uetMap.get(k)) {
-            userTeam = uetMap.get(k)!;
-            break;
+        if (isCurrentOrActive) {
+          for (const k of candidateKeys) {
+            if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+              userTeam = uetMap.get(k)!;
+              break;
+            }
           }
-          if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
-            userTeam = savedScores.userTeams[k];
-            break;
+          if (userTeam === 'none' && p.team && p.team !== 'none') {
+            userTeam = p.team;
           }
-        }
-        if (userTeam === 'none' && p.team && p.team !== 'none') {
-          userTeam = p.team;
+          if (userTeam === 'none' && savedScores?.userTeams) {
+            for (const k of candidateKeys) {
+              if (savedScores.userTeams[k] && savedScores.userTeams[k] !== 'none') {
+                userTeam = savedScores.userTeams[k];
+                break;
+              }
+            }
+          }
+        } else {
+          for (const k of candidateKeys) {
+            if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+              userTeam = uetMap.get(k)!;
+              break;
+            }
+            if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
+              userTeam = savedScores.userTeams[k];
+              break;
+            }
+          }
         }
         if (userTeam !== 'none') {
           userTeamsMap[primaryId] = userTeam;
@@ -3808,7 +3851,53 @@ async function createServer() {
           console.error('[Admin] Error updating user_event_teams:', ueErr);
         }
       }
-      
+
+      // Synchronize screenshot_submissions and event snapshot
+      if (targetEventId) {
+        try {
+          const teamForSub = (!dbTeam || dbTeam === 'none') ? 'none' : dbTeam;
+          for (const id of ids) {
+            const cleanId = String(id).replace('discord_', '');
+            await supabase
+              .from('screenshot_submissions')
+              .update({ user_team: teamForSub })
+              .eq('event_id', targetEventId)
+              .or(`user_id.eq.${id},user_id.eq.${cleanId},user_id.eq.discord_${cleanId}`);
+          }
+
+          const { data: targetEvt } = await supabase
+            .from('events')
+            .select('id, description')
+            .eq('id', targetEventId)
+            .maybeSingle();
+
+          if (targetEvt?.description && targetEvt.description.includes('<!--EVENT_SCORES:')) {
+            const match = targetEvt.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+            if (match && match[1]) {
+              const snapshot = JSON.parse(match[1]);
+              if (!snapshot.userTeams) snapshot.userTeams = {};
+              ids.forEach(id => {
+                const cleanId = String(id).replace('discord_', '');
+                if (dbTeam && dbTeam !== 'none') {
+                  snapshot.userTeams[id] = dbTeam;
+                  snapshot.userTeams[cleanId] = dbTeam;
+                  snapshot.userTeams[`discord_${cleanId}`] = dbTeam;
+                } else {
+                  delete snapshot.userTeams[id];
+                  delete snapshot.userTeams[cleanId];
+                  delete snapshot.userTeams[`discord_${cleanId}`];
+                }
+              });
+              const newSnapStr = `<!--EVENT_SCORES:${JSON.stringify(snapshot)}-->`;
+              const newDesc = targetEvt.description.replace(/<!--EVENT_SCORES:.*?-->/s, newSnapStr);
+              await supabase.from('events').update({ description: newDesc }).eq('id', targetEventId);
+            }
+          }
+        } catch (syncErr) {
+          console.warn('[Admin] Failed to synchronize screenshot submissions or event snapshot on team change:', syncErr);
+        }
+      }
+
       console.log(`[Admin] Successfully updated team for ${ids.length} user(s). Result:`, updateData);
       res.json({ success: true, count: ids.length, updated: updateData });
     } catch (err) {
@@ -4053,6 +4142,33 @@ async function createServer() {
   // --- REPLACE YOUR EXISTING /api/submissions POST ROUTE WITH THIS ---
   app.post('/api/submissions', async (req, res) => {
     const supabase = getSupabase();
+    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+    // Enforce active event and submission countdown lockout immediately
+    const { data: activeEvent, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('is_active', true)
+      .maybeSingle();
+    if (eventError) console.error('Error fetching active event:', eventError);
+
+    if (!activeEvent) {
+      return res.status(403).json({ error: 'No active competition event. Submissions are closed.' });
+    }
+
+    const now = Date.now();
+    const endTime = activeEvent.end_date ? new Date(activeEvent.end_date).getTime() : 0;
+    const isCountdownEnded = endTime > 0 && now >= endTime;
+    const isLockedByDesc = activeEvent.description && (
+      activeEvent.description.includes('<!--STATUS:SUBMISSIONS_CLOSED-->') ||
+      activeEvent.description.includes('<!--STATUS:COMPLETED-->') ||
+      activeEvent.description.includes('<!--SUBMISSIONS:CLOSED-->')
+    );
+
+    if (isCountdownEnded || isLockedByDesc || (activeEvent as any).is_submission_open === false) {
+      return res.status(403).json({ error: 'Event countdown has ended. Submissions are automatically locked.' });
+    }
+
     const currentUser = await getAuthUser(req, supabase);
     if (!currentUser) {
       return res.status(401).json({ error: 'Unauthorized: Please log in first.' });
@@ -4079,8 +4195,6 @@ async function createServer() {
     } = req.body;
 
     const finalBeatenPrevious = beatenPrevious || beaten_previous || 'no';
-
-    if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
 
     try {
       // ---> THE MAGIC HAPPENS HERE <---
@@ -4127,10 +4241,6 @@ async function createServer() {
         const finalPlayTime = Math.max(0, numHours - hoursBeforeNum);
         serverPoints = calculateNonAchievementPoints(levelVal, finalPlayTime, gameHltbMain, gameHltbExtras, effectiveStatus);
       }
-
-      // Find active event
-      const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
-      if (eventError) console.error('Error fetching active event:', eventError);
 
       // 1. Check for duplicate submission (same user, game, and event)
       let existingSubId: string | null = null;
@@ -4284,6 +4394,29 @@ async function createServer() {
 
       if (fetchError || !sub) {
         return res.status(404).json({ error: 'Submission not found or unauthorized' });
+      }
+
+      // Check if event submissions are locked
+      if (sub.event_id) {
+        const { data: subEvent } = await supabase
+          .from('events')
+          .select('id, is_active, end_date, description')
+          .eq('id', sub.event_id)
+          .maybeSingle();
+
+        if (subEvent) {
+          const now = Date.now();
+          const endTime = subEvent.end_date ? new Date(subEvent.end_date).getTime() : 0;
+          const isCountdownEnded = endTime > 0 && now >= endTime;
+          const isLockedByDesc = subEvent.description && (
+            subEvent.description.includes('<!--STATUS:SUBMISSIONS_CLOSED-->') ||
+            subEvent.description.includes('<!--STATUS:COMPLETED-->') ||
+            subEvent.description.includes('<!--SUBMISSIONS:CLOSED-->')
+          );
+          if (!subEvent.is_active || isCountdownEnded || isLockedByDesc) {
+            return res.status(403).json({ error: 'Event countdown has ended. Submissions are locked and cannot be edited.' });
+          }
+        }
       }
 
       // 2. Recalculate points

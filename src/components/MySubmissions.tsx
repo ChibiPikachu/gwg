@@ -267,22 +267,41 @@ export default function MySubmissions() {
     return result;
   }, [submissions, completionFilter, submissionsSearchQuery, user]);
 
+  const activeEvent = React.useMemo(() => events.find(e => e.is_active), [events]);
+  const isCountdownEnded = React.useMemo(() => {
+    if (!activeEvent?.end_date) return false;
+    return new Date(activeEvent.end_date).getTime() <= Date.now();
+  }, [activeEvent]);
+
+  const areSubmissionsLocked = React.useMemo(() => {
+    if (!activeEvent) return true;
+    if (isCountdownEnded) return true;
+    if ((activeEvent as any).is_submission_open === false) return true;
+    if ((activeEvent as any).status === 'SUBMISSIONS_CLOSED' || (activeEvent as any).status === 'COMPLETED') return true;
+    if (activeEvent.description && (
+      activeEvent.description.includes('<!--STATUS:SUBMISSIONS_CLOSED-->') ||
+      activeEvent.description.includes('<!--STATUS:COMPLETED-->') ||
+      activeEvent.description.includes('<!--SUBMISSIONS:CLOSED-->')
+    )) return true;
+    return false;
+  }, [activeEvent, isCountdownEnded]);
+
   const currentEventSubmissions = React.useMemo(() => {
     const active = events.find(e => e.is_active);
     if (!active) {
-      return filteredSubmissions;
+      return [];
     }
     const startTime = active.start_date ? new Date(active.start_date).getTime() : 0;
     return filteredSubmissions.filter(sub => {
-      // Pending submissions are actively under review and should ALWAYS appear in the Current Event section
-      if (sub.status === 'pending') return true;
       // Submissions tagged with the active event ID
       if (sub.event_id && sub.event_id === active.id) return true;
-      // Submissions created during or after the active event start date
+      // If submission has another event_id, it strictly belongs to that past event
+      if (sub.event_id && sub.event_id !== active.id) return false;
+      // Pending submissions for active event
+      if (sub.status === 'pending') return true;
+      // Fallback for legacy submissions without event_id: check creation timestamp
       const subTime = new Date(sub.created_at || 0).getTime();
       if (startTime > 0 && subTime >= startTime) return true;
-      // Submissions with no event_id default to current event
-      if (!sub.event_id) return true;
       return false;
     });
   }, [filteredSubmissions, events]);
@@ -629,6 +648,11 @@ export default function MySubmissions() {
     const isNoAchievements = formData.hasNoAchievements || formData.platform === 'Nintendo';
     const serializedNotes = serializeNotesMeta(isNoAchievements, formData.level, formData.notes);
 
+    if (areSubmissionsLocked) {
+      alert('Submissions are locked for this event because the countdown has ended or submissions are closed.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const url = editingId ? `/api/submissions/${editingId}` : '/api/submissions';
@@ -638,6 +662,7 @@ export default function MySubmissions() {
         method,
         headers: getAuthHeaders(),
         body: JSON.stringify({
+          eventId: activeEvent?.id,
           gameId: selectedGame.id,
           gameTitle: selectedGame.title,
           gameImage: selectedGame.image,
@@ -756,17 +781,49 @@ export default function MySubmissions() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
+      {areSubmissionsLocked && activeEvent && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center gap-3">
+          <Clock className="w-5 h-5 flex-shrink-0 text-amber-400" />
+          <div>
+            <p className="font-semibold text-sm">Submissions Locked</p>
+            <p className="text-xs opacity-80">
+              The event countdown has ended. Submissions and edits are automatically locked until the next competition event starts.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-12">
         <div>
           <h1 className="text-2xl font-bold mb-2 dark:text-white text-slate-900">Welcome!</h1>
           <p className="opacity-60 dark:text-white text-slate-600">Ready to add your games?</p>
         </div>
         <button 
-          onClick={() => setShowForm(true)}
-          className={cn("w-full sm:w-auto text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2", theme.bg, theme.glow)}
+          onClick={() => {
+            if (areSubmissionsLocked) {
+              alert(
+                !activeEvent
+                  ? "There is no active event. Submissions are closed."
+                  : "The event countdown has ended. Submissions are locked."
+              );
+              return;
+            }
+            setShowForm(true);
+          }}
+          disabled={areSubmissionsLocked}
+          className={cn(
+            "w-full sm:w-auto text-white px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+            areSubmissionsLocked
+              ? "bg-slate-700/60 text-slate-400 border border-slate-600 cursor-not-allowed shadow-none"
+              : cn(theme.bg, theme.glow)
+          )}
         >
           <Plus size={20} />
-          Submit Game
+          {areSubmissionsLocked
+            ? !activeEvent
+              ? "Submissions Closed (No Event)"
+              : "Submissions Locked (Event Ended)"
+            : "Submit Game"}
         </button>
       </div>
 

@@ -23,10 +23,22 @@ function buildProfileOrFilter(key: string): string {
 
 async function syncUserPoints(userId: string) {
   try {
+    const { data: activeEvent } = await supabase
+      .from('events')
+      .select('id')
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!activeEvent?.id) {
+      await supabase.from('profiles').update({ points: 0 }).eq('steamid', userId);
+      return 0;
+    }
+
     const { data: subs } = await supabase
       .from('submissions')
       .select('points, calculated_score')
       .eq('user_id', userId)
+      .eq('event_id', activeEvent.id)
       .eq('status', 'verified');
 
     const total = (subs || []).reduce(
@@ -255,24 +267,91 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const finalTeam = (!team || team === 'none' || team === 'unassigned') ? null : team;
 
-      await supabase
+      // Find user profile to resolve all candidate identifiers
+      const { data: prof } = await supabase
         .from('profiles')
-        .update({ team: finalTeam })
-        .or(`steamid.eq.${targetId},id.eq.${targetId},discord_id.eq.${targetId}`);
+        .select('id, steamid, discord_id, team')
+        .or(buildProfileOrFilter(targetId))
+        .maybeSingle();
 
-      const { data: activeEvent } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      const candidateKeys = Array.from(new Set([
+        targetId,
+        prof?.steamid,
+        prof?.discord_id,
+        prof?.discord_id ? `discord_${prof.discord_id}` : null,
+        prof?.id
+      ].filter(Boolean))) as string[];
+
+      const primarySteamId = prof?.steamid || targetId;
+
+      const { data: activeEvent } = await supabase.from('events').select('id, description, is_active').eq('is_active', true).maybeSingle();
       const targetEvtId = eventId || activeEvent?.id;
+
+      // Update global profile team ONLY if this assignment is for the active event
+      if (!eventId || (activeEvent && targetEvtId === activeEvent.id)) {
+        await supabase
+          .from('profiles')
+          .update({ team: finalTeam })
+          .or(`steamid.eq.${primarySteamId},id.eq.${primarySteamId},discord_id.eq.${primarySteamId}`);
+      }
+
+      // Persist in user_event_teams for target event
       if (targetEvtId) {
         if (!finalTeam || finalTeam === 'none') {
-          await supabase.from('user_event_teams').delete().match({ steamid: targetId, event_id: targetEvtId });
+          for (const k of candidateKeys) {
+            await supabase.from('user_event_teams').delete().match({ steamid: k, event_id: targetEvtId });
+          }
         } else {
           await supabase.from('user_event_teams').upsert({
-            steamid: targetId,
+            steamid: primarySteamId,
             event_id: targetEvtId,
             team: finalTeam
           }, { onConflict: 'steamid,event_id' });
         }
+
+        // Synchronize snapshot in event description if present
+        try {
+          const { data: targetEvt } = await supabase
+            .from('events')
+            .select('id, description')
+            .eq('id', targetEvtId)
+            .maybeSingle();
+
+          if (targetEvt?.description && targetEvt.description.includes('<!--EVENT_SCORES:')) {
+            const match = targetEvt.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+            if (match && match[1]) {
+              const snapshot = JSON.parse(match[1]);
+              if (!snapshot.userTeams) snapshot.userTeams = {};
+              candidateKeys.forEach(k => {
+                if (finalTeam && finalTeam !== 'none') {
+                  snapshot.userTeams[k] = finalTeam;
+                } else {
+                  delete snapshot.userTeams[k];
+                }
+              });
+              const newSnapStr = `<!--EVENT_SCORES:${JSON.stringify(snapshot)}-->`;
+              const newDesc = targetEvt.description.replace(/<!--EVENT_SCORES:.*?-->/s, newSnapStr);
+              await supabase.from('events').update({ description: newDesc }).eq('id', targetEvtId);
+            }
+          }
+        } catch (snapErr) {
+          console.warn('Failed to update event description snapshot for team change:', snapErr);
+        }
       }
+
+      // Synchronize all screenshot_submissions for this user in target event to reflect team change
+      const teamForSub = (!finalTeam || finalTeam === 'none') ? 'none' : finalTeam;
+      const cleanTarget = String(targetId).replace('discord_', '');
+      let subQuery = supabase
+        .from('screenshot_submissions')
+        .update({ user_team: teamForSub })
+        .or(`user_id.eq.${targetId},user_id.eq.${cleanTarget},user_id.eq.discord_${cleanTarget}`);
+      if (targetEvtId) {
+        subQuery = subQuery.eq('event_id', targetEvtId);
+      }
+      try {
+        await subQuery;
+      } catch {}
 
       return res.status(200).json({ success: true, team: finalTeam });
     }

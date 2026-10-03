@@ -145,8 +145,12 @@ export default function ScreenshotContest({
   const [selectedEventId, setSelectedEventId] = useState<string>('active'); // 'active' | 'all' | specific event id
 
   const hasActiveEvent = Boolean(activeCompetitionEvent);
+  const isCountdownEnded = Boolean(
+    activeCompetitionEvent?.end_date && 
+    new Date(activeCompetitionEvent.end_date).getTime() <= Date.now()
+  );
   const isVotingActive = event?.status === 'voting_active' || Boolean(event?.is_voting_active);
-  const areSubmissionsAllowed = hasActiveEvent && !isVotingActive && event?.status !== 'concluded';
+  const areSubmissionsAllowed = hasActiveEvent && !isCountdownEnded && !isVotingActive && event?.status !== 'concluded';
 
   const [submissions, setSubmissions] = useState<ScreenshotSubmission[]>([]);
   const [votes, setVotes] = useState<ScreenshotVote[]>([]);
@@ -640,6 +644,13 @@ interface UserSubmissionStat {
         });
         return;
       }
+      if (isCountdownEnded) {
+        setVotingNotice({
+          title: "Submissions Locked (Event Ended)",
+          message: "The competition event countdown has ended. Screenshot submissions are automatically locked until the next event starts."
+        });
+        return;
+      }
       if (isVotingActive) {
         setVotingNotice({
           title: "Submissions Closed (Voting Active)",
@@ -669,6 +680,10 @@ interface UserSubmissionStat {
 
   // Execute Submit Screenshot
   const executeSubmitSubmission = async (forceSelectedVoting?: boolean) => {
+    if (isCountdownEnded) {
+      setSubmitError('The event countdown has ended. Screenshot submissions are locked.');
+      return;
+    }
     const finalUrl = imagePreview || imageUrlInput;
     if (!finalUrl) {
       setSubmitError('Please select an image file or provide an image URL');
@@ -1451,9 +1466,11 @@ interface UserSubmissionStat {
               title={
                 !hasActiveEvent
                   ? "Screenshot submissions are tied to competition events. There is no active event currently in the Events tab."
-                  : isVotingActive
-                    ? "The voting period is currently active. Submissions are paused until the next event starts."
-                    : "Submit a screenshot for the current event"
+                  : isCountdownEnded
+                    ? "The event countdown has ended. Submissions are locked."
+                    : isVotingActive
+                      ? "The voting period is currently active. Submissions are paused until the next event starts."
+                      : "Submit a screenshot for the current event"
               }
               className={cn(
                 "w-full sm:w-auto font-bold text-sm px-6 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-lg",
@@ -1467,9 +1484,11 @@ interface UserSubmissionStat {
                 ? "Submit Screenshot"
                 : !hasActiveEvent
                   ? "Submissions Closed (No Event)"
-                  : isVotingActive
-                    ? "Submissions Closed (Voting Active)"
-                    : "Submissions Closed"}
+                  : isCountdownEnded
+                    ? "Submissions Closed (Event Ended)"
+                    : isVotingActive
+                      ? "Submissions Closed (Voting Active)"
+                      : "Submissions Closed"}
             </button>
           </div>
         </div>

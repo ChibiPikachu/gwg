@@ -56,12 +56,26 @@ export interface Submission {
   rejectionReason?: string;
 }
 
+export type EventStatus = 'DRAFT' | 'ACTIVE' | 'SUBMISSIONS_CLOSED' | 'COMPLETED';
+
+export interface EventParticipant {
+  eventId: string;
+  userId: string;
+  teamId: Team | null;
+  points: number;
+}
+
 export interface CompetitionEvent {
   id: string;
   title: string;
   description?: string;
   start_date: string;
   end_date: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  status?: EventStatus | string;
+  isSubmissionOpen?: boolean;
+  is_submission_open?: boolean;
   is_active: boolean;
   isActive?: boolean;
   hide_scores?: boolean;
@@ -70,6 +84,7 @@ export interface CompetitionEvent {
   event_number?: number;
   snapshot?: any;
 }
+
 
 export interface ThemeHelper {
   accent: string;

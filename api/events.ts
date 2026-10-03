@@ -195,10 +195,10 @@ export async function savePreviousEventAndResetTeams(supabaseClient: any, newAct
       .update({ is_active: true })
       .eq('id', newActiveEventId);
 
-    // 5. CRITICAL: Reset ALL users in profiles to null ("unassigned") for the new event!
+    // 5. CRITICAL: Reset ALL users in profiles to null ("unassigned") and 0 points for the new event!
     await supabaseClient
       .from('profiles')
-      .update({ team: null })
+      .update({ team: null, points: 0 })
       .neq('id', '00000000-0000-0000-0000-000000000000');
   } catch (err) {
     console.error('Error in savePreviousEventAndResetTeams:', err);

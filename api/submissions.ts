@@ -38,11 +38,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ error: 'Unauthorized: Missing user ID' });
       }
 
+      // Check for active competition event and enforce submission lockout
+      const { data: activeEvent } = await supabase
+        .from('events')
+        .select('*')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!activeEvent) {
+        return res.status(403).json({
+          error: 'No active competition event. Submissions are closed until the next event starts.'
+        });
+      }
+
+      // Automatic submission lockout once countdown reaches zero
+      const now = Date.now();
+      const endTime = activeEvent.end_date ? new Date(activeEvent.end_date).getTime() : 0;
+      const isCountdownEnded = endTime > 0 && now >= endTime;
+      const isLockedByDesc = activeEvent.description && (
+        activeEvent.description.includes('<!--STATUS:SUBMISSIONS_CLOSED-->') ||
+        activeEvent.description.includes('<!--STATUS:COMPLETED-->') ||
+        activeEvent.description.includes('<!--SUBMISSIONS:CLOSED-->')
+      );
+
+      if (isCountdownEnded || isLockedByDesc || (activeEvent as any).is_submission_open === false) {
+        return res.status(403).json({
+          error: 'Event countdown has ended. Submissions are automatically locked.'
+        });
+      }
+
+      const targetEventId = body.eventId || body.event_id || activeEvent.id;
+
       const { data, error } = await supabase
         .from('submissions')
         .insert([
           {
             user_id: userId,
+            event_id: targetEventId,
             game_id: body.gameId || body.game_id,
             game_name: body.gameTitle || body.game_name,
             game_image: body.gameImage || body.game_image,
@@ -220,10 +252,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const userId = (req.query.userId || req.query.user_id || req.headers['x-user-id'] || req.headers['x-steam-id']) as string | undefined;
+      const eventIdParam = (req.query.eventId || req.query.event_id) as string | undefined;
 
       let query = supabase.from('submissions').select('*').order('created_at', { ascending: false });
       if (userId) {
         query = query.or(`user_id.eq.${userId},steamid.eq.${userId}`);
+      }
+      if (eventIdParam && eventIdParam !== 'all') {
+        query = query.eq('event_id', eventIdParam);
       }
 
       const { data, error } = await query;
@@ -250,6 +286,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       const body = req.body || {};
+
+      // Check existing submission and event status
+      const { data: existingSub } = await supabase
+        .from('submissions')
+        .select('id, event_id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!existingSub) {
+        return res.status(404).json({ error: 'Submission not found' });
+      }
+
+      if (existingSub.event_id) {
+        const { data: subEvent } = await supabase
+          .from('events')
+          .select('id, is_active, end_date, description')
+          .eq('id', existingSub.event_id)
+          .maybeSingle();
+
+        if (subEvent) {
+          const now = Date.now();
+          const endTime = subEvent.end_date ? new Date(subEvent.end_date).getTime() : 0;
+          const isCountdownEnded = endTime > 0 && now >= endTime;
+          const isLockedByDesc = subEvent.description && (
+            subEvent.description.includes('<!--STATUS:SUBMISSIONS_CLOSED-->') ||
+            subEvent.description.includes('<!--STATUS:COMPLETED-->') ||
+            subEvent.description.includes('<!--SUBMISSIONS:CLOSED-->')
+          );
+          if (!subEvent.is_active || isCountdownEnded || isLockedByDesc) {
+            return res.status(403).json({
+              error: 'Event countdown has ended. Submissions are locked and cannot be edited.'
+            });
+          }
+        }
+      }
 
       const { data, error } = await supabase
         .from('submissions')

@@ -831,6 +831,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           const uId = u.steamid || u.steamId;
           return (uId && uId === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u;
         }));
+        window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
+        window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamId, team } }));
       } else {
         alert(`Failed to update team: ${data.error || 'Unknown error'}`);
       }
@@ -890,6 +893,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           }
           return prev;
         });
+
+        window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
+        window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamId, team, eventId } }));
       } else {
         alert(`Failed to update event team: ${data.error || 'Unknown error'}`);
       }
