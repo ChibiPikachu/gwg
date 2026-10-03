@@ -176,6 +176,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     rejectionReason?: string;
   } | null>(null);
 
+  // Reset Event Points State
+  const [isResetModalOpen, setIsResetModalOpen] = React.useState(false);
+  const [resetConfirmText, setResetConfirmText] = React.useState('');
+  const [resetMortvieOption, setResetMortvieOption] = React.useState<'pending' | 'exclude'>('pending');
+  const [isResettingPoints, setIsResettingPoints] = React.useState(false);
+  const [resetSuccessBanner, setResetSuccessBanner] = React.useState<string | null>(null);
+
   const getAdminHeaders = React.useCallback(async (extraHeaders?: Record<string, string>) => {
     let cachedParsed: any = null;
     if (typeof window !== 'undefined') {
@@ -630,6 +637,53 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     } catch (err) {
       console.error('Failed to delete adjustment:', err);
       alert('An error occurred.');
+    }
+  };
+
+  const handleExecuteResetEventPoints = async () => {
+    if (!activeEvent) {
+      alert('No active event found to reset.');
+      return;
+    }
+    setIsResettingPoints(true);
+    try {
+      const headers = await getAdminHeaders();
+      const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+      const res = await fetch('/api/admin/reset-event-points', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          eventId: activeEvent.id,
+          revertMortvieToPending: resetMortvieOption === 'pending',
+          revertAllVerifiedToPending: true,
+          adminId: currentAdminId
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setIsResetModalOpen(false);
+        setResetConfirmText('');
+        const evtTitle = activeEvent.title || activeEvent.name || 'Active Event';
+        setResetSuccessBanner(
+          resetMortvieOption === 'pending'
+            ? `✓ Successfully reset all points for ${evtTitle} to 0! Mortvie's submission (SILENT HILL: Townfall) was reverted back to pending review.`
+            : `✓ Successfully reset points for ${evtTitle} to 0! Mortvie's submission was excluded and retained.`
+        );
+        setTimeout(() => setResetSuccessBanner(null), 8000);
+
+        // Refresh all local data & trigger global broadcast events
+        await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents(), fetchActivityLogs()]);
+        window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
+      } else {
+        alert(`Failed to reset event points: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      console.error('Failed to reset event points:', err);
+      alert('An error occurred while resetting event points. Please check console.');
+    } finally {
+      setIsResettingPoints(false);
     }
   };
 
@@ -1667,69 +1721,99 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
            </div>
         </div>
       )}
-      <div className="flex flex-col sm:flex-row border-b border-white/5">
-        <button 
-          onClick={() => setActiveTab('users')}
-          className={cn(
-            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative",
-            activeTab === 'users' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
-          )}
-        >
-          User Management
-          {activeTab === 'users' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('submissions')}
-          className={cn(
-            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
-            activeTab === 'submissions' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
-          )}
-        >
-          Game Submissions
-          {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && checkIsCurrentSub(s)).length > 0 && (
-            <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0", theme.bg)}>
-              {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && checkIsCurrentSub(s)).length}
-            </span>
-          )}
-          {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('previous_submissions')}
-          className={cn(
-            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
-            activeTab === 'previous_submissions' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
-          )}
-        >
-          Submissions Archive
-          {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && !checkIsCurrentSub(s)).length > 0 && (
-            <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0 bg-amber-500")}>
-              {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && !checkIsCurrentSub(s)).length}
-            </span>
-          )}
-          {activeTab === 'previous_submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('team_points')}
-          className={cn(
-            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
-            activeTab === 'team_points' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
-          )}
-        >
-          Team Points
-          {activeTab === 'team_points' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('activity_log')}
-          className={cn(
-            "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
-            activeTab === 'activity_log' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
-          )}
-        >
-          <History size={16} />
-          Activity Log
-          {activeTab === 'activity_log' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
-        </button>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-b border-white/5 gap-2">
+        <div className="flex flex-wrap sm:flex-row flex-1">
+          <button 
+            onClick={() => setActiveTab('users')}
+            className={cn(
+              "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative",
+              activeTab === 'users' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+            )}
+          >
+            User Management
+            {activeTab === 'users' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+          </button>
+          <button 
+            onClick={() => setActiveTab('submissions')}
+            className={cn(
+              "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+              activeTab === 'submissions' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+            )}
+          >
+            Game Submissions
+            {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && checkIsCurrentSub(s)).length > 0 && (
+              <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0", theme.bg)}>
+                {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && checkIsCurrentSub(s)).length}
+              </span>
+            )}
+            {activeTab === 'submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+          </button>
+          <button 
+            onClick={() => setActiveTab('previous_submissions')}
+            className={cn(
+              "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+              activeTab === 'previous_submissions' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+            )}
+          >
+            Submissions Archive
+            {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && !checkIsCurrentSub(s)).length > 0 && (
+              <span className={cn("w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shrink-0 bg-amber-500")}>
+                {submissions.filter(s => isUserGameSubmission(s) && s.status === 'pending' && !checkIsCurrentSub(s)).length}
+              </span>
+            )}
+            {activeTab === 'previous_submissions' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+          </button>
+          <button 
+            onClick={() => setActiveTab('team_points')}
+            className={cn(
+              "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+              activeTab === 'team_points' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+            )}
+          >
+            Team Points
+            {activeTab === 'team_points' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+          </button>
+          <button 
+            onClick={() => setActiveTab('activity_log')}
+            className={cn(
+              "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+              activeTab === 'activity_log' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+            )}
+          >
+            <History size={16} />
+            Activity Log
+            {activeTab === 'activity_log' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+          </button>
+        </div>
+
+        <div className="px-4 py-2 flex items-center justify-end shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setResetConfirmText('');
+              setResetMortvieOption('pending');
+              setIsResetModalOpen(true);
+            }}
+            className="px-3.5 py-1.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-sm shadow-red-500/10"
+            title="Reset all current event points back to 0"
+          >
+            <AlertTriangle size={13} className="text-red-400" />
+            <span>Reset Event Points</span>
+          </button>
+        </div>
       </div>
+
+      {resetSuccessBanner && (
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-between gap-3 animate-in fade-in">
+          <span>{resetSuccessBanner}</span>
+          <button
+            onClick={() => setResetSuccessBanner(null)}
+            className="text-emerald-400 hover:text-emerald-300 p-1 rounded-lg"
+          >
+            <XCircle size={14} />
+          </button>
+        </div>
+      )}
 
       {activeTab !== 'team_points' && activeTab !== 'activity_log' && (
         <section className="dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col gap-6">
@@ -2934,6 +3018,38 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                 <span>Bulk Edit Mode</span>
               </button>
             </div>
+          </div>
+
+          {/* Danger Zone: Event Points Reset */}
+          <div className="p-5 md:p-6 rounded-2xl border border-red-500/25 bg-red-500/[0.04] dark:bg-red-950/20 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 shrink-0 mt-0.5">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-red-500">Danger Zone: Reset Current Event Points</h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded font-black tracking-wider uppercase bg-red-500/15 text-red-400 border border-red-500/20">
+                    {activeEvent?.title || 'Active Event'}
+                  </span>
+                </div>
+                <p className="text-xs dark:text-white/60 text-slate-600 leading-relaxed max-w-2xl">
+                  Reset all team and member points for the active event back to 0 for a clean start. Reverts verified submissions (including Mortvie's 19-point submission) back to pending review, wipes event adjustments, and safely preserves member team rosters.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setResetConfirmText('');
+                setResetMortvieOption('pending');
+                setIsResetModalOpen(true);
+              }}
+              className="h-10 px-5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 shrink-0 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <RotateCcw size={14} />
+              <span>Reset Event Points</span>
+            </button>
           </div>
 
           {scoreEditMode === 'bulk' ? (
@@ -4203,6 +4319,158 @@ CREATE POLICY "Allow public read access" ON public.user_event_teams
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Current Event Points Confirmation Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="fixed inset-0" onClick={() => !isResettingPoints && setIsResetModalOpen(false)} />
+          <div className="relative w-full max-w-lg dark:bg-[#121212] bg-white rounded-2xl shadow-2xl border border-red-500/30 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header with Danger Sign */}
+            <div className="p-5 border-b dark:border-white/5 border-black/5 flex items-center justify-between bg-red-500/10 dark:bg-red-950/40">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 shadow-inner">
+                  <AlertTriangle size={24} className="animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-wider text-red-500 uppercase">Reset Event Points</h3>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase bg-red-500/20 text-red-400 border border-red-500/30">
+                      Danger
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-bold dark:text-white/40 text-slate-500">
+                    Target: {activeEvent?.title || activeEvent?.name || 'Active Event'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !isResettingPoints && setIsResetModalOpen(false)}
+                disabled={isResettingPoints}
+                className="h-8 w-8 rounded-lg hover:dark:bg-white/10 hover:bg-slate-200 flex items-center justify-center dark:text-white/40 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-50"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-5">
+              <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/[0.06] space-y-1.5">
+                <p className="text-xs font-black text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <AlertTriangle size={14} /> Attention: Irreversible Points Reset
+                </p>
+                <p className="text-xs dark:text-white/70 text-slate-600 leading-relaxed">
+                  This will reset all live leaderboard scores and adjustments for the current event so you can start completely fresh with 0 points. Team assignments and rosters will <strong>not</strong> be modified.
+                </p>
+              </div>
+
+              {/* Mortvie Special Handling Option */}
+              <div className="p-4 rounded-xl dark:bg-white/5 bg-slate-50 border dark:border-white/5 border-black/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider dark:text-white text-slate-800">
+                    Mortvie's Verified Submission
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">
+                    19 pts · SILENT HILL: Townfall
+                  </span>
+                </div>
+                <p className="text-[11px] dark:text-white/50 text-slate-500 leading-relaxed">
+                  Mortvie (<code className="font-mono text-[10px] text-purple-400">76561199006957620</code>) currently has a verified submission in this event. Choose how to handle it:
+                </p>
+
+                <div className="space-y-2 pt-1">
+                  <label className={cn(
+                    "flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all",
+                    resetMortvieOption === 'pending'
+                      ? "border-purple-500/50 bg-purple-500/10 dark:bg-purple-950/20"
+                      : "dark:border-white/5 border-black/5 dark:bg-black/30 bg-white hover:border-black/20"
+                  )}>
+                    <input
+                      type="radio"
+                      name="mortvieResetOption"
+                      checked={resetMortvieOption === 'pending'}
+                      onChange={() => setResetMortvieOption('pending')}
+                      className="mt-0.5 text-purple-500 focus:ring-purple-500"
+                    />
+                    <div className="flex flex-col text-xs">
+                      <span className="font-bold dark:text-white text-slate-900">
+                        Revert to Pending (Recommended)
+                      </span>
+                      <span className="text-[10px] dark:text-white/40 text-slate-500 mt-0.5">
+                        Mortvie's submission returns to the verification queue. Red team resets to 0, starting the event completely fresh with 0 points for everyone.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className={cn(
+                    "flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all",
+                    resetMortvieOption === 'exclude'
+                      ? "border-purple-500/50 bg-purple-500/10 dark:bg-purple-950/20"
+                      : "dark:border-white/5 border-black/5 dark:bg-black/30 bg-white hover:border-black/20"
+                  )}>
+                    <input
+                      type="radio"
+                      name="mortvieResetOption"
+                      checked={resetMortvieOption === 'exclude'}
+                      onChange={() => setResetMortvieOption('exclude')}
+                      className="mt-0.5 text-purple-500 focus:ring-purple-500"
+                    />
+                    <div className="flex flex-col text-xs">
+                      <span className="font-bold dark:text-white text-slate-900">
+                        Exclude Mortvie from reset
+                      </span>
+                      <span className="text-[10px] dark:text-white/40 text-slate-500 mt-0.5">
+                        Keep Mortvie's 19 points on Red Team while resetting all other event adjustments and caches to 0.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Confirmation typed guard */}
+              <div className="space-y-2 pt-1">
+                <label className="text-[11px] font-black uppercase tracking-wider opacity-60 dark:text-white text-slate-700">
+                  Type <span className="text-red-500 font-mono font-black">RESET</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  placeholder="RESET"
+                  className="w-full h-10 px-3.5 bg-slate-50 dark:bg-black/40 border border-red-500/40 rounded-xl font-mono text-xs uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:text-white text-slate-900"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t dark:border-white/5 border-black/5 flex items-center justify-end gap-3 bg-slate-50 dark:bg-zinc-900/50">
+              <button
+                type="button"
+                disabled={isResettingPoints}
+                onClick={() => setIsResetModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold dark:bg-white/5 bg-slate-200 hover:dark:bg-white/10 hover:bg-slate-300 dark:text-white text-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={resetConfirmText.trim().toUpperCase() !== 'RESET' || isResettingPoints}
+                onClick={handleExecuteResetEventPoints}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-red-600/30 cursor-pointer"
+              >
+                {isResettingPoints ? (
+                  <span>Resetting Points...</span>
+                ) : (
+                  <>
+                    <AlertTriangle size={14} />
+                    <span>Confirm & Reset All Points</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

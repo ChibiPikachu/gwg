@@ -3913,6 +3913,163 @@ async function createServer() {
     }
   });
 
+  app.post('/api/admin/reset-event-points', async (req, res) => {
+    try {
+      const { eventId, revertMortvieToPending = true, revertAllVerifiedToPending = true } = req.body || {};
+      const supabase = getSupabase();
+      if (!supabase) return res.status(500).json({ error: 'Database unavailable' });
+
+      // 1. Resolve event (default to active event)
+      let targetEventId = eventId;
+      if (!targetEventId) {
+        const { data: actEvt } = await supabase
+          .from('events')
+          .select('id, title, is_active, description')
+          .eq('is_active', true)
+          .maybeSingle();
+        targetEventId = actEvt?.id;
+      }
+
+      if (!targetEventId) {
+        return res.status(400).json({ error: 'No active event or eventId provided' });
+      }
+
+      const { data: targetEvent } = await supabase
+        .from('events')
+        .select('id, title, is_active, description')
+        .eq('id', targetEventId)
+        .maybeSingle();
+
+      if (!targetEvent) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const mortvieId = '76561199006957620';
+      const mortvieDiscord = '773588586008281098';
+
+      // 2. Query all verified or approved submissions for this specific event
+      const { data: eventSubs } = await supabase
+        .from('submissions')
+        .select('id, user_id, game_name, status, points')
+        .eq('event_id', targetEventId)
+        .or('status.eq.verified,status.eq.approved');
+
+      let modifiedSubmissionsCount = 0;
+      let mortvieStatus = 'kept';
+
+      for (const sub of (eventSubs || [])) {
+        const uid = String(sub.user_id || '').trim();
+        const isMortvie = uid === mortvieId || uid === `discord_${mortvieDiscord}` || uid === mortvieDiscord;
+
+        if (isMortvie) {
+          if (revertMortvieToPending) {
+            await supabase
+              .from('submissions')
+              .update({ status: 'pending' })
+              .eq('id', sub.id);
+            modifiedSubmissionsCount++;
+            mortvieStatus = 'reverted_to_pending';
+          } else {
+            mortvieStatus = 'excluded';
+          }
+        } else {
+          if (revertAllVerifiedToPending) {
+            await supabase
+              .from('submissions')
+              .update({ status: 'pending' })
+              .eq('id', sub.id);
+            modifiedSubmissionsCount++;
+          }
+        }
+      }
+
+      // 3. Clear/remove any team_adjustments for this specific event
+      try {
+        await supabase
+          .from('team_adjustments')
+          .delete()
+          .eq('event_id', targetEventId);
+      } catch (adjErr) {
+        console.warn('[Admin Reset] Error deleting team_adjustments:', adjErr);
+      }
+
+      // 4. Preserve existing user-team rosters while resetting scores
+      let currentDesc = targetEvent.description || '';
+      let userTeams: Record<string, string> = {};
+
+      const scoreMatch = currentDesc.match(/<!--EVENT_SCORES:(.*?)-->/s);
+      if (scoreMatch && scoreMatch[1]) {
+        try {
+          const parsed = JSON.parse(scoreMatch[1]);
+          if (parsed.userTeams) userTeams = parsed.userTeams;
+        } catch (e) {}
+      }
+
+      const { data: uets } = await supabase
+        .from('user_event_teams')
+        .select('steamid, team')
+        .eq('event_id', targetEventId);
+
+      (uets || []).forEach((u: any) => {
+        if (u.steamid && u.team) {
+          userTeams[u.steamid] = u.team;
+        }
+      });
+
+      const isMortvieExcluded = !revertMortvieToPending && mortvieStatus === 'excluded';
+      const cleanTeamTotals = {
+        blue: 0,
+        green: 0,
+        purple: 0,
+        red: isMortvieExcluded ? 19 : 0
+      };
+      const cleanUserScores: Record<string, number> = isMortvieExcluded
+        ? { [mortvieId]: 19, [`discord_${mortvieDiscord}`]: 19 }
+        : {};
+
+      const freshSnapshot = {
+        teamTotals: cleanTeamTotals,
+        userScores: cleanUserScores,
+        userTeams
+      };
+
+      let updatedDesc = currentDesc;
+      if (updatedDesc.includes('<!--EVENT_SCORES:')) {
+        updatedDesc = updatedDesc.replace(/<!--EVENT_SCORES:.*?-->/s, `<!--EVENT_SCORES:${JSON.stringify(freshSnapshot)}-->`);
+      } else {
+        updatedDesc = `${updatedDesc.trim()}\n<!--EVENT_SCORES:${JSON.stringify(freshSnapshot)}-->`;
+      }
+
+      if (updatedDesc.includes('<!--WINNER:')) {
+        updatedDesc = updatedDesc.replace(/<!--WINNER:.*?-->/g, '');
+      }
+
+      await supabase
+        .from('events')
+        .update({
+          description: updatedDesc,
+          winner_team: isMortvieExcluded ? 'red' : null
+        })
+        .eq('id', targetEventId);
+
+      // Force cache re-sync to ensure clean leaderboard state
+      await ensureEventScoresSaved(supabase, targetEventId, true);
+
+      console.log(`[Admin Reset] Successfully reset event points for ${targetEventId}. Mortvie status: ${mortvieStatus}. Modified: ${modifiedSubmissionsCount}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'All event points have been successfully reset to 0.',
+        eventId: targetEventId,
+        modifiedSubmissionsCount,
+        mortvieStatus
+      });
+    } catch (err: any) {
+      console.error('[Admin Reset] Exception in reset-event-points:', err);
+      return res.status(500).json({ error: 'Failed to reset event points', details: err.message });
+    }
+  });
+
   app.post('/api/logout', (req, res) => {
     (req as any).logout(() => res.json({ success: true }));
   });
