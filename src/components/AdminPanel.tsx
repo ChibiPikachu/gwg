@@ -647,23 +647,101 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
+          // 1. Fetch active event
+          const { data: actEvt } = await supabase
+            .from('events')
+            .select('id')
+            .eq('is_active', true)
+            .maybeSingle();
+
+          const activeEvtId = actEvt?.id;
+
+          // 2. Fetch all user event teams
+          const { data: allUets } = await supabase
+            .from('user_event_teams')
+            .select('steamid, event_id, team');
+
+          const userEventTeamsMap: Record<string, Record<string, string>> = {};
+          (allUets || []).forEach((row: any) => {
+            if (row.steamid && row.event_id && row.team) {
+              const sid = String(row.steamid).trim();
+              if (!userEventTeamsMap[sid]) userEventTeamsMap[sid] = {};
+              userEventTeamsMap[sid][row.event_id] = row.team;
+            }
+          });
+
+          // 3. Fetch active event submissions to compute verified event-scoped points
+          const userEventPoints: Record<string, number> = {};
+          if (activeEvtId) {
+            const { data: activeSubs } = await supabase
+              .from('submissions')
+              .select('user_id, points, calculated_score, status')
+              .eq('event_id', activeEvtId)
+              .or('status.eq.verified,status.eq.approved');
+
+            (activeSubs || []).forEach((s: any) => {
+              const uid = String(s.user_id || '').trim();
+              const pts = Math.round(Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0);
+              if (uid) {
+                userEventPoints[uid] = (userEventPoints[uid] || 0) + pts;
+                const clean = uid.replace('discord_', '');
+                userEventPoints[clean] = (userEventPoints[clean] || 0) + pts;
+              }
+            });
+
+            const { data: activeAdjs } = await supabase
+              .from('team_adjustments')
+              .select('user_id, points')
+              .eq('event_id', activeEvtId);
+
+            (activeAdjs || []).forEach((a: any) => {
+              const uid = String(a.user_id || '').trim();
+              const pts = Math.round(Number(a.points) || 0);
+              if (uid) {
+                userEventPoints[uid] = (userEventPoints[uid] || 0) + pts;
+                const clean = uid.replace('discord_', '');
+                userEventPoints[clean] = (userEventPoints[clean] || 0) + pts;
+              }
+            });
+          }
+
           const formatted = data.map((dbProfile: any) => {
             const isAdmin = dbProfile.role === 'admin' || dbProfile.role === 'admins' || dbProfile.role === 'owner' || dbProfile.is_admin === true || dbProfile.isAdmin === true;
+            const sid = dbProfile.steamid ? String(dbProfile.steamid).trim() : null;
+            const did = dbProfile.discord_id ? String(dbProfile.discord_id).trim() : null;
+            const uid = dbProfile.id ? String(dbProfile.id).trim() : null;
+
+            // Merge eventTeams from all potential user identifiers
+            const combinedEventTeams: Record<string, string> = {
+              ...(sid && userEventTeamsMap[sid] ? userEventTeamsMap[sid] : {}),
+              ...(did && userEventTeamsMap[did] ? userEventTeamsMap[did] : {}),
+              ...(did && userEventTeamsMap[`discord_${did}`] ? userEventTeamsMap[`discord_${did}`] : {}),
+              ...(uid && userEventTeamsMap[uid] ? userEventTeamsMap[uid] : {})
+            };
+
+            const activeEventTeam = activeEvtId ? (combinedEventTeams[activeEvtId] || null) : null;
+            const activePts = (sid && userEventPoints[sid]) || 
+                              (did && userEventPoints[did]) || 
+                              (did && userEventPoints[`discord_${did}`]) || 
+                              (uid && userEventPoints[uid]) || 
+                              0;
+
             return {
               ...dbProfile,
               uid: String(dbProfile.steamid || dbProfile.id),
               steamId: String(dbProfile.steamid || dbProfile.id),
               steamName: dbProfile.steam_name || dbProfile.display_name || dbProfile.discord_name || 'Gamer',
               steamAvatar: dbProfile.steam_avatar || dbProfile.discord_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
-              team: dbProfile.team || 'none',
+              team: activeEventTeam,
               isAdmin: Boolean(isAdmin),
               role: dbProfile.role || (isAdmin ? 'admin' : 'member'),
               status: dbProfile.status || 'Ready for Event',
-              points: typeof dbProfile.points === 'number' ? dbProfile.points : 0,
+              points: activePts,
               discordId: dbProfile.discord_id || dbProfile.id,
               discordName: dbProfile.discord_name,
               discordAvatar: dbProfile.discord_avatar,
-              createdAt: dbProfile.created_at
+              createdAt: dbProfile.created_at,
+              eventTeams: combinedEventTeams
             };
           });
           setUsers(formatted);
@@ -812,30 +890,44 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     try {
       const headers = await getAdminHeaders();
       const currentAdminId = currentUser?.steamId || currentUser?.uid || currentUser?.id || currentUser?.discordId || '';
+      const currentEventId = activeEvent?.id;
       const res = await fetch('/api/admin/update-user-team', {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          userId: targetSteamId,
           targetSteamId,
-          steamId: targetSteamId,
+          targetTeamId: team,
           team,
-          adminId: currentAdminId,
-          userId: currentAdminId
+          eventId: currentEventId,
+          adminId: currentAdminId
         })
       });
       
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       
       if (res.ok) {
+        const finalTeam = team === 'none' ? null : team;
         setUsers(prev => prev.map(u => {
-          const uId = u.steamid || u.steamId;
-          return (uId && uId === targetSteamId) ? { ...u, team: team === 'none' ? null : team } : u;
+          const cleanTarget = String(targetSteamId).replace('discord_', '');
+          const matches = u.steamid === targetSteamId || 
+                          u.steamId === targetSteamId || 
+                          u.discord_id === targetSteamId || 
+                          u.discord_id === cleanTarget ||
+                          u.discordId === targetSteamId ||
+                          u.id === targetSteamId ||
+                          u.uid === targetSteamId;
+          if (matches) {
+            const updatedEventTeams = currentEventId ? { ...(u.eventTeams || {}), [currentEventId]: finalTeam } : u.eventTeams;
+            return { ...u, team: finalTeam, eventTeams: updatedEventTeams };
+          }
+          return u;
         }));
         window.dispatchEvent(new Event('leaderboard-updated'));
         window.dispatchEvent(new Event('active-event-updated'));
-        window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamId, team } }));
+        window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamId, team, eventId: currentEventId } }));
       } else {
-        alert(`Failed to update team: ${data.error || 'Unknown error'}`);
+        console.error('Failed to update team:', data?.error || 'Unknown error');
       }
     } catch (err) {
       console.error('Failed to update team:', err);
@@ -853,40 +945,56 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         method: 'POST',
         headers,
         body: JSON.stringify({
+          userId: targetSteamId,
           targetSteamId,
+          targetTeamId: team,
           team,
           eventId,
-          adminId: currentAdminId,
-          userId: currentAdminId
+          adminId: currentAdminId
         })
       });
       
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       
       if (res.ok) {
+        const finalTeam = team === 'none' ? null : team;
         setUsers(prev => prev.map(u => {
-          const uId = u.steamid || u.steamId;
-          if (uId && uId === targetSteamId) {
-            const updatedEventTeams = { ...u.eventTeams, [eventId]: team === 'none' ? null : team };
+          const cleanTarget = String(targetSteamId).replace('discord_', '');
+          const matches = u.steamid === targetSteamId || 
+                          u.steamId === targetSteamId || 
+                          u.discord_id === targetSteamId || 
+                          u.discord_id === cleanTarget ||
+                          u.discordId === targetSteamId ||
+                          u.id === targetSteamId ||
+                          u.uid === targetSteamId;
+          if (matches) {
+            const updatedEventTeams = { ...(u.eventTeams || {}), [eventId]: finalTeam };
             const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
             return {
               ...u,
-              team: isEventActive ? (team === 'none' ? null : team) : u.team,
+              team: isEventActive ? finalTeam : u.team,
               eventTeams: updatedEventTeams
             };
           }
           return u;
         }));
 
-        setEditingUserEventTeams(prev => {
+        setEditingUserEventTeams((prev: any) => {
           if (prev) {
-            const prevId = prev.steamid || prev.steamId;
-            if (prevId && prevId === targetSteamId) {
-              const updatedEventTeams = { ...prev.eventTeams, [eventId]: team === 'none' ? null : team };
+            const cleanTarget = String(targetSteamId).replace('discord_', '');
+            const matches = prev.steamid === targetSteamId || 
+                            prev.steamId === targetSteamId || 
+                            prev.discord_id === targetSteamId || 
+                            prev.discord_id === cleanTarget ||
+                            prev.discordId === targetSteamId ||
+                            prev.id === targetSteamId ||
+                            prev.uid === targetSteamId;
+            if (matches) {
+              const updatedEventTeams = { ...(prev.eventTeams || {}), [eventId]: finalTeam };
               const isEventActive = events.find((e: any) => e.id === eventId)?.is_active;
               return {
                 ...prev,
-                team: isEventActive ? (team === 'none' ? null : team) : prev.team,
+                team: isEventActive ? finalTeam : prev.team,
                 eventTeams: updatedEventTeams
               };
             }
@@ -898,7 +1006,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         window.dispatchEvent(new Event('active-event-updated'));
         window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamId, team, eventId } }));
       } else {
-        alert(`Failed to update event team: ${data.error || 'Unknown error'}`);
+        console.error('Failed to update event team:', data?.error || 'Unknown error');
       }
     } catch (err) {
       console.error('Failed to update event team:', err);
@@ -2023,7 +2131,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         <select
                           value={u.team || 'none'}
                           disabled={updating === userId}
-                          onChange={(e) => assignTeam(userId, e.target.value as Team)}
+                          onChange={(e) => {
+                            e.preventDefault();
+                            assignTeam(userId, e.target.value as Team);
+                          }}
                           className={cn(
                             "appearance-none dark:bg-[#181818] bg-slate-50 border dark:border-white/5 border-black/5 rounded-xl px-3 py-1.5 pr-8 text-[11px] font-bold uppercase tracking-wider focus:outline-none transition-all w-full cursor-pointer h-9",
                             teamColorObj 
@@ -4016,7 +4127,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             <select
                               value={userTeamForEvent || 'none'}
                               disabled={isUpdatingThisUser}
-                              onChange={(selEvt) => assignEventTeam(editingUserEventTeams.steamid || editingUserEventTeams.steamId, e.id, selEvt.target.value as Team | 'none')}
+                              onChange={(selEvt) => {
+                                selEvt.preventDefault();
+                                assignEventTeam(editingUserEventTeams.steamid || editingUserEventTeams.steamId || editingUserEventTeams.id, e.id, selEvt.target.value as Team | 'none');
+                              }}
                               className={cn(
                                 "appearance-none dark:bg-[#222] bg-white border dark:border-white/10 border-black/10 rounded-xl px-3 py-1.5 pr-8 text-[11px] font-bold uppercase tracking-wider focus:outline-none transition-all w-full cursor-pointer h-9",
                                 userTeamForEvent && userTeamForEvent !== 'none' 

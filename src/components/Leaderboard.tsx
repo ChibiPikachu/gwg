@@ -599,7 +599,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
           if (sub.game_name === 'Event Update') return;
           const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
           if (!isVerified) return;
-          if (currentActive && sub.event_id && String(sub.event_id) !== String(currentActive.id)) return;
+          if (currentActive && (!sub.event_id || String(sub.event_id) !== String(currentActive.id))) return;
 
           const rawId = String(sub.user_id || '').trim();
           const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
@@ -627,7 +627,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
         (adjs || []).forEach((adj: any) => {
           if (!adj.user_id || String(adj.user_id).startsWith('team_pts_')) return;
-          if (currentActive && adj.event_id && String(adj.event_id) !== String(currentActive.id)) return;
+          if (currentActive && (!adj.event_id || String(adj.event_id) !== String(currentActive.id))) return;
           const pts = Math.round(Number(adj.points) || 0);
           const rawId = String(adj.user_id || '').trim();
           const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
@@ -637,7 +637,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
         const transformed = (profiles || []).map((u: any) => {
           const uetTeam = u.steamid ? uetMap.get(String(u.steamid).trim()) : null;
-          const effectiveTeam = uetTeam || u.team;
+          const effectiveTeam = uetTeam || 'none';
 
           const sid = u.steamid ? String(u.steamid).trim() : null;
           const did = u.discord_id ? String(u.discord_id).trim() : null;
@@ -652,7 +652,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
             uid ? profilePoints.get(uid) : undefined
           ].filter((p): p is number => p !== undefined);
 
-          const livePts = candidatePoints.length > 0 ? candidatePoints[0] : (u.points || 0);
+          // Zero-carryover: If user has no verified points in this active event, score is strictly 0
+          const livePts = candidatePoints.length > 0 ? candidatePoints[0] : 0;
 
           return {
             ...u,

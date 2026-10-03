@@ -1871,35 +1871,68 @@ async function createServer() {
       if (profileData) {
         let eventTeams: Record<string, string> = {};
         const steamIdForUET = profileData.steamid;
+        const candidateKeys = Array.from(new Set([
+          profileData.steamid ? String(profileData.steamid).trim() : null,
+          profileData.discord_id ? String(profileData.discord_id).trim() : null,
+          profileData.discord_id ? `discord_${String(profileData.discord_id).trim().replace('discord_', '')}` : null,
+          profileData.id ? String(profileData.id).trim() : null,
+          user.id ? String(user.id).trim() : null,
+          user.steamid ? String(user.steamid).trim() : null
+        ].filter(Boolean))) as string[];
+
         try {
           const { data: eventTeamsData } = await supabase
             .from('user_event_teams')
             .select('event_id, team')
-            .eq('steamid', steamIdForUET);
+            .in('steamid', candidateKeys);
 
           (eventTeamsData || []).forEach((row: any) => {
-            eventTeams[row.event_id] = row.team;
+            if (row.event_id && row.team) {
+              eventTeams[row.event_id] = row.team;
+            }
           });
+        } catch (uetError) {
+          console.warn('[Session Me] Could not fetch user_event_teams:', uetError);
+        }
 
-          // Auto-lock into active event if not present yet and active event exists
+        // Fetch active event
+        let activeEventTeam: string | null = null;
+        let activeEventPoints = 0;
+        try {
           const { data: activeEvent } = await supabase
             .from('events')
             .select('id')
             .eq('is_active', true)
             .maybeSingle();
 
-          if (activeEvent && profileData.team && !eventTeams[activeEvent.id]) {
-            await supabase
-              .from('user_event_teams')
-              .upsert({
-                steamid: steamIdForUET,
-                event_id: activeEvent.id,
-                team: profileData.team
-              }, { onConflict: 'steamid,event_id' });
-            eventTeams[activeEvent.id] = profileData.team;
+          if (activeEvent?.id) {
+            activeEventTeam = eventTeams[activeEvent.id] || null;
+
+            // Compute points strictly for active event
+            const { data: activeSubs } = await supabase
+              .from('submissions')
+              .select('points, calculated_score, status')
+              .in('user_id', candidateKeys)
+              .eq('event_id', activeEvent.id)
+              .or('status.eq.verified,status.eq.approved');
+
+            (activeSubs || []).forEach((s: any) => {
+              const pts = Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0;
+              activeEventPoints += Math.round(pts);
+            });
+
+            const { data: activeAdjs } = await supabase
+              .from('team_adjustments')
+              .select('points')
+              .in('user_id', candidateKeys)
+              .eq('event_id', activeEvent.id);
+
+            (activeAdjs || []).forEach((a: any) => {
+              activeEventPoints += Math.round(Number(a.points) || 0);
+            });
           }
-        } catch (uetError) {
-          console.warn('[Session Me] Could not fetch/update user_event_teams:', uetError);
+        } catch (e) {
+          console.warn('[Session Me] Error calculating active event points:', e);
         }
 
         // Apply active avatar choice
@@ -1912,7 +1945,9 @@ async function createServer() {
         return res.json({
           ...user,
           ...profileData,
-          steam_avatar: finalAvatar, // Overwrite as evaluated above so existing components show preferred avatar flawlessly!
+          team: activeEventTeam || 'none',
+          points: activeEventPoints,
+          steam_avatar: finalAvatar,
           isAdmin: profileData.role === 'admin' || profileData.role === 'admins',
           eventTeams: eventTeams
         });
@@ -2096,6 +2131,15 @@ async function createServer() {
         return res.status(500).json({ error: error.message });
       }
 
+      // Fetch active event
+      const { data: actEvt } = await supabase
+        .from('events')
+        .select('id')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const activeEvtId = actEvt?.id;
+
       // Fetch all user event teams to attach to user objects
       let eventTeamsMap: Record<string, Record<string, string>> = {};
       try {
@@ -2104,8 +2148,8 @@ async function createServer() {
           .select('steamid, event_id, team');
         
         (allEventTeams || []).forEach((row: any) => {
-          if (row.steamid) {
-            const key = String(row.steamid);
+          if (row.steamid && row.event_id && row.team) {
+            const key = String(row.steamid).trim();
             if (!eventTeamsMap[key]) {
               eventTeamsMap[key] = {};
             }
@@ -2116,15 +2160,73 @@ async function createServer() {
         console.warn('[Admin Users] Failed to load user_event_teams:', err);
       }
 
+      // Compute active event points per user
+      const userEventPoints: Record<string, number> = {};
+      if (activeEvtId) {
+        try {
+          const { data: activeSubs } = await supabase
+            .from('submissions')
+            .select('user_id, points, calculated_score, status')
+            .eq('event_id', activeEvtId)
+            .or('status.eq.verified,status.eq.approved');
+
+          (activeSubs || []).forEach((s: any) => {
+            const uid = String(s.user_id || '').trim();
+            const pts = Math.round(Number(s.points !== undefined && s.points !== null ? s.points : s.calculated_score) || 0);
+            if (uid) {
+              userEventPoints[uid] = (userEventPoints[uid] || 0) + pts;
+              const clean = uid.replace('discord_', '');
+              userEventPoints[clean] = (userEventPoints[clean] || 0) + pts;
+            }
+          });
+
+          const { data: activeAdjs } = await supabase
+            .from('team_adjustments')
+            .select('user_id, points')
+            .eq('event_id', activeEvtId);
+
+          (activeAdjs || []).forEach((a: any) => {
+            const uid = String(a.user_id || '').trim();
+            const pts = Math.round(Number(a.points) || 0);
+            if (uid) {
+              userEventPoints[uid] = (userEventPoints[uid] || 0) + pts;
+              const clean = uid.replace('discord_', '');
+              userEventPoints[clean] = (userEventPoints[clean] || 0) + pts;
+            }
+          });
+        } catch (e) {
+          console.warn('[Admin Users] Failed to compute active event points:', e);
+        }
+      }
+
       const transformedUsers = (users || []).map((u: any) => {
         const effectiveId = String(u.steamid || u.discord_id || u.id || '');
+        const sid = u.steamid ? String(u.steamid).trim() : '';
+        const did = u.discord_id ? String(u.discord_id).trim() : '';
+        const uid = u.id ? String(u.id).trim() : '';
+
+        const userTeams = {
+          ...(sid && eventTeamsMap[sid] ? eventTeamsMap[sid] : {}),
+          ...(did && eventTeamsMap[did] ? eventTeamsMap[did] : {}),
+          ...(did && eventTeamsMap[`discord_${did}`] ? eventTeamsMap[`discord_${did}`] : {}),
+          ...(uid && eventTeamsMap[uid] ? eventTeamsMap[uid] : {})
+        };
+
+        const activeTeam = activeEvtId ? (userTeams[activeEvtId] || null) : null;
+        const activePts = (sid && userEventPoints[sid]) ||
+                          (did && userEventPoints[did]) ||
+                          (did && userEventPoints[`discord_${did}`]) ||
+                          (uid && userEventPoints[uid]) ||
+                          0;
+
         return {
           ...u,
           steamid: effectiveId,
           steam_name: u.steam_name || u.steamName || u.discord_name || u.discordName || 'User',
           steam_avatar: (u.active_avatar === 'discord' && u.discord_avatar) ? u.discord_avatar : (u.steam_avatar || u.discord_avatar || ''),
-          team: u.team || 'none',
-          eventTeams: eventTeamsMap[effectiveId] || (u.steamid ? eventTeamsMap[u.steamid] : {}) || {}
+          team: activeTeam,
+          points: activePts,
+          eventTeams: userTeams
         };
       });
 
@@ -2270,15 +2372,7 @@ async function createServer() {
         if (!sub.user_id || sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return false;
         const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
         if (!isVerified) return false;
-        if (sub.event_id && String(sub.event_id) === String(eventId)) return true;
-        if (isCurrentOrActive && !sub.event_id) return true;
-        if (!sub.event_id && event.start_date && event.end_date && sub.created_at) {
-          const subTime = new Date(sub.created_at).getTime();
-          const start = new Date(event.start_date).getTime() - 86400000;
-          const end = new Date(event.end_date).getTime() + 86400000;
-          if (subTime >= start && subTime <= end) return true;
-        }
-        return false;
+        return Boolean(sub.event_id && String(sub.event_id) === String(eventId));
       };
 
       const verifiedSubs = (allSubs || []).filter(isMatchingSub);
@@ -2288,15 +2382,7 @@ async function createServer() {
         .select('*');
 
       const isMatchingAdj = (adj: any) => {
-        if (adj.event_id && String(adj.event_id) === String(eventId)) return true;
-        if (isCurrentOrActive && !adj.event_id) return true;
-        if (!adj.event_id && event.start_date && event.end_date && adj.created_at) {
-          const adjTime = new Date(adj.created_at).getTime();
-          const start = new Date(event.start_date).getTime() - 86400000;
-          const end = new Date(event.end_date).getTime() + 86400000;
-          if (adjTime >= start && adjTime <= end) return true;
-        }
-        return false;
+        return Boolean(adj.event_id && String(adj.event_id) === String(eventId));
       };
 
       const eventAdjustments = (allAdjustments || []).filter(isMatchingAdj);
@@ -2415,6 +2501,13 @@ async function createServer() {
             if (p.steamid) userScores[String(p.steamid)] = forcedPts;
             if (p.discord_id) userScores[`discord_${p.discord_id}`] = forcedPts;
           }
+        } else if (isCurrentOrActive || forceResync) {
+          const livePts = profileLivePoints.get(p) || 0;
+          if (livePts > 0) {
+            userScores[primaryId] = livePts;
+            if (p.steamid) userScores[String(p.steamid)] = livePts;
+            if (p.discord_id) userScores[`discord_${p.discord_id}`] = livePts;
+          }
         } else {
           const livePts = profileLivePoints.get(p) || 0;
           let savedPts = 0;
@@ -2431,10 +2524,10 @@ async function createServer() {
           }
         }
 
-        // Determine team
+        // Determine team strictly from user_event_teams or savedScores (no profiles.team fallback)
         let team = 'none';
         for (const k of candidateKeys) {
-          if (uetMap.get(k)) {
+          if (uetMap.get(k) && uetMap.get(k) !== 'none') {
             team = uetMap.get(k)!;
             break;
           }
@@ -2442,9 +2535,6 @@ async function createServer() {
             team = existingSaved.userTeams[k];
             break;
           }
-        }
-        if (team === 'none' && p.team && p.team !== 'none') {
-          team = p.team;
         }
         if (team !== 'none') {
           userTeams[primaryId] = team;
@@ -2460,7 +2550,7 @@ async function createServer() {
         }
       });
 
-      // Preserve existing userTeams
+      // Preserve existing userTeams from user_event_teams
       (uets || []).forEach((u: any) => {
         if (u.steamid && u.team && u.team !== 'none') {
           userTeams[String(u.steamid)] = u.team;
@@ -2472,7 +2562,7 @@ async function createServer() {
       (profiles || []).forEach((p: any) => {
         const primaryId = p.steamid ? String(p.steamid) : (p.discord_id ? `discord_${p.discord_id}` : String(p.id));
         const pts = userScores[primaryId] || (p.steamid ? userScores[String(p.steamid)] : 0) || (p.discord_id ? userScores[`discord_${p.discord_id}`] : 0) || 0;
-        const team = userTeams[primaryId] || (p.steamid ? userTeams[String(p.steamid)] : null) || (p.discord_id ? userTeams[`discord_${p.discord_id}`] : null) || p.team;
+        const team = userTeams[primaryId] || (p.steamid ? userTeams[String(p.steamid)] : null) || (p.discord_id ? userTeams[`discord_${p.discord_id}`] : null);
         if (team && teamUserSums[team] !== undefined) {
           teamUserSums[team] += pts;
         }
@@ -2483,6 +2573,8 @@ async function createServer() {
         const liveTotal = (teamUserSums[t] || 0) + (teamAdjustments[t] || 0);
         if (existingSaved?.forcedByAdmin && existingSaved?.teamTotals?.[t] !== undefined && !forceResync) {
           teamTotals[t] = Number(existingSaved.teamTotals[t]) || 0;
+        } else if (isCurrentOrActive || forceResync) {
+          teamTotals[t] = liveTotal;
         } else {
           const existingTot = Number(existingSaved?.teamTotals?.[t]) || 0;
           teamTotals[t] = Math.max(liveTotal, existingTot);
@@ -2598,11 +2690,12 @@ async function createServer() {
       let totalPoints = 0;
 
       if (targetEventId) {
-        // Sum all verified submissions for active event or null event_id
+        // Sum verified submissions strictly for target event
         const { data: userSubmissions, error: subError } = await supabase
           .from('submissions')
           .select('points, calculated_score, id, status, user_id, event_id, game_name, platform')
-          .in('user_id', candidateIds);
+          .in('user_id', candidateIds)
+          .eq('event_id', targetEventId);
 
         if (subError) {
           console.error(`[Sync] Error fetching submissions for ${steamid}:`, subError);
@@ -2611,16 +2704,15 @@ async function createServer() {
 
         const verifiedSubmissions = (userSubmissions || []).filter((sub: any) => {
           if (sub.game_name === 'Event Update') return false;
-          const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
-          if (!isVerified) return false;
-          return !sub.event_id || String(sub.event_id) === String(targetEventId);
+          return sub.status === 'verified' || sub.status === 'approved' || !sub.status;
         });
 
         // Fetch valid screenshots count to guard against orphaned points
         const { data: validScreenshots } = await supabase
           .from('screenshot_submissions')
           .select('id, user_id')
-          .in('user_id', candidateIds);
+          .in('user_id', candidateIds)
+          .eq('event_id', targetEventId);
 
         const validCount = (validScreenshots || []).length;
         let screenshotPointsSeen = 0;
@@ -2642,38 +2734,18 @@ async function createServer() {
           totalPoints += Math.round(pts);
         }
 
-        // Add user adjustments for target event
+        // Add user adjustments strictly for target event
         const { data: userAdjustments } = await supabase
           .from('team_adjustments')
           .select('points, event_id')
-          .in('user_id', candidateIds);
+          .in('user_id', candidateIds)
+          .eq('event_id', targetEventId);
 
         (userAdjustments || []).forEach((adj: any) => {
-          if (adj.event_id && String(adj.event_id) !== String(targetEventId)) return;
           totalPoints += Math.round(Number(adj.points) || 0);
         });
       } else {
-        const { data: allVerified } = await supabase
-          .from('submissions')
-          .select('points, calculated_score, game_name, status')
-          .in('user_id', candidateIds);
-
-        for (const sub of (allVerified || [])) {
-          if (sub.game_name === 'Event Update') continue;
-          const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
-          if (!isVerified) continue;
-          const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
-          totalPoints += Math.round(pts);
-        }
-
-        const { data: userAdjustments } = await supabase
-          .from('team_adjustments')
-          .select('points')
-          .in('user_id', candidateIds);
-
-        (userAdjustments || []).forEach((adj: any) => {
-          totalPoints += Math.round(Number(adj.points) || 0);
-        });
+        totalPoints = 0;
       }
 
       console.log(`[Sync] Calculated totalPoints: ${totalPoints} for user ${steamid}`);
@@ -2798,10 +2870,7 @@ async function createServer() {
       const verifiedSubs = (allSubs || []).filter((sub: any) => {
         const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
         if (!isVerified) return false;
-        if (activeEvent) {
-          return !sub.event_id || String(sub.event_id) === String(activeEvent.id);
-        }
-        return true;
+        return Boolean(activeEvent && sub.event_id && String(sub.event_id) === String(activeEvent.id));
       });
 
       // 4. Fetch valid screenshot submissions to guard against orphaned screenshot points
@@ -2859,13 +2928,10 @@ async function createServer() {
         }
       });
 
-      // 6. Fetch adjustments for active event as well
+      // 6. Fetch adjustments strictly for active event
       const { data: allAdjustments } = await supabase.from('team_adjustments').select('user_id, points, event_id');
       const adjustments = (allAdjustments || []).filter((adj: any) => {
-        if (activeEvent) {
-          return !adj.event_id || String(adj.event_id) === String(activeEvent.id);
-        }
-        return true;
+        return Boolean(activeEvent && adj.event_id && String(adj.event_id) === String(activeEvent.id));
       });
 
       (adjustments || []).forEach((adj: any) => {
@@ -2882,10 +2948,10 @@ async function createServer() {
       // 7. Check if forcedByAdmin scores exist in activeEvent snapshot
       const forcedUserScores = (savedScores?.forcedByAdmin && savedScores?.userScores) ? savedScores.userScores : null;
 
-      // Filter and enrich profiles: include if assigned to a team (profile or user_event_teams) or has points
+      // Filter and enrich profiles: include if assigned to a team in user_event_teams or has points in active event
       const eligibleProfiles = (allProfiles || []).filter((p: any) => {
         const uetTeam = p.steamid ? uetMap.get(String(p.steamid).trim()) : null;
-        const effectiveTeam = uetTeam || p.team;
+        const effectiveTeam = uetTeam || 'none';
         const hasTeam = effectiveTeam && effectiveTeam !== 'none';
         const livePts = profilePointsMap.get(p) || 0;
         return hasTeam || livePts > 0;
@@ -2898,7 +2964,7 @@ async function createServer() {
         }
 
         const uetTeam = u.steamid ? uetMap.get(String(u.steamid).trim()) : null;
-        const effectiveTeam = uetTeam || u.team;
+        const effectiveTeam = uetTeam || 'none';
 
         let userFinalPoints = profilePointsMap.get(u) || 0;
 
@@ -3159,15 +3225,7 @@ async function createServer() {
         if (!sub.user_id || sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return false;
         const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
         if (!isVerified) return false;
-        if (sub.event_id && String(sub.event_id) === String(eventId)) return true;
-        if (isCurrentOrActive && !sub.event_id) return true;
-        if (!sub.event_id && event.start_date && event.end_date && sub.created_at) {
-          const subTime = new Date(sub.created_at).getTime();
-          const start = new Date(event.start_date).getTime() - 86400000;
-          const end = new Date(event.end_date).getTime() + 86400000;
-          if (subTime >= start && subTime <= end) return true;
-        }
-        return false;
+        return Boolean(sub.event_id && String(sub.event_id) === String(eventId));
       };
 
       const eventSubs = (allEventSubs || []).filter(isMatchingSub);
@@ -3177,15 +3235,7 @@ async function createServer() {
         .select('*');
 
       const isMatchingAdj = (adj: any) => {
-        if (adj.event_id && String(adj.event_id) === String(eventId)) return true;
-        if (isCurrentOrActive && !adj.event_id) return true;
-        if (!adj.event_id && event.start_date && event.end_date && adj.created_at) {
-          const adjTime = new Date(adj.created_at).getTime();
-          const start = new Date(event.start_date).getTime() - 86400000;
-          const end = new Date(event.end_date).getTime() + 86400000;
-          if (adjTime >= start && adjTime <= end) return true;
-        }
-        return false;
+        return Boolean(adj.event_id && String(adj.event_id) === String(eventId));
       };
 
       const eventAdjustments = (allAdjustments || []).filter(isMatchingAdj);
@@ -3312,6 +3362,8 @@ async function createServer() {
               break;
             }
           }
+        } else if (isCurrentOrActive) {
+          points = profileLivePoints.get(p) || 0;
         } else {
           const livePts = profileLivePoints.get(p) || 0;
           let savedPts = 0;
@@ -3323,36 +3375,16 @@ async function createServer() {
           points = Math.max(livePts, savedPts);
         }
 
-        // Determine user team
+        // Determine user team strictly from user_event_teams or savedScores (no profiles.team fallback)
         let userTeam = 'none';
-        if (isCurrentOrActive) {
-          for (const k of candidateKeys) {
-            if (uetMap.get(k) && uetMap.get(k) !== 'none') {
-              userTeam = uetMap.get(k)!;
-              break;
-            }
+        for (const k of candidateKeys) {
+          if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+            userTeam = uetMap.get(k)!;
+            break;
           }
-          if (userTeam === 'none' && p.team && p.team !== 'none') {
-            userTeam = p.team;
-          }
-          if (userTeam === 'none' && savedScores?.userTeams) {
-            for (const k of candidateKeys) {
-              if (savedScores.userTeams[k] && savedScores.userTeams[k] !== 'none') {
-                userTeam = savedScores.userTeams[k];
-                break;
-              }
-            }
-          }
-        } else {
-          for (const k of candidateKeys) {
-            if (uetMap.get(k) && uetMap.get(k) !== 'none') {
-              userTeam = uetMap.get(k)!;
-              break;
-            }
-            if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
-              userTeam = savedScores.userTeams[k];
-              break;
-            }
+          if (savedScores?.userTeams?.[k] && savedScores.userTeams[k] !== 'none') {
+            userTeam = savedScores.userTeams[k];
+            break;
           }
         }
         if (userTeam !== 'none') {
@@ -3763,146 +3795,121 @@ async function createServer() {
   });
 
   app.post('/api/admin/update-user-team', async (req, res) => {
-    const { targetSteamId, targetSteamIds, team, eventId } = req.body;
-    const ids: string[] = Array.isArray(targetSteamIds) && targetSteamIds.length > 0
-      ? targetSteamIds.map(String)
-      : (targetSteamId ? [String(targetSteamId)] : []);
-
-    console.log('[Admin] Update Team Start:', { ids, team, eventId });
-    
-    const supabase = getSupabase();
-    if (!supabase) {
-      console.error('[Admin] Database unavailable');
-      return res.status(500).json({ error: 'Database unavailable' });
-    }
-
-    if (ids.length === 0) {
-      return res.status(400).json({ error: 'No user ID provided' });
-    }
-
     try {
-      // If team is 'none', we store it as null in DB
-      const dbTeam = team === 'none' ? null : team;
-      
-      // Get the current active event
-      const { data: activeEvent } = await supabase
-        .from('events')
-        .select('id')
-        .eq('is_active', true)
-        .maybeSingle();
+      const { targetSteamId, targetSteamIds, team, eventId, userId, targetTeamId } = req.body || {};
+      const rawTargetTeam = targetTeamId !== undefined ? targetTeamId : team;
+      const dbTeam = (!rawTargetTeam || rawTargetTeam === 'none' || rawTargetTeam === 'unassigned') ? null : String(rawTargetTeam).trim();
 
-      const isActiveEvent = eventId ? (activeEvent?.id === eventId) : true;
-      const targetEventId = eventId || activeEvent?.id;
+      const rawIds: string[] = Array.isArray(targetSteamIds) && targetSteamIds.length > 0
+        ? targetSteamIds.map(String)
+        : (userId ? [String(userId)] : (targetSteamId ? [String(targetSteamId)] : []));
 
-      let updateData = null;
-      if (isActiveEvent) {
-        // If updating active event, update profiles.team for all specified users
-        console.log('[Admin] Updating active event team on profiles:', { ids, dbTeam });
-        const { error: profileError, data: profData } = await supabase
-          .from('profiles')
-          .update({ team: dbTeam })
-          .in('steamid', ids)
-          .select();
+      console.log('[Admin] Update Team Start:', { rawIds, team: dbTeam, eventId });
 
-        if (profileError) {
-          console.error('[Admin] Update profile error:', profileError.message);
-          return res.status(500).json({ 
-            error: profileError.message, 
-            details: profileError.details,
-            hint: profileError.hint 
-          });
-        }
-        updateData = profData;
+      const supabase = getSupabase();
+      if (!supabase) {
+        console.error('[Admin] Database unavailable');
+        return res.status(500).json({ error: 'Database unavailable' });
       }
 
-      // Record / update user team assignment in user_event_teams for the event
-      if (targetEventId) {
-        try {
-          if (team === 'none') {
-            const { error: delErr } = await supabase
+      if (rawIds.length === 0) {
+        return res.status(400).json({ error: 'No user ID provided' });
+      }
+
+      // 1. Resolve active event if eventId not explicitly provided
+      let targetEventId = eventId;
+      if (!targetEventId) {
+        const { data: activeEvent } = await supabase
+          .from('events')
+          .select('id')
+          .eq('is_active', true)
+          .maybeSingle();
+        targetEventId = activeEvent?.id;
+      }
+
+      if (!targetEventId) {
+        return res.status(400).json({ error: 'No active or target event found' });
+      }
+
+      // 2. Perform atomic event-scoped team update without writing active event state to profiles
+      const updatedRecords: any[] = [];
+      for (const id of rawIds) {
+        const cleanId = String(id).trim();
+        const cleanDiscord = cleanId.startsWith('discord_') ? cleanId.replace('discord_', '') : cleanId;
+
+        // Resolve profile to satisfy foreign key constraint on user_event_teams(steamid)
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id, steamid, discord_id')
+          .or(`steamid.eq.${cleanId},steamid.eq.${cleanDiscord},discord_id.eq.${cleanId},discord_id.eq.${cleanDiscord},id.eq.${cleanId}`)
+          .maybeSingle();
+
+        const primarySteamId = prof?.steamid ? String(prof.steamid).trim() : cleanId;
+
+        if (!dbTeam) {
+          // Unassigned: remove from user_event_teams
+          await supabase
+            .from('user_event_teams')
+            .delete()
+            .eq('steamid', primarySteamId)
+            .eq('event_id', targetEventId);
+
+          if (cleanDiscord !== primarySteamId) {
+            await supabase
               .from('user_event_teams')
               .delete()
-              .in('steamid', ids)
+              .eq('steamid', cleanId)
               .eq('event_id', targetEventId);
-            
-            if (delErr) {
-              console.warn('[Admin] Failed to delete user_event_teams batch:', delErr);
-            } else {
-              console.log(`[Admin] Successfully cleared event-team association for ${ids.length} users in event ${targetEventId}`);
-            }
-          } else {
-            const uetRows = ids.map(id => ({
-              steamid: id,
+          }
+
+          updatedRecords.push({ userId: id, steamid: primarySteamId, eventId: targetEventId, team: null });
+        } else {
+          // Atomic UPSERT on user_event_teams
+          const { error: upsertErr } = await supabase
+            .from('user_event_teams')
+            .upsert({
+              steamid: primarySteamId,
               event_id: targetEventId,
               team: dbTeam
-            }));
+            }, { onConflict: 'steamid,event_id' });
 
-            const { error: upsertErr } = await supabase
-              .from('user_event_teams')
-              .upsert(uetRows, { onConflict: 'steamid,event_id' });
-
-            if (upsertErr) {
-              console.error('[Admin] Error upserting user_event_teams:', upsertErr);
-              return res.status(500).json({ error: 'Failed to record user event team', details: upsertErr.message });
-            }
-            console.log(`[Admin] Successfully recorded team ${dbTeam} for event ${targetEventId} for ${ids.length} users in user_event_teams`);
+          if (upsertErr) {
+            console.error('[Admin] Error upserting user_event_teams:', upsertErr);
+            return res.status(500).json({ error: 'Failed to record user event team', details: upsertErr.message });
           }
-        } catch (ueErr) {
-          console.error('[Admin] Error updating user_event_teams:', ueErr);
-        }
-      }
 
-      // Synchronize screenshot_submissions and event snapshot
-      if (targetEventId) {
+          updatedRecords.push({ userId: id, steamid: primarySteamId, eventId: targetEventId, team: dbTeam });
+        }
+
+        // Migrate user's screenshot submissions for this specific event to the target team
         try {
-          const teamForSub = (!dbTeam || dbTeam === 'none') ? 'none' : dbTeam;
-          for (const id of ids) {
-            const cleanId = String(id).replace('discord_', '');
-            await supabase
-              .from('screenshot_submissions')
-              .update({ user_team: teamForSub })
-              .eq('event_id', targetEventId)
-              .or(`user_id.eq.${id},user_id.eq.${cleanId},user_id.eq.discord_${cleanId}`);
-          }
-
-          const { data: targetEvt } = await supabase
-            .from('events')
-            .select('id, description')
-            .eq('id', targetEventId)
-            .maybeSingle();
-
-          if (targetEvt?.description && targetEvt.description.includes('<!--EVENT_SCORES:')) {
-            const match = targetEvt.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
-            if (match && match[1]) {
-              const snapshot = JSON.parse(match[1]);
-              if (!snapshot.userTeams) snapshot.userTeams = {};
-              ids.forEach(id => {
-                const cleanId = String(id).replace('discord_', '');
-                if (dbTeam && dbTeam !== 'none') {
-                  snapshot.userTeams[id] = dbTeam;
-                  snapshot.userTeams[cleanId] = dbTeam;
-                  snapshot.userTeams[`discord_${cleanId}`] = dbTeam;
-                } else {
-                  delete snapshot.userTeams[id];
-                  delete snapshot.userTeams[cleanId];
-                  delete snapshot.userTeams[`discord_${cleanId}`];
-                }
-              });
-              const newSnapStr = `<!--EVENT_SCORES:${JSON.stringify(snapshot)}-->`;
-              const newDesc = targetEvt.description.replace(/<!--EVENT_SCORES:.*?-->/s, newSnapStr);
-              await supabase.from('events').update({ description: newDesc }).eq('id', targetEventId);
-            }
-          }
+          const teamForSub = dbTeam || 'none';
+          await supabase
+            .from('screenshot_submissions')
+            .update({ user_team: teamForSub })
+            .eq('event_id', targetEventId)
+            .or(`user_id.eq.${primarySteamId},user_id.eq.${cleanId},user_id.eq.discord_${cleanDiscord}`);
         } catch (syncErr) {
-          console.warn('[Admin] Failed to synchronize screenshot submissions or event snapshot on team change:', syncErr);
+          console.warn('[Admin] Failed to synchronize screenshot submissions on team change:', syncErr);
         }
       }
 
-      console.log(`[Admin] Successfully updated team for ${ids.length} user(s). Result:`, updateData);
-      res.json({ success: true, count: ids.length, updated: updateData });
-    } catch (err) {
-      console.error('[Admin] Internal Exception:', err);
-      res.status(500).json({ error: 'Internal server error', details: String(err) });
+      // Synchronize event score snapshot to migrate points to target team
+      try {
+        await ensureEventScoresSaved(supabase, targetEventId, true);
+      } catch (snapErr) {
+        console.warn('[Admin] Failed to refresh event snapshot on team change:', snapErr);
+      }
+
+      console.log(`[Admin] Successfully updated team for ${rawIds.length} user(s). Records:`, updatedRecords);
+      return res.status(200).json({
+        success: true,
+        count: updatedRecords.length,
+        updated: updatedRecords.length === 1 ? updatedRecords[0] : updatedRecords
+      });
+    } catch (err: any) {
+      console.error('[Admin] Internal Exception in update-user-team:', err);
+      return res.status(500).json({ error: 'Internal server error', details: String(err) });
     }
   });
 
