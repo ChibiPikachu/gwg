@@ -1572,10 +1572,10 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="text-[9px] font-bold px-2 py-0.5 rounded-lg bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 border border-sky-500/40 flex items-center gap-1 shadow-sm backdrop-blur-md transition-colors cursor-pointer"
-                          title="External URL · Not uploaded to the girlswhogame app"
+                          title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
-                          <span>see in a new tab</span>
+                          <span>OPEN</span>
                         </a>
                       )}
                       <span className={cn(
@@ -3544,17 +3544,17 @@ interface UserSubmissionStat {
                             </span>
                           </div>
                           <p className="text-[11px] text-white/60 leading-relaxed">
-                            This screenshot was uploaded via an external URL and is not hosted on the girlswhogame app.
+                            This screenshot was uploaded via an external URL.
                           </p>
                           <a
                             href={currentSub.image_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm group"
-                            title="External URL · Not uploaded to the girlswhogame app"
+                            title="External URL (opens in new tab)"
                           >
                             <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                            <span>see in a new tab</span>
+                            <span>Open in a new tab</span>
                           </a>
                         </div>
                       )}
