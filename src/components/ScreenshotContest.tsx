@@ -4,7 +4,7 @@ import {
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
   Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, Users, BarChart3, UserCheck, Search, ListFilter,
-  Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown
+  Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown, ExternalLink
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -115,6 +115,13 @@ const TEAM_BG_ACCENT: Record<string, string> = {
   purple: 'bg-purple-500/10 border-purple-500/20 text-purple-400',
   red: 'bg-red-500/10 border-red-500/20 text-red-400',
   none: 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+};
+
+export const isExternalLinkImage = (url: string | null | undefined): boolean => {
+  if (!url) return false;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return false;
+  return /^https?:\/\//i.test(trimmed);
 };
 
 export default function ScreenshotContest({ 
@@ -1557,15 +1564,30 @@ interface UserSubmissionStat {
                     <span className="bg-black/80 backdrop-blur-md text-white font-bold text-[10px] px-2 py-0.5 rounded-lg border border-white/10 truncate max-w-[130px]">
                       {sub.game_name}
                     </span>
-                    <span className={cn(
-                      "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md",
-                      team !== 'none'
-                        ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
-                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                    )}>
-                      <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
-                      Approved
-                    </span>
+                    <div className="flex items-center gap-1 pointer-events-auto">
+                      {isExternalLinkImage(sub.image_url) && (
+                        <a
+                          href={sub.image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[9px] font-bold px-2 py-0.5 rounded-lg bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 border border-sky-500/40 flex items-center gap-1 shadow-sm backdrop-blur-md transition-colors cursor-pointer"
+                          title="External URL · Not uploaded to the girlswhogame app"
+                        >
+                          <ExternalLink size={10} />
+                          <span>see in a new tab</span>
+                        </a>
+                      )}
+                      <span className={cn(
+                        "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-sm backdrop-blur-md",
+                        team !== 'none'
+                          ? cn(teamColor.secondary, teamColor.primary, teamColor.border)
+                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      )}>
+                        <CheckCircle size={10} className={team !== 'none' ? teamColor.primary : "text-emerald-400"} />
+                        Approved
+                      </span>
+                    </div>
                   </div>
 
                   {/* Bottom Info */}
@@ -1893,6 +1915,19 @@ interface UserSubmissionStat {
                     </span>
 
                     <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto">
+                      {isExternalLinkImage(sub.image_url) && (
+                        <a
+                          href={sub.image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 border border-sky-500/40 flex items-center gap-1 shadow-sm backdrop-blur-md transition-colors cursor-pointer"
+                          title="External URL · Not uploaded to the girlswhogame app"
+                        >
+                          <ExternalLink size={10} />
+                          <span className="hidden min-[480px]:inline">see in a new tab</span>
+                        </a>
+                      )}
                       {/* Color-Coded Status Badge matching Team Palette with Tooltip */}
                       {(() => {
                         const status = sub.status || 'pending';
@@ -2155,9 +2190,24 @@ interface UserSubmissionStat {
                       </p>
                     )}
 
-                    {/* Row 4 (`break`): Name of game in bold */}
-                    <div className="text-[11px] sm:text-xs font-black dark:text-white text-slate-900 truncate">
-                      {sub.game_name}
+                    {/* Row 4 (`break`): Name of game in bold + External link button */}
+                    <div className="flex items-center justify-between gap-1.5">
+                      <div className="text-[11px] sm:text-xs font-black dark:text-white text-slate-900 truncate">
+                        {sub.game_name}
+                      </div>
+                      {isExternalLinkImage(sub.image_url) && (
+                        <a
+                          href={sub.image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
+                          title="External URL · Not uploaded to the girlswhogame app"
+                        >
+                          <ExternalLink size={10} />
+                          <span>see in a new tab</span>
+                        </a>
+                      )}
                     </div>
                   </div>
 
@@ -2417,9 +2467,24 @@ interface UserSubmissionStat {
 
                   {/* Caption & Game */}
                   <div className="space-y-1">
-                    <p className="text-xs font-semibold dark:text-white/90 text-slate-700">
-                      {sub.game_name}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold dark:text-white/90 text-slate-700">
+                        {sub.game_name}
+                      </p>
+                      {isExternalLinkImage(sub.image_url) && (
+                        <a
+                          href={sub.image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
+                          title="External URL · Not uploaded to the girlswhogame app"
+                        >
+                          <ExternalLink size={10} />
+                          <span>see in a new tab</span>
+                        </a>
+                      )}
+                    </div>
                     {sub.caption ? (
                       <p className="text-xs dark:text-white/70 text-slate-600 line-clamp-2 italic leading-relaxed">
                         "{sub.caption}"
@@ -3201,6 +3266,20 @@ interface UserSubmissionStat {
                     </button>
                   )}
 
+                  {isExternalLinkImage(currentSub.image_url) && (
+                    <a
+                      href={currentSub.image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-sm hover:scale-[1.02]"
+                      title="External URL · Not uploaded to the girlswhogame app"
+                    >
+                      <ExternalLink size={13} />
+                      <span className="hidden sm:inline">see in a new tab</span>
+                    </a>
+                  )}
+
                   <span className="hidden md:inline-block text-[11px] text-white/40 font-mono">
                     Use ← → to navigate, Esc to close
                   </span>
@@ -3257,6 +3336,23 @@ interface UserSubmissionStat {
                         <ChevronRight size={20} className="sm:w-6 sm:h-6" />
                       </button>
                     </>
+                  )}
+
+                  {/* Floating external link button over image */}
+                  {isExternalLinkImage(currentSub.image_url) && (
+                    <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 pointer-events-auto">
+                      <a
+                        href={currentSub.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-3 py-1.5 rounded-full bg-black/75 hover:bg-black/95 text-sky-300 hover:text-white border border-sky-500/40 backdrop-blur-md text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-xl hover:scale-105 cursor-pointer"
+                        title="External URL · Not uploaded to the girlswhogame app"
+                      >
+                        <ExternalLink size={12} />
+                        <span>see in a new tab</span>
+                      </a>
+                    </div>
                   )}
 
                   {/* Full Image */}
@@ -3428,6 +3524,39 @@ interface UserSubmissionStat {
                         </div>
                       ) : (
                         <p className="text-xs italic text-white/30">No caption provided</p>
+                      )}
+
+                      {/* External Image Link Notice & Button */}
+                      {isExternalLinkImage(currentSub.image_url) && (
+                        <div className="mt-3 p-3 rounded-xl bg-sky-500/[0.08] border border-sky-500/25 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] uppercase font-black tracking-wider text-sky-400 flex items-center gap-1.5">
+                              <ExternalLink size={12} /> External Image Link
+                            </span>
+                            <span className="text-[10px] text-white/50 truncate max-w-[160px] font-mono">
+                              {(() => {
+                                try {
+                                  return new URL(currentSub.image_url).hostname;
+                                } catch {
+                                  return 'External link';
+                                }
+                              })()}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-white/60 leading-relaxed">
+                            This screenshot was uploaded via an external URL and is not hosted on the girlswhogame app.
+                          </p>
+                          <a
+                            href={currentSub.image_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm group"
+                            title="External URL · Not uploaded to the girlswhogame app"
+                          >
+                            <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                            <span>see in a new tab</span>
+                          </a>
+                        </div>
                       )}
                     </div>
 
@@ -3966,6 +4095,39 @@ interface UserSubmissionStat {
                     <X size={20} />
                   </button>
                 </div>
+
+                {/* External URL notice & button */}
+                {isExternalLinkImage(targetSub.image_url) && (
+                  <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-sky-400 flex items-center gap-1.5">
+                        <ExternalLink size={12} /> External Image Link
+                      </span>
+                      <span className="text-[10px] text-white/50 truncate max-w-[150px] font-mono">
+                        {(() => {
+                          try {
+                            return new URL(targetSub.image_url).hostname;
+                          } catch {
+                            return 'External link';
+                          }
+                        })()}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-white/60 leading-tight">
+                      This screenshot was uploaded via an external link and not uploaded to the girlswhogame app.
+                    </p>
+                    <a
+                      href={targetSub.image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      title="External URL · Not uploaded to the girlswhogame app"
+                    >
+                      <ExternalLink size={13} />
+                      <span>see in a new tab</span>
+                    </a>
+                  </div>
+                )}
 
                 {/* Admin Status & Tools: Only visible to Admins */}
                 {user?.isAdmin && (
