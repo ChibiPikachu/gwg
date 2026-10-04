@@ -1922,10 +1922,9 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 border border-sky-500/40 flex items-center gap-1 shadow-sm backdrop-blur-md transition-colors cursor-pointer"
-                          title="External URL · Not uploaded to the girlswhogame app"
+                          title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
-                          <span className="hidden min-[480px]:inline">see in a new tab</span>
                         </a>
                       )}
                       {/* Color-Coded Status Badge matching Team Palette with Tooltip */}
@@ -2202,10 +2201,9 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                          title="External URL · Not uploaded to the girlswhogame app"
+                          title="External URL"
                         >
                           <ExternalLink size={10} />
-                          <span>see in a new tab</span>
                         </a>
                       )}
                     </div>
@@ -2478,10 +2476,9 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                          title="External URL · Not uploaded to the girlswhogame app"
+                          title="External URL"
                         >
                           <ExternalLink size={10} />
-                          <span>see in a new tab</span>
                         </a>
                       )}
                     </div>
@@ -3273,10 +3270,9 @@ interface UserSubmissionStat {
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-sm hover:scale-[1.02]"
-                      title="External URL · Not uploaded to the girlswhogame app"
+                      title="External URL"
                     >
                       <ExternalLink size={13} />
-                      <span className="hidden sm:inline">see in a new tab</span>
                     </a>
                   )}
 
@@ -3347,10 +3343,9 @@ interface UserSubmissionStat {
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="px-3 py-1.5 rounded-full bg-black/75 hover:bg-black/95 text-sky-300 hover:text-white border border-sky-500/40 backdrop-blur-md text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-xl hover:scale-105 cursor-pointer"
-                        title="External URL · Not uploaded to the girlswhogame app"
+                        title="External URL"
                       >
                         <ExternalLink size={12} />
-                        <span>see in a new tab</span>
                       </a>
                     </div>
                   )}
@@ -4121,10 +4116,9 @@ interface UserSubmissionStat {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                      title="External URL · Not uploaded to the girlswhogame app"
+                      title="External URL (opens in new tab)"
                     >
                       <ExternalLink size={13} />
-                      <span>see in a new tab</span>
                     </a>
                   </div>
                 )}
