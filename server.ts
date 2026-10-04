@@ -3949,7 +3949,18 @@ async function createServer() {
       const mortvieId = '76561199006957620';
       const mortvieDiscord = '773588586008281098';
 
-      // 2. Query all verified or approved submissions for this specific event
+      // 2a. Delete administrative point adjustment rows in submissions table for this specific event
+      try {
+        await supabase
+          .from('submissions')
+          .delete()
+          .eq('event_id', targetEventId)
+          .or('user_id.like.team_pts_%,game_name.eq.Bingo Points,game_name.eq.Screenshot Points,game_name.eq.Team Award,platform.eq.Screenshot Points,platform.eq.Bingo Points,platform.eq.System');
+      } catch (delAdjErr) {
+        console.warn('[Admin Reset] Warning deleting adjustment submissions:', delAdjErr);
+      }
+
+      // 2b. Query all verified or approved submissions for this specific event
       const { data: eventSubs } = await supabase
         .from('submissions')
         .select('id, user_id, game_name, status, points')
@@ -3958,6 +3969,7 @@ async function createServer() {
 
       let modifiedSubmissionsCount = 0;
       let mortvieStatus = 'kept';
+      const idsToRevert: string[] = [];
 
       for (const sub of (eventSubs || [])) {
         const uid = String(sub.user_id || '').trim();
@@ -3965,10 +3977,7 @@ async function createServer() {
 
         if (isMortvie) {
           if (revertMortvieToPending) {
-            await supabase
-              .from('submissions')
-              .update({ status: 'pending' })
-              .eq('id', sub.id);
+            idsToRevert.push(sub.id);
             modifiedSubmissionsCount++;
             mortvieStatus = 'reverted_to_pending';
           } else {
@@ -3976,13 +3985,17 @@ async function createServer() {
           }
         } else {
           if (revertAllVerifiedToPending) {
-            await supabase
-              .from('submissions')
-              .update({ status: 'pending' })
-              .eq('id', sub.id);
+            idsToRevert.push(sub.id);
             modifiedSubmissionsCount++;
           }
         }
+      }
+
+      if (idsToRevert.length > 0) {
+        await supabase
+          .from('submissions')
+          .update({ status: 'pending' })
+          .in('id', idsToRevert);
       }
 
       // 3. Clear/remove any team_adjustments for this specific event
@@ -4032,7 +4045,10 @@ async function createServer() {
       const freshSnapshot = {
         teamTotals: cleanTeamTotals,
         userScores: cleanUserScores,
-        userTeams
+        userTeams,
+        teamAdjustments: { blue: 0, green: 0, purple: 0, red: 0 },
+        winnerTeam: isMortvieExcluded ? 'red' : null,
+        updatedAt: new Date().toISOString()
       };
 
       let updatedDesc = currentDesc;
@@ -4054,13 +4070,13 @@ async function createServer() {
         })
         .eq('id', targetEventId);
 
-      // Reset profile points for active event so zero points carry over
+      // Reset profile points for active event so zero points carry over reliably
       try {
         if (isMortvieExcluded) {
-          await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+          await supabase.from('profiles').update({ points: 0 }).neq('points', 0);
           await supabase.from('profiles').update({ points: 19 }).or(`steamid.eq.${mortvieId},discord_id.eq.${mortvieDiscord}`);
         } else {
-          await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+          await supabase.from('profiles').update({ points: 0 }).neq('points', 0);
         }
       } catch (profErr) {
         console.warn('[Admin Reset] Warning updating profile points:', profErr);

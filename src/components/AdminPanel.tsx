@@ -345,26 +345,28 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
           let profileMap: Record<string, any> = {};
           if (profileIds.size > 0) {
-            const idList = Array.from(profileIds);
-            const { data: profiles } = await supabase
-              .from('profiles')
-              .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, role, id, discord_id')
-              .or(idList.map(id => buildProfileOrFilter(id)).join(','));
+            try {
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('steamid, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar, team, role, id, discord_id');
 
-            (profiles || []).forEach((p: any) => {
-              const keys = [p.steamid, p.id, p.discord_id, p.discord_id ? `discord_${p.discord_id}` : null].filter(Boolean);
-              let avatar = p.steam_avatar || p.discord_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
-              if (p.active_avatar === 'discord' && p.discord_avatar) avatar = p.discord_avatar;
-              
-              keys.forEach(k => {
-                profileMap[String(k)] = {
-                  name: p.steam_name || p.discord_name || 'User',
-                  avatar,
-                  team: p.team,
-                  role: p.role
-                };
+              (profiles || []).forEach((p: any) => {
+                const keys = [p.steamid, p.id, p.discord_id, p.discord_id ? `discord_${p.discord_id}` : null].filter(Boolean);
+                let avatar = p.steam_avatar || p.discord_avatar || 'https://cdn-icons-png.flaticon.com/512/1471/1471391.png';
+                if (p.active_avatar === 'discord' && p.discord_avatar) avatar = p.discord_avatar;
+                
+                keys.forEach(k => {
+                  profileMap[String(k)] = {
+                    name: p.steam_name || p.discord_name || 'User',
+                    avatar,
+                    team: p.team,
+                    role: p.role
+                  };
+                });
               });
-            });
+            } catch (profFetchErr) {
+              console.warn('Failed to load profiles for activity logs:', profFetchErr);
+            }
           }
 
           const formatted = adjustments.map((sub: any) => {
@@ -672,6 +674,38 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         );
         setTimeout(() => setResetSuccessBanner(null), 8000);
 
+        // Optimistically zero out user points immediately in local state
+        const mortvieId = '76561199006957620';
+        const mortvieDiscord = '773588586008281098';
+        setUsers(prev => (prev || []).map(u => {
+          const isMortvie = u.steamid === mortvieId || u.discord_id === mortvieDiscord || u.id === mortvieId;
+          const keepPts = resetMortvieOption === 'exclude' && isMortvie ? 19 : 0;
+          return { ...u, points: keepPts };
+        }));
+
+        // Revert verified submissions for this active event in local submissions state
+        setSubmissions(prev => (prev || []).map(s => {
+          if (s.event_id && String(s.event_id) === String(activeEvent.id)) {
+            const uid = String(s.user_id || '').trim();
+            const isMortvie = uid === mortvieId || uid === `discord_${mortvieDiscord}` || uid === mortvieDiscord;
+            if (isMortvie && resetMortvieOption === 'exclude') {
+              return s;
+            }
+            return { ...s, status: 'pending' };
+          }
+          return s;
+        }).filter(s => {
+          if (s.event_id && String(s.event_id) === String(activeEvent.id)) {
+            if (String(s.user_id || '').startsWith('team_pts_') || s.game_name === 'Team Award' || s.game_name === 'Bingo Points' || s.game_name === 'Screenshot Points') {
+              return false;
+            }
+          }
+          return true;
+        }));
+
+        // Wipe adjustments for this event in local state
+        setTeamAdjustments(prev => (prev || []).filter(a => a.event_id && String(a.event_id) !== String(activeEvent.id)));
+
         // Refresh all local data & trigger global broadcast events
         await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents(), fetchActivityLogs()]);
         if (bulkEditEventId) {
@@ -902,37 +936,50 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     }
   }, [getAdminHeaders]);
 
-  const fetchData = React.useCallback(async () => {
-    setLoading(true);
-    await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents(), fetchActivityLogs()]);
-    setLoading(false);
+  const isInitialLoadRef = React.useRef(true);
+  const fetchData = React.useCallback(async (forceLoading = false) => {
+    if (isInitialLoadRef.current || forceLoading) {
+      setLoading(true);
+    }
+    try {
+      await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents(), fetchActivityLogs()]);
+    } finally {
+      isInitialLoadRef.current = false;
+      setLoading(false);
+    }
   }, [fetchUsers, fetchSubmissions, fetchTeamAdjustments, fetchEvents, fetchActivityLogs]);
 
   React.useEffect(() => {
     if (activeAdminTab) {
       setActiveTab(activeAdminTab);
-      // Re-fetch when switching tabs to ensure data is fresh
-      fetchData();
     }
-  }, [activeAdminTab, fetchData]);
+  }, [activeAdminTab]);
+
+  const fetchUsersRef = React.useRef(fetchUsers);
+  fetchUsersRef.current = fetchUsers;
+  const fetchSubmissionsRef = React.useRef(fetchSubmissions);
+  fetchSubmissionsRef.current = fetchSubmissions;
+  const fetchTeamAdjustmentsRef = React.useRef(fetchTeamAdjustments);
+  fetchTeamAdjustmentsRef.current = fetchTeamAdjustments;
 
   React.useEffect(() => {
-    fetchData();
+    fetchData(true);
 
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured || !supabase) return;
 
     const channelProfiles = supabase
       .channel('admin-profiles')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        fetchUsers();
+        fetchUsersRef.current();
       })
       .subscribe();
 
     const channelSubmissions = supabase
       .channel('admin-submissions')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, () => {
-        fetchSubmissions();
-        fetchTeamAdjustments();
+        fetchSubmissionsRef.current();
+        fetchTeamAdjustmentsRef.current();
+        fetchUsersRef.current();
       })
       .subscribe();
 
@@ -940,7 +987,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       supabase.removeChannel(channelProfiles);
       supabase.removeChannel(channelSubmissions);
     };
-  }, [fetchData, fetchUsers, fetchSubmissions, fetchTeamAdjustments]);
+  }, []);
 
   const assignTeam = async (targetSteamId: string, team: Team) => {
     setUpdating(targetSteamId);
@@ -1562,6 +1609,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
       const userSubs = (submissions || []).filter(s => {
         if (s.status !== 'verified') return false;
+        // Scope strictly to current active event
+        if (activeEvent?.id && (!s.event_id || String(s.event_id) !== String(activeEvent.id))) {
+          return false;
+        }
         const subUserId = String(s.user_id || s.userId || s.steamid || s.steamId || '');
         return Boolean(
           (uSteamId && subUserId === uSteamId) ||
@@ -1579,6 +1630,10 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         const adjUserId = String(a.user_id || a.userId || '');
         if (adjUserId.startsWith('team_pts_')) return false;
         if (a.id && userSubs.some(s => String(s.id) === String(a.id))) return false;
+        // Scope strictly to current active event
+        if (activeEvent?.id && (!a.event_id || String(a.event_id) !== String(activeEvent.id))) {
+          return false;
+        }
         return Boolean(
           (uSteamId && adjUserId === uSteamId) ||
           (uDiscordId && adjUserId === uDiscordId) ||
@@ -1595,7 +1650,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         verifiedSubmissionsCount: userSubs.length
       };
     });
-  }, [safeUsers, submissions, teamAdjustments]);
+  }, [safeUsers, submissions, teamAdjustments, activeEvent?.id]);
 
   const filteredUsers = enrichedUsers.filter(u => {
     const matchesTeam = filterTeam === 'all' || (u.team || 'none') === filterTeam;
@@ -4728,48 +4783,13 @@ function TeamPointContributionChart({
   const teamMembers = React.useMemo(() => {
     return users
       .filter(u => u.team === selectedChartTeam)
-      .map(u => {
-        const uSteamId = String(u.steamid || u.steamId || '');
-        const uDiscordId = String(u.discord_id || u.discordId || '');
-        const uId = String(u.id || u.uid || '');
-
-        const userSubs = (submissions || []).filter(s => {
-          if (s.status !== 'verified') return false;
-          const subUserId = String(s.user_id || s.userId || s.steamid || s.steamId || '');
-          return Boolean(
-            (uSteamId && subUserId === uSteamId) ||
-            (uDiscordId && subUserId === uDiscordId) ||
-            (uId && subUserId === uId)
-          );
-        });
-
-        const subPtsSum = userSubs.reduce((sum, s) => {
-          const pts = s.points !== undefined && s.points !== null ? Number(s.points) : Number(s.calculated_score || 0);
-          return sum + (isNaN(pts) ? 0 : pts);
-        }, 0);
-
-        const userAdjs = (teamAdjustments || []).filter(a => {
-          const adjUserId = String(a.user_id || a.userId || '');
-          if (adjUserId.startsWith('team_pts_')) return false;
-          if (a.id && userSubs.some(s => String(s.id) === String(a.id))) return false;
-          return Boolean(
-            (uSteamId && adjUserId === uSteamId) ||
-            (uDiscordId && adjUserId === uDiscordId) ||
-            (uId && adjUserId === uId)
-          );
-        });
-
-        const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || 0), 0);
-        const finalPoints = subPtsSum > 0 || adjPtsSum > 0 ? Math.max(subPtsSum, adjPtsSum) : 0;
-
-        return {
-          ...u,
-          points: finalPoints,
-          verifiedSubCount: userSubs.length
-        };
-      })
+      .map(u => ({
+        ...u,
+        points: Number(u.points || 0),
+        verifiedSubCount: u.verifiedSubmissionsCount || 0
+      }))
       .sort((a, b) => Number(b.points || 0) - Number(a.points || 0));
-  }, [users, submissions, teamAdjustments, selectedChartTeam]);
+  }, [users, selectedChartTeam]);
 
   const totalPoints = React.useMemo(() => {
     return teamMembers.reduce((sum, m) => sum + Number(m.points || 0), 0);
