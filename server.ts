@@ -3455,6 +3455,8 @@ async function createServer() {
 
         if (savedScores?.forcedByAdmin && savedScores?.teamTotals?.[t] !== undefined) {
           totalTeamPoints = Number(savedScores.teamTotals[t]);
+        } else if (isCurrentOrActive) {
+          totalTeamPoints = liveTotal;
         } else if (savedScores?.teamTotals?.[t] !== undefined) {
           const savedTot = Number(savedScores.teamTotals[t]) || 0;
           totalTeamPoints = Math.max(liveTotal, savedTot);
@@ -4051,6 +4053,18 @@ async function createServer() {
           winner_team: isMortvieExcluded ? 'red' : null
         })
         .eq('id', targetEventId);
+
+      // Reset profile points for active event so zero points carry over
+      try {
+        if (isMortvieExcluded) {
+          await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+          await supabase.from('profiles').update({ points: 19 }).or(`steamid.eq.${mortvieId},discord_id.eq.${mortvieDiscord}`);
+        } else {
+          await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+        }
+      } catch (profErr) {
+        console.warn('[Admin Reset] Warning updating profile points:', profErr);
+      }
 
       // Force cache re-sync to ensure clean leaderboard state
       await ensureEventScoresSaved(supabase, targetEventId, true);
@@ -6021,26 +6035,27 @@ async function createServer() {
     const supabase = getSupabase();
     if (!supabase) return res.json([]);
     try {
-      let { data: activeEvent } = await supabase
-        .from('events')
-        .select('id')
-        .eq('is_active', true)
-        .maybeSingle();
+      const requestedEventId = req.query.eventId || req.query.event_id;
+      let targetEventId = requestedEventId ? String(requestedEventId).trim() : null;
 
-      if (!activeEvent) {
-        const { data: recentEvent } = await supabase
+      if (!targetEventId && req.query.all !== 'true') {
+        let { data: activeEvent } = await supabase
           .from('events')
           .select('id')
-          .order('start_date', { ascending: false })
-          .limit(1)
+          .eq('is_active', true)
           .maybeSingle();
-        activeEvent = recentEvent;
+        targetEventId = activeEvent?.id || null;
       }
 
-      const [subsRes, teamAdjRes] = await Promise.all([
-        supabase.from('submissions').select('*').order('created_at', { ascending: false }),
-        supabase.from('team_adjustments').select('*').order('created_at', { ascending: false })
-      ]);
+      let subsQ = supabase.from('submissions').select('*').order('created_at', { ascending: false });
+      let teamAdjQ = supabase.from('team_adjustments').select('*').order('created_at', { ascending: false });
+
+      if (targetEventId && req.query.all !== 'true') {
+        subsQ = subsQ.eq('event_id', targetEventId);
+        teamAdjQ = teamAdjQ.eq('event_id', targetEventId);
+      }
+
+      const [subsRes, teamAdjRes] = await Promise.all([subsQ, teamAdjQ]);
 
       const rawSubs = subsRes.data || [];
       const rawTeamAdj = teamAdjRes.data || [];

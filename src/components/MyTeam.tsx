@@ -101,7 +101,7 @@ export default function MyTeam({ onViewProfile }: { onViewProfile?: (id: string)
             const rawId = String(u.steamid || u.discord_id || '');
             const cleanId = rawId.startsWith('discord_') ? rawId.replace('discord_', '') : rawId;
             const livePts = userLivePoints[cleanId] ?? userLivePoints[rawId];
-            const finalPts = (livePts !== undefined) ? livePts : (u.points || 0);
+            const finalPts = (livePts !== undefined) ? livePts : 0;
 
             return {
               ...u,

@@ -314,6 +314,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             break;
           }
         }
+      } else if (isCurrentOrActive) {
+        let livePts = 0;
+        for (const k of candidateKeys) {
+          if (userScores[k]) livePts = Math.max(livePts, userScores[k]);
+        }
+        points = livePts;
       } else {
         let livePts = 0;
         for (const k of candidateKeys) {
@@ -399,6 +405,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let totalPoints = liveTotal;
       if (savedScores?.forcedByAdmin && savedScores?.teamTotals?.[team] !== undefined) {
         totalPoints = Number(savedScores.teamTotals[team]);
+      } else if (isCurrentOrActive) {
+        totalPoints = liveTotal;
       } else if (savedScores?.teamTotals?.[team] !== undefined) {
         totalPoints = Math.max(liveTotal, Number(savedScores.teamTotals[team]) || 0);
       }

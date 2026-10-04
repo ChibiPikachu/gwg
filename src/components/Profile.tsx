@@ -662,8 +662,8 @@ export default function Profile({ steamId }: { steamId?: string }) {
       }
     }
 
-    if (calculatedTotal === 0 && (!targetEvt || targetEvt.is_active || targetEvt.isActive) && typeof targetUser.points === 'number' && targetUser.points > 0) {
-      return targetUser.points;
+    if (calculatedTotal === 0 && (!targetEvt || targetEvt.is_active || targetEvt.isActive)) {
+      return 0;
     }
 
     return calculatedTotal;

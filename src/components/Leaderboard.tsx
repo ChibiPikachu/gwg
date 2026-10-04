@@ -676,7 +676,9 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
   }, []);
 
   const fetchAdjustments = React.useCallback(async () => {
-    fetch('/api/team-adjustments')
+    const actEvId = activeEvent?.id || events.find((e: any) => e.is_active)?.id;
+    const url = actEvId ? `/api/team-adjustments?eventId=${actEvId}` : '/api/team-adjustments';
+    fetch(url)
       .then(res => res.json())
       .then(data => {
         setAdjustments(Array.isArray(data) ? data : []);
@@ -684,7 +686,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       .catch(err => {
         console.error('Failed to fetch team adjustments:', err);
       });
-  }, []);
+  }, [activeEvent?.id, events]);
 
   const fetchPreviousEventLeaderboard = React.useCallback(async (eventId: string, currentEventsList?: any[]) => {
     if (!eventId) return;
@@ -922,6 +924,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       const userAdjs = (adjustments || []).filter(a => {
         const adjUserId = String(a.user_id || a.userId || '');
         if (adjUserId.startsWith('team_pts_')) return false;
+        if (activeEvent?.id && a.event_id && String(a.event_id) !== String(activeEvent.id)) return false;
         return Boolean(
           (uSteamId && adjUserId === uSteamId) ||
           (uDiscordId && (adjUserId === uDiscordId || adjUserId === `discord_${uDiscordId}`)) ||
@@ -930,7 +933,8 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       });
 
       const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || a.calculated_score || 0), 0);
-      const displayPoints = Math.max(Number(u.points || 0), adjPtsSum);
+      const allSnapshotZeros = activeEventSnapshot?.teamTotals && Object.values(activeEventSnapshot.teamTotals).every(v => Number(v) === 0);
+      const displayPoints = (allSnapshotZeros && adjPtsSum === 0) ? 0 : Math.max(Number(u.points || 0), adjPtsSum);
 
       return {
         ...u,
@@ -942,7 +946,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
       }
       return (Number(b.points) || 0) - (Number(a.points) || 0);
     });
-  }, [users, adjustments, hideScores, activeEventSnapshot]);
+  }, [users, adjustments, hideScores, activeEventSnapshot, activeEvent?.id]);
 
   const filteredUsers = React.useMemo(() => {
     return safeUsers.map((u, originalRankIndex) => ({ ...u, originalRank: originalRankIndex + 1 })).filter(u => {
@@ -985,14 +989,18 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
 
   const getTeamAdjustmentPoints = (teamName: string) => {
     return adjustments
-      .filter(a => a.user_id === `team_pts_${teamName}`)
+      .filter(a => {
+        if (a.user_id !== `team_pts_${teamName}`) return false;
+        if (activeEvent?.id && a.event_id && String(a.event_id) !== String(activeEvent.id)) return false;
+        return true;
+      })
       .reduce((acc, a) => acc + Number(a.points || 0), 0);
   };
 
   const standings = [
     {
       team: 'blue',
-      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.blue !== undefined)
+      points: (activeEventSnapshot?.teamTotals?.blue !== undefined && activeEventSnapshot?.teamTotals?.blue !== null)
         ? Number(activeEventSnapshot.teamTotals.blue)
         : safeUsers.filter(u => u.team === 'blue').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('blue'),
       members: safeUsers.filter(u => u.team === 'blue').length,
@@ -1000,7 +1008,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     },
     {
       team: 'purple',
-      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.purple !== undefined)
+      points: (activeEventSnapshot?.teamTotals?.purple !== undefined && activeEventSnapshot?.teamTotals?.purple !== null)
         ? Number(activeEventSnapshot.teamTotals.purple)
         : safeUsers.filter(u => u.team === 'purple').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('purple'),
       members: safeUsers.filter(u => u.team === 'purple').length,
@@ -1008,7 +1016,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     },
     {
       team: 'green',
-      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.green !== undefined)
+      points: (activeEventSnapshot?.teamTotals?.green !== undefined && activeEventSnapshot?.teamTotals?.green !== null)
         ? Number(activeEventSnapshot.teamTotals.green)
         : safeUsers.filter(u => u.team === 'green').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('green'),
       members: safeUsers.filter(u => u.team === 'green').length,
@@ -1016,7 +1024,7 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     },
     {
       team: 'red',
-      points: (activeEventSnapshot?.forcedByAdmin && activeEventSnapshot?.teamTotals?.red !== undefined)
+      points: (activeEventSnapshot?.teamTotals?.red !== undefined && activeEventSnapshot?.teamTotals?.red !== null)
         ? Number(activeEventSnapshot.teamTotals.red)
         : safeUsers.filter(u => u.team === 'red').reduce((acc, u) => acc + Number(u.points || 0), 0) + getTeamAdjustmentPoints('red'),
       members: safeUsers.filter(u => u.team === 'red').length,

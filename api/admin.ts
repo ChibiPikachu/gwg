@@ -477,6 +477,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         winner_team: isMortvieExcluded ? 'red' : null
       }).eq('id', targetEventId);
 
+      // Reset profile points for active event so zero points carry over
+      try {
+        if (isMortvieExcluded) {
+          await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+          await supabase.from('profiles').update({ points: 19 }).or(`steamid.eq.${mortvieId},discord_id.eq.${mortvieDiscord}`);
+        } else {
+          await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+        }
+      } catch (profErr) {
+        console.warn('Warning updating profile points in admin.ts:', profErr);
+      }
+
       return res.status(200).json({
         success: true,
         message: 'All event points have been successfully reset to 0.',

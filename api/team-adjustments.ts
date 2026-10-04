@@ -99,16 +99,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { data: teamAdj } = await supabase
-      .from('team_adjustments')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const requestedEventId = (req.query?.eventId || req.query?.event_id) as string;
+    let targetEventId = requestedEventId ? String(requestedEventId).trim() : null;
 
-    const { data: subData } = await supabase
+    if (!targetEventId && req.query?.all !== 'true') {
+      const { data: actEvt } = await supabase.from('events').select('id').eq('is_active', true).maybeSingle();
+      targetEventId = actEvt?.id || null;
+    }
+
+    let teamAdjQ = supabase.from('team_adjustments').select('*').order('created_at', { ascending: false });
+    let subDataQ = supabase
       .from('submissions')
       .select('*')
       .or('user_id.ilike.team_pts_%,game_name.eq.Screenshot Points,game_name.eq.Bingo Points,game_name.eq.Team Award,game_name.ilike.Screenshot Contest%,game_name.ilike.Bingo Contest%,platform.eq.Screenshot Points,platform.eq.Bingo Points,platform.eq.Screenshot Event,platform.eq.Bingo Event,platform.eq.System')
       .order('created_at', { ascending: false });
+
+    if (targetEventId && req.query?.all !== 'true') {
+      teamAdjQ = teamAdjQ.eq('event_id', targetEventId);
+      subDataQ = subDataQ.eq('event_id', targetEventId);
+    }
+
+    const [{ data: teamAdj }, { data: subData }] = await Promise.all([teamAdjQ, subDataQ]);
 
     const combined = [...(Array.isArray(subData) ? subData : []), ...(Array.isArray(teamAdj) ? teamAdj : [])];
     const map = new Map();

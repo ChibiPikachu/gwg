@@ -674,6 +674,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
 
         // Refresh all local data & trigger global broadcast events
         await Promise.all([fetchUsers(), fetchSubmissions(), fetchTeamAdjustments(), fetchEvents(), fetchActivityLogs()]);
+        if (bulkEditEventId) {
+          fetchBulkEventData(bulkEditEventId);
+        }
         window.dispatchEvent(new Event('leaderboard-updated'));
         window.dispatchEvent(new Event('active-event-updated'));
       } else {
@@ -4757,7 +4760,7 @@ function TeamPointContributionChart({
         });
 
         const adjPtsSum = userAdjs.reduce((sum, a) => sum + Number(a.points || 0), 0);
-        const finalPoints = Math.max(Number(u.points || 0), subPtsSum, adjPtsSum);
+        const finalPoints = subPtsSum > 0 || adjPtsSum > 0 ? Math.max(subPtsSum, adjPtsSum) : 0;
 
         return {
           ...u,
