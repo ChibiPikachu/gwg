@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter, RotateCw, RefreshCw, CheckCircle, Settings } from 'lucide-react';
+import { Trophy, Medal, Users, Shield, Bell, Loader2, History, Calendar, Award, Sparkles, Star, ChevronRight, Search, X, Filter, RotateCw, RefreshCw, CheckCircle, Settings, Eye, EyeOff } from 'lucide-react';
 import { Team, TEAM_COLORS } from '@/types';
 import { cn, parseEventNumber } from '@/lib/utils';
 import { useAuth } from '@/components/AuthProvider';
@@ -894,7 +894,27 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
     };
   }, []); // Run once on component mount
 
-  const hideScores = !!activeEvent?.hide_scores;
+  const isScoresHiddenByEvent = !!activeEvent?.hide_scores;
+  const [adminShowScores, setAdminShowScores] = React.useState(() => {
+    try {
+      return localStorage.getItem('admin_show_hidden_scores') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleAdminShowScores = () => {
+    setAdminShowScores(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('admin_show_hidden_scores', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // If scores are hidden for members by event, but an admin toggles "show scores (admin only view)", reveal them to admin
+  const hideScores = isScoresHiddenByEvent && !(isAdmin && adminShowScores);
 
   const activeEventSnapshot = React.useMemo(() => {
     return getEventSnapshot(activeEvent);
@@ -1119,6 +1139,28 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                   <>
                     {/* Desktop direct action buttons */}
                     <div className="hidden sm:flex items-center gap-2">
+                      {isScoresHiddenByEvent && (
+                        <button
+                          type="button"
+                          onClick={handleToggleAdminShowScores}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer",
+                            adminShowScores
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/20 ring-1 ring-amber-500/30"
+                              : "bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border-indigo-500/40"
+                          )}
+                          title="Toggle score visibility for admins"
+                        >
+                          {adminShowScores ? <Eye size={13} className="text-amber-400" /> : <EyeOff size={13} className="text-indigo-400" />}
+                          <span>show scores (admin only view)</span>
+                          <span className={cn(
+                            "text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider",
+                            adminShowScores ? "bg-amber-500/30 text-amber-200" : "bg-indigo-500/30 text-indigo-200"
+                          )}>
+                            {adminShowScores ? 'ON' : 'OFF'}
+                          </span>
+                        </button>
+                      )}
                       <button
                         onClick={() => handleResyncEventScores(activeEvent.id, activeEvent.title)}
                         disabled={resyncingEventId === activeEvent.id}
@@ -1155,10 +1197,36 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
                       </button>
 
                       {showMobileAdminMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-52 p-2 rounded-2xl dark:bg-[#151515] bg-white border border-black/10 dark:border-white/10 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="absolute right-0 top-full mt-2 w-64 p-2 rounded-2xl dark:bg-[#151515] bg-white border border-black/10 dark:border-white/10 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-150">
                           <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-white/40 border-b border-black/5 dark:border-white/5">
                             Admin Tools
                           </div>
+                          {isScoresHiddenByEvent && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowMobileAdminMenu(false);
+                                handleToggleAdminShowScores();
+                              }}
+                              className={cn(
+                                "w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer",
+                                adminShowScores
+                                  ? "text-amber-300 bg-amber-500/10 hover:bg-amber-500/20"
+                                  : "text-indigo-300 hover:bg-indigo-500/10"
+                              )}
+                            >
+                              <div className="flex items-center gap-2">
+                                {adminShowScores ? <Eye size={14} className="text-amber-400" /> : <EyeOff size={14} className="text-indigo-400" />}
+                                <span>show scores (admin only view)</span>
+                              </div>
+                              <span className={cn(
+                                "text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider",
+                                adminShowScores ? "bg-amber-500/30 text-amber-200" : "bg-indigo-500/30 text-indigo-200"
+                              )}>
+                                {adminShowScores ? 'ON' : 'OFF'}
+                              </span>
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setShowMobileAdminMenu(false);
@@ -1200,9 +1268,46 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
               </div>
             )}
 
-            {hideScores && (
+            {isScoresHiddenByEvent && !isAdmin && (
               <div className="mb-8 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 font-bold text-center text-sm tracking-wide shadow-sm animate-in fade-in">
                 Leaderboard is hidden!
+              </div>
+            )}
+
+            {isScoresHiddenByEvent && isAdmin && (
+              <div className={cn(
+                "mb-8 p-4 rounded-xl border font-bold flex flex-col sm:flex-row items-center justify-between gap-3 text-sm tracking-wide shadow-sm transition-all animate-in fade-in",
+                adminShowScores
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                  : "bg-indigo-500/10 border-indigo-500/25 text-indigo-400"
+              )}>
+                <div className="flex items-center gap-2.5">
+                  {adminShowScores ? <Eye size={18} className="text-amber-400 shrink-0" /> : <EyeOff size={18} className="text-indigo-400 shrink-0" />}
+                  <span>
+                    {adminShowScores
+                      ? "Leaderboard is hidden for regular members · Viewing via Admin Only View"
+                      : "Leaderboard is currently hidden for members"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleAdminShowScores}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow shrink-0",
+                    adminShowScores
+                      ? "bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/20"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20"
+                  )}
+                >
+                  {adminShowScores ? <EyeOff size={14} /> : <Eye size={14} />}
+                  <span>show scores (admin only view)</span>
+                  <span className={cn(
+                    "text-[9px] px-1.5 py-0.5 rounded font-black",
+                    adminShowScores ? "bg-black/20 text-black" : "bg-white/20 text-white"
+                  )}>
+                    {adminShowScores ? 'ON' : 'OFF'}
+                  </span>
+                </button>
               </div>
             )}
 
