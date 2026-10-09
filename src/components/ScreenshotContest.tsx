@@ -3974,6 +3974,18 @@ interface UserSubmissionStat {
                         "{replaceVotingModal.existingSub.caption}"
                       </p>
                     )}
+                    {isExternalLinkImage(replaceVotingModal.existingSub.image_url) && (
+                      <a
+                        href={replaceVotingModal.existingSub.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 text-[10px] text-sky-400 hover:text-sky-300 font-bold inline-flex items-center gap-1 transition-colors"
+                        title="External URL - not uploaded to girlswhogame app (opens in new tab)"
+                      >
+                        <ExternalLink size={10} />
+                        <span>see in a new tab</span>
+                      </a>
+                    )}
                   </div>
                 </div>
 
