@@ -455,6 +455,39 @@ export default function Profile({ steamId }: { steamId?: string }) {
             const profile = profileList?.[0];
             if (profile && !error) {
               const isAdmin = profile.role === 'admin' || profile.role === 'admins' || profile.role === 'owner' || profile.is_admin === true || profile.isAdmin === true;
+              
+              // Also query user_event_teams to resolve active event team and eventTeams map
+              let userEventTeamsMap: Record<string, string> = {};
+              try {
+                const candIds = [
+                  profile.steamid,
+                  profile.discord_id,
+                  profile.discord_id ? String(profile.discord_id).replace('discord_', '') : null,
+                  profile.discord_id ? `discord_${String(profile.discord_id).replace('discord_', '')}` : null,
+                  profile.id,
+                  steamId
+                ].filter(Boolean).map(String);
+
+                const filterOr = candIds.map(id => `steamid.eq.${id}`).join(',');
+                const { data: uetData } = await supabase
+                  .from('user_event_teams')
+                  .select('event_id, team')
+                  .or(filterOr);
+
+                (uetData || []).forEach((row: any) => {
+                  if (row.event_id && row.team) {
+                    userEventTeamsMap[row.event_id] = row.team;
+                  }
+                });
+              } catch (uetErr) {
+                console.warn('Failed to load user_event_teams in profile:', uetErr);
+              }
+
+              const activeEvtTeam = activeEvent?.id ? userEventTeamsMap[activeEvent.id] : null;
+              const resolvedTeam = (profile.team && profile.team !== 'none')
+                ? profile.team
+                : (activeEvtTeam || 'none');
+
               const formattedUser = {
                 uid: String(profile.steamid || profile.id || steamId),
                 steamId: String(profile.steamid || profile.id || steamId),
@@ -462,7 +495,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                 steamAvatar: (profile.active_avatar === 'discord' && profile.discord_avatar)
                   ? profile.discord_avatar
                   : (profile.steam_avatar || profile.discord_avatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg'),
-                team: profile.team || 'none',
+                team: resolvedTeam,
                 isAdmin: Boolean(isAdmin),
                 role: profile.role || (isAdmin ? 'admin' : 'member'),
                 status: profile.status || 'Ready for Event',
@@ -471,7 +504,7 @@ export default function Profile({ steamId }: { steamId?: string }) {
                 discordName: profile.discord_name,
                 discordAvatar: profile.discord_avatar,
                 createdAt: profile.created_at,
-                eventTeams: profile.eventTeams || {},
+                eventTeams: userEventTeamsMap,
                 needs_registration: profile.needs_registration || false
               };
               setTargetUser(formattedUser);
@@ -508,7 +541,47 @@ export default function Profile({ steamId }: { steamId?: string }) {
 
       fetchUserProfile();
     }
-  }, [steamId, currentUser, isOwnProfile]);
+  }, [steamId, currentUser, isOwnProfile, activeEvent?.id]);
+
+  // Listen for team changes dispatched across the app (e.g. from AdminPanel team sorting)
+  React.useEffect(() => {
+    const handleTeamUpdate = (e: any) => {
+      const detail = e?.detail;
+      const targetId = detail?.targetSteamId;
+      const candidateOwnerIds = [
+        steamId,
+        targetUser?.steamId,
+        targetUser?.discordId,
+        targetUser?.id,
+        targetUser?.uid,
+        currentUser?.steamId,
+        currentUser?.uid,
+        currentUser?.discordId
+      ].filter(Boolean).map(String);
+
+      const matchesTarget = !targetId || candidateOwnerIds.some(cid => {
+        const clean = cid.replace('discord_', '');
+        const targetClean = String(targetId).replace('discord_', '');
+        return cid === targetId || clean === targetClean;
+      });
+
+      if (matchesTarget && detail?.team) {
+        const nextTeam = detail.team === 'none' ? 'none' : detail.team;
+        setTargetUser((prev: any) => prev ? {
+          ...prev,
+          team: nextTeam,
+          eventTeams: detail.eventId ? { ...(prev.eventTeams || {}), [detail.eventId]: nextTeam } : prev.eventTeams
+        } : prev);
+      }
+    };
+
+    window.addEventListener('team-updated', handleTeamUpdate as any);
+    window.addEventListener('leaderboard-updated', handleTeamUpdate as any);
+    return () => {
+      window.removeEventListener('team-updated', handleTeamUpdate as any);
+      window.removeEventListener('leaderboard-updated', handleTeamUpdate as any);
+    };
+  }, [steamId, isOwnProfile, targetUser?.steamId, targetUser?.discordId, currentUser?.steamId, currentUser?.uid]);
 
   React.useEffect(() => {
     if (targetUser && !targetUser.error) {
@@ -518,11 +591,15 @@ export default function Profile({ steamId }: { steamId?: string }) {
     }
   }, [targetUser?.uid, targetUser?.status, targetUser?.steamName, targetUser?.active_avatar]);
 
-  const colors = TEAM_COLORS[(targetUser?.team || 'none') as Team] || TEAM_COLORS['none'] || TEAM_COLORS['blue'];
-  const logoColor = targetUser?.team === 'blue' ? 'bg-blue-accent' : 
-                    targetUser?.team === 'green' ? 'bg-green-accent' : 
-                    targetUser?.team === 'purple' ? 'bg-purple-accent' : 
-                    targetUser?.team === 'red' ? 'bg-red-accent' : 'bg-white/10';
+  const effectiveUserTeam = (targetUser?.team && targetUser.team !== 'none')
+    ? targetUser.team
+    : (activeEvent?.id && targetUser?.eventTeams?.[activeEvent.id]) || 'none';
+
+  const colors = TEAM_COLORS[(effectiveUserTeam || 'none') as Team] || TEAM_COLORS['none'] || TEAM_COLORS['blue'];
+  const logoColor = effectiveUserTeam === 'blue' ? 'bg-blue-accent' : 
+                    effectiveUserTeam === 'green' ? 'bg-green-accent' : 
+                    effectiveUserTeam === 'purple' ? 'bg-purple-accent' : 
+                    effectiveUserTeam === 'red' ? 'bg-red-accent' : 'bg-white/10';
 
   const hasSurvivedMigration = (() => {
     if (!targetUser) return false;
@@ -955,10 +1032,10 @@ export default function Profile({ steamId }: { steamId?: string }) {
             <span className="text-[11px] uppercase font-black opacity-30 tracking-[0.2em] relative z-10 dark:text-white text-slate-400">Team</span>
             <div className="flex flex-col items-center relative z-10">
                <span className={cn("text-4xl md:text-6xl font-black block uppercase tracking-tighter leading-none mb-1", colors.primary)}>
-                 {targetUser.team || 'None'}
+                 {effectiveUserTeam || 'None'}
                </span>
-               <span className={cn("text-[12px] font-bold opacity-40 uppercase tracking-[0.1em]", targetUser.team === 'none' ? 'dark:text-white text-slate-500' : 'text-white/50')}>
-                  {(targetUser.team || 'None')} team best team!
+               <span className={cn("text-[12px] font-bold opacity-40 uppercase tracking-[0.1em]", effectiveUserTeam === 'none' ? 'dark:text-white text-slate-500' : 'text-white/50')}>
+                  {(effectiveUserTeam || 'None')} team best team!
                </span>
             </div>
          </div>

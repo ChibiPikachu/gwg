@@ -636,13 +636,17 @@ export default function Leaderboard({ onViewProfile }: { onViewProfile?: (id: st
         });
 
         const transformed = (profiles || []).map((u: any) => {
-          const uetTeam = u.steamid ? uetMap.get(String(u.steamid).trim()) : null;
-          const effectiveTeam = uetTeam || 'none';
-
           const sid = u.steamid ? String(u.steamid).trim() : null;
           const did = u.discord_id ? String(u.discord_id).trim() : null;
           const cleanDid = did ? did.replace('discord_', '') : null;
           const uid = u.id ? String(u.id).trim() : null;
+
+          const uetTeam = (sid && uetMap.get(sid)) ||
+                          (did && uetMap.get(did)) ||
+                          (cleanDid && (uetMap.get(cleanDid) || uetMap.get(`discord_${cleanDid}`))) ||
+                          (uid && uetMap.get(uid)) ||
+                          null;
+          const effectiveTeam = uetTeam || (u.team && u.team !== 'none' ? u.team : 'none');
 
           const candidatePoints = [
             sid ? profilePoints.get(sid) : undefined,

@@ -2950,8 +2950,17 @@ async function createServer() {
 
       // Filter and enrich profiles: include if assigned to a team in user_event_teams or has points in active event
       const eligibleProfiles = (allProfiles || []).filter((p: any) => {
-        const uetTeam = p.steamid ? uetMap.get(String(p.steamid).trim()) : null;
-        const effectiveTeam = uetTeam || 'none';
+        const sid = p.steamid ? String(p.steamid).trim() : null;
+        const did = p.discord_id ? String(p.discord_id).trim() : null;
+        const cleanDid = did ? did.replace('discord_', '') : null;
+        const uid = p.id ? String(p.id).trim() : null;
+
+        const uetTeam = (sid && uetMap.get(sid)) ||
+                        (did && uetMap.get(did)) ||
+                        (cleanDid && (uetMap.get(cleanDid) || uetMap.get(`discord_${cleanDid}`))) ||
+                        (uid && uetMap.get(uid)) ||
+                        null;
+        const effectiveTeam = uetTeam || (p.team && p.team !== 'none' ? p.team : 'none');
         const hasTeam = effectiveTeam && effectiveTeam !== 'none';
         const livePts = profilePointsMap.get(p) || 0;
         return hasTeam || livePts > 0;
@@ -2963,8 +2972,17 @@ async function createServer() {
           finalAvatar = u.discord_avatar;
         }
 
-        const uetTeam = u.steamid ? uetMap.get(String(u.steamid).trim()) : null;
-        const effectiveTeam = uetTeam || 'none';
+        const sid = u.steamid ? String(u.steamid).trim() : null;
+        const did = u.discord_id ? String(u.discord_id).trim() : null;
+        const cleanDid = did ? did.replace('discord_', '') : null;
+        const uid = u.id ? String(u.id).trim() : null;
+
+        const uetTeam = (sid && uetMap.get(sid)) ||
+                        (did && uetMap.get(did)) ||
+                        (cleanDid && (uetMap.get(cleanDid) || uetMap.get(`discord_${cleanDid}`))) ||
+                        (uid && uetMap.get(uid)) ||
+                        null;
+        const effectiveTeam = uetTeam || (u.team && u.team !== 'none' ? u.team : 'none');
 
         let userFinalPoints = profilePointsMap.get(u) || 0;
 
@@ -3697,15 +3715,28 @@ async function createServer() {
 
     if (error || !profile) return res.status(404).json({ error: 'User not found' });
 
+    const userCandIds = Array.from(new Set([
+      steamid,
+      cleanId,
+      `discord_${cleanId}`,
+      profile.steamid ? String(profile.steamid).trim() : null,
+      profile.discord_id ? String(profile.discord_id).trim() : null,
+      profile.discord_id ? `discord_${String(profile.discord_id).trim()}` : null,
+      profile.id ? String(profile.id).trim() : null
+    ].filter(Boolean))) as string[];
+
     let eventTeams: Record<string, string> = {};
     try {
+      const uetFilter = userCandIds.map(id => `steamid.eq.${id}`).join(',');
       const { data: eventTeamsData } = await supabase
         .from('user_event_teams')
         .select('event_id, team')
-        .eq('steamid', steamid);
+        .or(uetFilter);
 
       (eventTeamsData || []).forEach((row: any) => {
-        eventTeams[row.event_id] = row.team;
+        if (row.event_id && row.team) {
+          eventTeams[row.event_id] = row.team;
+        }
       });
     } catch (uetError) {
       console.warn('[Get User] Could not fetch user_event_teams:', uetError);
@@ -3719,12 +3750,14 @@ async function createServer() {
     
     // Compute active event points for profile
     let activeEventPts = 0;
+    let activeEvent: any = null;
     try {
-      let { data: activeEvent } = await supabase
+      const { data: actEvt } = await supabase
         .from('events')
         .select('id')
         .eq('is_active', true)
         .maybeSingle();
+      activeEvent = actEvt;
 
       if (!activeEvent) {
         const { data: recentEvent } = await supabase
@@ -3784,7 +3817,7 @@ async function createServer() {
       discordAvatar: profile.discord_avatar || null,
       discordId: profile.discord_id || null,
       active_avatar: profile.active_avatar || 'steam',
-      team: profile.team || 'none',
+      team: (profile.team && profile.team !== 'none' ? profile.team : null) || (activeEvent?.id && eventTeams[activeEvent.id]) || 'none',
       status: profile.status || '',
       points: Number(calculatedUserPoints) || 0,
       role: profile.role || 'member',
@@ -3833,7 +3866,7 @@ async function createServer() {
         return res.status(400).json({ error: 'No active or target event found' });
       }
 
-      // 2. Perform atomic event-scoped team update without writing active event state to profiles
+      // 2. Perform atomic team update: write to profiles table, user_event_teams, and synchronize screenshot submissions
       const updatedRecords: any[] = [];
       for (const id of rawIds) {
         const cleanId = String(id).trim();
@@ -3842,58 +3875,93 @@ async function createServer() {
         // Resolve profile to satisfy foreign key constraint on user_event_teams(steamid)
         const { data: prof } = await supabase
           .from('profiles')
-          .select('id, steamid, discord_id')
+          .select('id, steamid, discord_id, team')
           .or(`steamid.eq.${cleanId},steamid.eq.${cleanDiscord},discord_id.eq.${cleanId},discord_id.eq.${cleanDiscord},id.eq.${cleanId}`)
           .maybeSingle();
 
         const primarySteamId = prof?.steamid ? String(prof.steamid).trim() : cleanId;
 
-        if (!dbTeam) {
-          // Unassigned: remove from user_event_teams
+        const candidateKeys = Array.from(new Set([
+          cleanId,
+          cleanDiscord,
+          `discord_${cleanDiscord}`,
+          prof?.steamid ? String(prof.steamid).trim() : null,
+          prof?.discord_id ? String(prof.discord_id).trim() : null,
+          prof?.discord_id ? `discord_${String(prof.discord_id).trim()}` : null,
+          prof?.id ? String(prof.id).trim() : null
+        ].filter(Boolean))) as string[];
+
+        // A. Update user's profile team in profiles table
+        try {
+          const profileOrParts = candidateKeys.map(k => `steamid.eq.${k},discord_id.eq.${k},id.eq.${k}`).join(',');
           await supabase
-            .from('user_event_teams')
-            .delete()
-            .eq('steamid', primarySteamId)
-            .eq('event_id', targetEventId);
-
-          if (cleanDiscord !== primarySteamId) {
-            await supabase
-              .from('user_event_teams')
-              .delete()
-              .eq('steamid', cleanId)
-              .eq('event_id', targetEventId);
-          }
-
-          updatedRecords.push({ userId: id, steamid: primarySteamId, eventId: targetEventId, team: null });
-        } else {
-          // Atomic UPSERT on user_event_teams
-          const { error: upsertErr } = await supabase
-            .from('user_event_teams')
-            .upsert({
-              steamid: primarySteamId,
-              event_id: targetEventId,
-              team: dbTeam
-            }, { onConflict: 'steamid,event_id' });
-
-          if (upsertErr) {
-            console.error('[Admin] Error upserting user_event_teams:', upsertErr);
-            return res.status(500).json({ error: 'Failed to record user event team', details: upsertErr.message });
-          }
-
-          updatedRecords.push({ userId: id, steamid: primarySteamId, eventId: targetEventId, team: dbTeam });
+            .from('profiles')
+            .update({ team: dbTeam })
+            .or(profileOrParts);
+        } catch (profErr) {
+          console.warn('[Admin] Failed to update profile team in profiles table:', profErr);
         }
 
-        // Migrate user's screenshot submissions for this specific event to the target team
+        // B. Update user_event_teams for targetEventId
+        if (targetEventId) {
+          if (!dbTeam) {
+            // Unassigned: remove from user_event_teams
+            for (const k of candidateKeys) {
+              await supabase
+                .from('user_event_teams')
+                .delete()
+                .eq('steamid', k)
+                .eq('event_id', targetEventId);
+            }
+          } else {
+            // Atomic UPSERT on user_event_teams
+            const { error: upsertErr } = await supabase
+              .from('user_event_teams')
+              .upsert({
+                steamid: primarySteamId,
+                event_id: targetEventId,
+                team: dbTeam
+              }, { onConflict: 'steamid,event_id' });
+
+            if (upsertErr) {
+              console.error('[Admin] Error upserting user_event_teams:', upsertErr);
+            }
+
+            if (cleanDiscord && cleanDiscord !== primarySteamId) {
+              await supabase
+                .from('user_event_teams')
+                .upsert({
+                  steamid: cleanDiscord,
+                  event_id: targetEventId,
+                  team: dbTeam
+                }, { onConflict: 'steamid,event_id' });
+            }
+          }
+        }
+
+        // C. Synchronize user's screenshot submissions to reflect the newly assigned team
         try {
           const teamForSub = dbTeam || 'none';
+          const subFilterOr = candidateKeys.map(k => `user_id.eq.${k}`).join(',');
+
+          if (targetEventId) {
+            await supabase
+              .from('screenshot_submissions')
+              .update({ user_team: teamForSub })
+              .eq('event_id', targetEventId)
+              .or(subFilterOr);
+          }
+
+          // Also update all screenshot submissions for this user (including active event or untagged)
           await supabase
             .from('screenshot_submissions')
             .update({ user_team: teamForSub })
-            .eq('event_id', targetEventId)
-            .or(`user_id.eq.${primarySteamId},user_id.eq.${cleanId},user_id.eq.discord_${cleanDiscord}`);
+            .or(subFilterOr);
         } catch (syncErr) {
           console.warn('[Admin] Failed to synchronize screenshot submissions on team change:', syncErr);
         }
+
+        updatedRecords.push({ userId: id, steamid: primarySteamId, eventId: targetEventId, team: dbTeam });
       }
 
       // Synchronize event score snapshot to migrate points to target team

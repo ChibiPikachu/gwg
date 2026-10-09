@@ -591,6 +591,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user?.steamId]);
 
+  // Listen for team changes dispatched across app (e.g. from AdminPanel sorting)
+  useEffect(() => {
+    const handleTeamUpdate = (e: any) => {
+      const detail = e?.detail;
+      if (!detail) return;
+      const targetId = String(detail.targetSteamId || '').trim();
+      const myIds = [user?.steamId, user?.uid, user?.discordId, user?.id].filter(Boolean).map(String);
+      const matchesMe = !targetId || myIds.some(id => {
+        const clean = id.replace('discord_', '');
+        const targetClean = targetId.replace('discord_', '');
+        return id === targetId || clean === targetClean;
+      });
+
+      if (matchesMe) {
+        const newTeam = detail.team === 'none' ? 'none' : detail.team;
+        setUser((prev: any) => prev ? {
+          ...prev,
+          team: newTeam,
+          eventTeams: detail.eventId ? { ...(prev.eventTeams || {}), [detail.eventId]: newTeam } : prev.eventTeams
+        } : prev);
+        fetchMe();
+      }
+    };
+
+    window.addEventListener('team-updated', handleTeamUpdate as any);
+    return () => window.removeEventListener('team-updated', handleTeamUpdate as any);
+  }, [user?.steamId, user?.uid, user?.discordId, fetchMe]);
+
   // Handle postMessage events from auth popups
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {

@@ -524,8 +524,25 @@ export default async function handler(req: Request, res: Response) {
         const { data: votes } = await supabase.from('screenshot_votes').select('*');
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
 
-        // Load profiles to ensure submissions strictly reflect user's current live team (or unassigned/none)
+        // Load profiles and user_event_teams to ensure submissions strictly reflect user's current live team (or unassigned/none)
         const { data: profiles } = await supabase.from('profiles').select('steamid, discord_id, id, team');
+        const { data: eventTeamsData } = activeCompEvent ? await supabase
+          .from('user_event_teams')
+          .select('steamid, team')
+          .eq('event_id', activeCompEvent.id) : { data: [] };
+
+        const eventTeamMap = new Map<string, string>();
+        (eventTeamsData || []).forEach((row: any) => {
+          if (row.steamid && row.team) {
+            const t = row.team === 'none' ? 'none' : row.team;
+            const sid = String(row.steamid).trim();
+            const cleanSid = sid.replace('discord_', '');
+            eventTeamMap.set(sid, t);
+            eventTeamMap.set(cleanSid, t);
+            eventTeamMap.set(`discord_${cleanSid}`, t);
+          }
+        });
+
         const profileTeamMap = new Map<string, string>();
         (profiles || []).forEach((p: any) => {
           const t = (!p.team || p.team === 'none') ? 'none' : p.team;
@@ -557,12 +574,16 @@ export default async function handler(req: Request, res: Response) {
 
           // Determine current reflected team:
           // For submissions in the active competition event (or if no event_id or event is active),
-          // reflect the user's current live profile team from admins/profile updates
+          // reflect the user's current live team from user_event_teams or profiles table
           let liveTeam = sub.user_team || 'none';
           const isCurrentActive = !sub.event_id || (activeCompEvent && String(sub.event_id) === String(activeCompEvent.id));
           if (isCurrentActive) {
             for (const k of candidateKeys) {
-              if (profileTeamMap.has(k)) {
+              if (eventTeamMap.has(k) && eventTeamMap.get(k) !== 'none') {
+                liveTeam = eventTeamMap.get(k) || 'none';
+                break;
+              }
+              if (profileTeamMap.has(k) && profileTeamMap.get(k) !== 'none') {
                 liveTeam = profileTeamMap.get(k) || 'none';
                 break;
               }
@@ -781,13 +802,26 @@ export default async function handler(req: Request, res: Response) {
 
           let effectiveSubmitterTeam = userTeam || 'none';
           const cleanUId = String(userId).replace('discord_', '');
-          const { data: creatorProf } = await supabase
-            .from('profiles')
+          
+          // Check user_event_teams for active event first
+          const { data: uetRow } = await supabase
+            .from('user_event_teams')
             .select('team')
-            .or(`steamid.eq.${cleanUId},discord_id.eq.${cleanUId},id.eq.${cleanUId}`)
+            .eq('event_id', activeCompEvent.id)
+            .or(`steamid.eq.${cleanUId},steamid.eq.${userId},steamid.eq.discord_${cleanUId}`)
             .maybeSingle();
-          if (creatorProf) {
-            effectiveSubmitterTeam = (!creatorProf.team || creatorProf.team === 'none') ? 'none' : creatorProf.team;
+
+          if (uetRow?.team && uetRow.team !== 'none') {
+            effectiveSubmitterTeam = uetRow.team;
+          } else {
+            const { data: creatorProf } = await supabase
+              .from('profiles')
+              .select('team')
+              .or(`steamid.eq.${cleanUId},steamid.eq.${userId},discord_id.eq.${cleanUId},id.eq.${cleanUId}`)
+              .maybeSingle();
+            if (creatorProf?.team && creatorProf.team !== 'none') {
+              effectiveSubmitterTeam = creatorProf.team;
+            }
           }
 
           const newSub: Record<string, any> = {

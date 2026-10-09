@@ -292,7 +292,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'No active or target event found' });
       }
 
-      // Persist strictly in user_event_teams for target event (Do NOT write active event state to profiles)
+      // Update user's profile team in profiles table
+      try {
+        const profileOrParts = candidateKeys.map(k => `steamid.eq.${k},discord_id.eq.${k},id.eq.${k}`).join(',');
+        await supabase
+          .from('profiles')
+          .update({ team: finalTeam })
+          .or(profileOrParts);
+      } catch (profErr) {
+        console.warn('[Admin API] Failed to update profile team in profiles table:', profErr);
+      }
+
+      // Persist in user_event_teams for target event
       if (!finalTeam || finalTeam === 'none') {
         for (const k of candidateKeys) {
           await supabase.from('user_event_teams').delete().match({ steamid: k, event_id: targetEvtId });
@@ -306,7 +317,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (upsertErr) {
           console.error('[Admin] user_event_teams upsert error:', upsertErr);
-          return res.status(500).json({ error: 'Failed to record user event team', details: upsertErr.message });
         }
       }
 
@@ -339,16 +349,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.warn('Failed to update event description snapshot for team change:', snapErr);
       }
 
-      // Synchronize all screenshot_submissions for this user in target event to reflect team change
+      // Synchronize all screenshot_submissions for this user to reflect team change
       const teamForSub = (!finalTeam || finalTeam === 'none') ? 'none' : finalTeam;
-      const cleanTarget = String(targetId).replace('discord_', '');
+      const subFilterOr = candidateKeys.map(k => `user_id.eq.${k}`).join(',');
       try {
+        if (targetEvtId) {
+          await supabase
+            .from('screenshot_submissions')
+            .update({ user_team: teamForSub })
+            .eq('event_id', targetEvtId)
+            .or(subFilterOr);
+        }
+
+        // Also synchronize all screenshot submissions for this user
         await supabase
           .from('screenshot_submissions')
           .update({ user_team: teamForSub })
-          .eq('event_id', targetEvtId)
-          .or(`user_id.eq.${primarySteamId},user_id.eq.${targetId},user_id.eq.${cleanTarget},user_id.eq.discord_${cleanTarget}`);
-      } catch {}
+          .or(subFilterOr);
+      } catch (syncErr) {
+        console.warn('[Admin] Failed to synchronize screenshot submissions on team change:', syncErr);
+      }
 
       return res.status(200).json({
         success: true,

@@ -9,6 +9,7 @@ import {
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
 import { cn } from '@/lib/utils';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface ScreenshotSubmission {
@@ -325,8 +326,52 @@ export default function ScreenshotContest({
     const handleEventUpdate = () => {
       fetchData(false);
     };
+
+    const handleTeamUpdate = (e: any) => {
+      const detail = e?.detail;
+      if (detail && detail.targetSteamId && detail.team) {
+        const targetId = String(detail.targetSteamId).trim();
+        const cleanTargetId = targetId.replace('discord_', '');
+        const newTeam = detail.team === 'none' ? 'none' : detail.team;
+
+        setSubmissions(prev => prev.map(s => {
+          const sUid = String(s.user_id || '').trim();
+          const cleanSUid = sUid.replace('discord_', '');
+          if (sUid === targetId || cleanSUid === cleanTargetId) {
+            return { ...s, user_team: newTeam as Team };
+          }
+          return s;
+        }));
+      }
+      fetchData(false);
+    };
+
     window.addEventListener('active-event-updated', handleEventUpdate);
-    return () => window.removeEventListener('active-event-updated', handleEventUpdate);
+    window.addEventListener('leaderboard-updated', handleEventUpdate);
+    window.addEventListener('team-updated', handleTeamUpdate as any);
+
+    const channel = isSupabaseConfigured && supabase
+      ? supabase
+          .channel('realtime-screenshots-contest')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshot_submissions' }, (payload) => {
+            if (payload.eventType === 'UPDATE' && payload.new) {
+              const updated = payload.new as any;
+              setSubmissions(prev => prev.map(s => s.id === updated.id ? { ...s, user_team: updated.user_team || s.user_team } : s));
+            } else {
+              fetchData(false);
+            }
+          })
+          .subscribe()
+      : null;
+
+    return () => {
+      window.removeEventListener('active-event-updated', handleEventUpdate);
+      window.removeEventListener('leaderboard-updated', handleEventUpdate);
+      window.removeEventListener('team-updated', handleTeamUpdate as any);
+      if (channel) {
+        supabase?.removeChannel(channel);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1575,7 +1620,7 @@ interface UserSubmissionStat {
                           title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
-                          <span>OPEN</span>
+                           
                         </a>
                       )}
                       <span className={cn(
@@ -1925,6 +1970,7 @@ interface UserSubmissionStat {
                           title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
+                           
                         </a>
                       )}
                       {/* Color-Coded Status Badge matching Team Palette with Tooltip */}
@@ -2201,9 +2247,10 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                          title="External URL"
+                          title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
+                           
                         </a>
                       )}
                     </div>
@@ -2476,9 +2523,10 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                          title="External URL"
+                          title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
+                           
                         </a>
                       )}
                     </div>
@@ -2782,6 +2830,21 @@ interface UserSubmissionStat {
                     onChange={(e) => setImageUrlInput(e.target.value)}
                     className={cn("w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none", teamFocusBorder)}
                   />
+                  {isExternalLinkImage(imageUrlInput) && (
+                    <div className="mt-1.5 flex items-center justify-between text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2.5 py-1.5 rounded-lg">
+                      <span className="text-[10px] text-white/70">External URL</span>
+                      <a
+                        href={imageUrlInput}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-bold text-sky-300 hover:text-white text-[10px] transition-colors"
+                        title="External URL (opens in new tab)"
+                      >
+                        <ExternalLink size={10} />
+                         
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {/* Game Name */}
@@ -3270,9 +3333,10 @@ interface UserSubmissionStat {
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-sm hover:scale-[1.02]"
-                      title="External URL"
+                      title="External URL (opens in new tab)"
                     >
                       <ExternalLink size={13} />
+                       
                     </a>
                   )}
 
@@ -3343,9 +3407,10 @@ interface UserSubmissionStat {
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="px-3 py-1.5 rounded-full bg-black/75 hover:bg-black/95 text-sky-300 hover:text-white border border-sky-500/40 backdrop-blur-md text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-xl hover:scale-105 cursor-pointer"
-                        title="External URL"
+                        title="External URL (opens in new tab)"
                       >
                         <ExternalLink size={12} />
+                         
                       </a>
                     </div>
                   )}
@@ -3539,7 +3604,7 @@ interface UserSubmissionStat {
                             </span>
                           </div>
                           <p className="text-[11px] text-white/60 leading-relaxed">
-                            This screenshot was uploaded via an external URL.
+                            This screenshot was uploaded via an external link and not uploaded to the girlswhogame app.
                           </p>
                           <a
                             href={currentSub.image_url}
@@ -3549,7 +3614,7 @@ interface UserSubmissionStat {
                             title="External URL (opens in new tab)"
                           >
                             <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                            <span>Open in a new tab</span>
+                             
                           </a>
                         </div>
                       )}
@@ -3980,10 +4045,10 @@ interface UserSubmissionStat {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 text-[10px] text-sky-400 hover:text-sky-300 font-bold inline-flex items-center gap-1 transition-colors"
-                        title="External URL - not uploaded to girlswhogame app (opens in new tab)"
+                        title="External URL (opens in new tab)"
                       >
                         <ExternalLink size={10} />
-                        <span>see in a new tab</span>
+                         
                       </a>
                     )}
                   </div>
@@ -4127,10 +4192,11 @@ interface UserSubmissionStat {
                       href={targetSub.image_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm group"
                       title="External URL (opens in new tab)"
                     >
-                      <ExternalLink size={13} />
+                      <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                       
                     </a>
                   </div>
                 )}
