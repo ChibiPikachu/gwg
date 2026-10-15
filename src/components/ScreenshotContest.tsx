@@ -1557,7 +1557,7 @@ interface UserSubmissionStat {
               User Submissions ({userSubmissionsList.length})
             </button>
 
-            {/* Admin Cycle Themes & Description Shortcut */}
+            {/* Admin cycle themes and Description Shortcut */}
             <button
               onClick={() => {
                 setShowThemeDescription(true);
@@ -1706,14 +1706,14 @@ interface UserSubmissionStat {
                       : "Submissions Closed"}
             </button>
 
-            {/* Cycle Themes & Description Toggle Button (Thinner, placed directly below Submit Screenshot) */}
+            {/* cycle themes and Description Toggle Button (Thinner, placed directly below Submit Screenshot) */}
             <button
               onClick={() => {
                 setShowThemeDescription(prev => !prev);
                 if (isEditingTheme) setIsEditingTheme(false);
               }}
               aria-expanded={showThemeDescription}
-              title="Toggle cycle themes and guidelines"
+              title="Toggle themes and guidelines"
               className={cn(
                 "w-full sm:w-auto font-bold text-xs px-3.5 py-2 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer border shadow-sm",
                 showThemeDescription
@@ -1722,7 +1722,7 @@ interface UserSubmissionStat {
               )}
             >
               <Sparkles size={14} className={currentTeamStyle.iconText} />
-              <span>{showThemeDescription ? "Hide Cycle Themes" : "Cycle Themes & Description"}</span>
+              <span>{showThemeDescription ? "Hide Themes" : "Themes and Description"}</span>
               <ChevronDown
                 size={14}
                 className={cn("transition-transform duration-300", showThemeDescription ? cn("rotate-180", currentTeamStyle.iconText) : "text-slate-400")}
@@ -1795,7 +1795,7 @@ interface UserSubmissionStat {
                   <div className="space-y-4 pt-1">
                     <div className="flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
                       <span className={cn("font-bold flex items-center gap-1.5", currentTeamStyle.iconText)}>
-                        <Edit3 size={13} /> Editing Cycle Themes & Description (Admin Mode)
+                        <Edit3 size={13} /> Editing Cycle Themes and Description (Admin Mode)
                       </span>
                       <div className="flex items-center gap-2">
                         <button
@@ -4723,7 +4723,7 @@ interface UserSubmissionStat {
             className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold border border-emerald-400/50 backdrop-blur-md"
           >
             <CheckCircle size={16} className="text-white shrink-0" />
-            <span>Cycle theme description successfully saved!</span>
+            <span>Theme description successfully saved!</span>
           </motion.div>
         )}
       </AnimatePresence>
