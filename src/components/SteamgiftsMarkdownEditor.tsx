@@ -64,7 +64,7 @@ export default function SteamgiftsMarkdownEditor({
   };
 
   const insertTemplate = () => {
-    const template = `## 🌟 Cycle Themes
+    const template = `## 🌟 Event Themes
 * **Theme 1:** Neon Horizons & Nightscapes
 * **Theme 2:** Minimalist Geometry & Brutalism
 * **Theme 3:** Dramatic Action & Dynamic Motion

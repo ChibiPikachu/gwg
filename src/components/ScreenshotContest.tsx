@@ -340,7 +340,7 @@ export default function ScreenshotContest({
   const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
 
-  // Cycle Theme Description state (toggleable for all users, editable for admins)
+  // Event Theme Description state (toggleable for all users, editable for admins)
   const [showThemeDescription, setShowThemeDescription] = useState<boolean>(false);
   const [isEditingTheme, setIsEditingTheme] = useState<boolean>(false);
   const [editThemeText, setEditThemeText] = useState<string>('');
@@ -1565,7 +1565,7 @@ interface UserSubmissionStat {
               User Submissions ({userSubmissionsList.length})
             </button>
 
-            {/* Admin cycle themes and Description Shortcut */}
+            {/* Admin event themes and Description Shortcut */}
             <button
               onClick={() => {
                 setShowThemeDescription(true);
@@ -1714,7 +1714,7 @@ interface UserSubmissionStat {
                       : "Submissions Closed"}
             </button>
 
-            {/* cycle themes and Description Toggle Button (Thinner, placed directly below Submit Screenshot) */}
+            {/* Event themes and Description Toggle Button (Thinner, placed directly below Submit Screenshot) */}
             <button
               onClick={() => {
                 setShowThemeDescription(prev => !prev);
@@ -1739,7 +1739,7 @@ interface UserSubmissionStat {
           </div>
         </div>
 
-        {/* Expandable Current Cycle's Theme Description Section */}
+        {/* Expandable Current Event's Theme Description Section */}
         <AnimatePresence>
           {showThemeDescription && (
             <motion.div
@@ -1759,14 +1759,14 @@ interface UserSubmissionStat {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
-                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes and Guidelines` : "Current Cycle's Themes and Guidelines"}
+                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes and Guidelines` : "Current Event's Themes and Guidelines"}
                         </h3>
                         <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border", currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)}>
                           {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-white/50">
-                        Themes, creative prompts, and criteria defined for this cycle's submissions.
+                        Themes, creative prompts, and criteria defined for this event's submissions.
                       </p>
                     </div>
                   </div>
@@ -1804,7 +1804,7 @@ interface UserSubmissionStat {
                     <SteamgiftsMarkdownEditor
                       value={editThemeText}
                       onChange={setEditThemeText}
-                      placeholder="Add themes, guidelines, and inspiration for this cycle's submissions using Steamgifts Markdown (e.g. ## Theme 1, * bullet points, [spoiler]secret[/spoiler])..."
+                      placeholder="Add themes, guidelines, and inspiration for this event's submissions using Steamgifts Markdown (e.g. ## Theme 1, * bullet points, [spoiler]secret[/spoiler])..."
                       teamStyle={currentTeamStyle}
                       isSaving={isSavingTheme}
                       onSave={() => handleAdminUpdateDescription(editThemeText)}
@@ -1813,7 +1813,7 @@ interface UserSubmissionStat {
                         setThemeSaveError(null);
                       }}
                       saveButtonText="Save Theme Description"
-                      title="Editing Cycle Themes and Guidelines (Steamgifts Markdown)"
+                      title="Editing Event Themes and Guidelines (Steamgifts Markdown)"
                     />
                     {themeSaveError && (
                       <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
@@ -1855,7 +1855,7 @@ interface UserSubmissionStat {
                     ) : (
                       <div className={cn("text-center py-6 px-4 bg-black/20 dark:bg-black/30 rounded-xl border border-dashed space-y-2", currentTeamStyle.cardBorder)}>
                         <p className="text-sm dark:text-slate-300 text-slate-600 font-medium">
-                          No specific themes have been announced for this cycle yet.
+                          No specific themes have been announced for this event yet.
                         </p>
                         <p className="text-xs text-slate-400 dark:text-white/40 max-w-md mx-auto">
                           Participants are free to submit screenshots from any game or genre for team points and voting!
@@ -2250,6 +2250,7 @@ interface UserSubmissionStat {
           allVotes={votes}
           competitionEvents={competitionEvents}
           activeCompetitionEvent={activeCompetitionEvent}
+          onSwitchToAllSubmissions={() => setActiveTab('all')}
         />
       ) : loading ? (
         <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">

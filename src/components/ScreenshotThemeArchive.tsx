@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Trophy, Medal, Award, Calendar, Sparkles, Star, 
   User, Camera, ExternalLink, ChevronRight, ChevronDown, 
-  Check, Edit3, Image as ImageIcon, Archive, Clock, Eye, AlertCircle, Layers
+  Check, Edit3, Image as ImageIcon, Archive, Clock, Eye, AlertCircle, Layers, Info
 } from 'lucide-react';
 import SteamgiftsMarkdown from './SteamgiftsMarkdown';
 import SteamgiftsMarkdownEditor from './SteamgiftsMarkdownEditor';
@@ -23,21 +23,24 @@ export interface ArchivedSubmission {
   points_awarded: number; // 50, 40, 30, 20, 10
 }
 
-export interface ArchivedCycle {
+export interface ArchivedEvent {
   id: string;
   title: string;
-  cycleNumber: number;
+  eventNumber: number;
   concludedDate: string;
   description: string;
+  status: string;
+  isConcluded: boolean;
   totalSubmissions: number;
   totalVotes: number;
   winners: ArchivedSubmission[];
 }
 
-// Built-in historical cycles representing previous contest themes
-const HISTORICAL_CYCLES: ArchivedCycle[] = [
-  
-];
+export function extractEventNumber(title?: string | null): number | null {
+  if (!title) return null;
+  const match = title.match(/Event\s*#?\s*(\d+)/i);
+  return match ? parseInt(match[1], 10) : null;
+}
 
 interface ScreenshotThemeArchiveProps {
   currentTeamStyle: any;
@@ -45,6 +48,7 @@ interface ScreenshotThemeArchiveProps {
   isAdmin: boolean;
   onOpenLightbox: (submissionId: string) => void;
   onViewProfile?: (userId: string) => void;
+  onSwitchToAllSubmissions?: () => void;
   allScreenshotEvents?: any[];
   allSubmissions?: any[];
   allVotes?: any[];
@@ -58,13 +62,14 @@ export default function ScreenshotThemeArchive({
   isAdmin,
   onOpenLightbox,
   onViewProfile,
+  onSwitchToAllSubmissions,
   allScreenshotEvents = [],
   allSubmissions = [],
   allVotes = [],
   competitionEvents = [],
   activeCompetitionEvent
 }: ScreenshotThemeArchiveProps) {
-  // Local state for dynamically edited descriptions per cycle ID
+  // Local state for dynamically edited descriptions per event ID
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string>>(() => {
     try {
       const saved = localStorage.getItem('theme_archive_custom_descriptions');
@@ -74,35 +79,73 @@ export default function ScreenshotThemeArchive({
     }
   });
 
-  const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState<string | null>(null);
 
-  // Combine historical cycles with any concluded cycles from the database
-  const combinedCycles = useMemo(() => {
-    const list: ArchivedCycle[] = [];
+  // Collect events strictly from Event 6 onwards (no placeholders for event 5 or before)
+  const combinedEvents = useMemo(() => {
+    const list: ArchivedEvent[] = [];
+    const seenEventIds = new Set<string>();
 
-    // Find any concluded events in allScreenshotEvents
-    const concludedDbEvents = (allScreenshotEvents || []).filter(
-      se => se.status === 'concluded' || (activeCompetitionEvent && se.id !== activeCompetitionEvent.id && se.status !== 'draft')
-    );
+    // Merge events from allScreenshotEvents and competitionEvents
+    const candidateEvents: any[] = [];
 
-    // Map DB concluded events to cycle entries if they have submissions/votes
-    for (const dbEvt of concludedDbEvents) {
-      // Avoid duplicate if already in HISTORICAL_CYCLES by id
-      const matchedHistory = HISTORICAL_CYCLES.find(h => h.id === dbEvt.id);
-      
-      const evtSubs = allSubmissions.filter(s => s.event_id === dbEvt.id && s.status !== 'rejected');
-      const evtVotes = allVotes.filter(v => v.event_id === dbEvt.id);
+    (allScreenshotEvents || []).forEach(se => {
+      candidateEvents.push({ ...se, source: 'screenshot_events' });
+    });
+
+    (competitionEvents || []).forEach(ce => {
+      if (!candidateEvents.some(c => c.id === ce.id)) {
+        candidateEvents.push({ ...ce, source: 'events' });
+      }
+    });
+
+    for (const evt of candidateEvents) {
+      if (!evt.id || seenEventIds.has(evt.id)) continue;
+
+      const num = extractEventNumber(evt.title);
+      // Strictly eliminate events prior to Event 6 (we only had submissions on-site starting from Event 6)
+      if (num !== null && num < 6) {
+        continue;
+      }
+
+      // If no number could be parsed from title, ensure it's not a legacy event 1-5 ID
+      const titleLower = (evt.title || '').toLowerCase();
+      if (
+        titleLower.includes('event #1') ||
+        titleLower.includes('event #2') ||
+        titleLower.includes('event #3') ||
+        titleLower.includes('event #4') ||
+        titleLower.includes('event #5') ||
+        evt.id === 'evt_screenshot_01' || // Legacy Event #5 placeholder
+        evt.id === '5f58ad60-7cda-45e0-b120-d63221223f0c' || // Event 1
+        evt.id === 'b587c563-69ec-4094-aca9-19d6c827316d' || // Event 2
+        evt.id === 'b75f091c-c529-43a7-9777-e3ac350e6c2a' || // Event 3
+        evt.id === '3b4a1982-a13b-4448-8c94-4b1899a0606d' || // Event 4
+        evt.id === 'd64e3a06-eddc-43b2-95a9-87c9bf1cfd56'    // Event 5
+      ) {
+        continue;
+      }
+
+      const eventNumber = num ?? 6;
+      seenEventIds.add(evt.id);
+
+      const evtSubs = allSubmissions.filter(s => s.event_id === evt.id && s.status !== 'rejected');
+      const evtVotes = allVotes.filter(v => v.event_id === evt.id);
 
       const voteCountMap: Record<string, number> = {};
       evtVotes.forEach(v => {
         voteCountMap[v.submission_id] = (voteCountMap[v.submission_id] || 0) + 1;
       });
 
-      const ranked = evtSubs
-        .filter(s => s.is_selected)
+      // Rank submissions by vote count
+      // Prioritize is_selected submissions (official voting entries)
+      const selectedSubs = evtSubs.filter(s => s.is_selected);
+      const pool = selectedSubs.length > 0 ? selectedSubs : evtSubs;
+
+      const ranked = pool
         .map(s => ({
           ...s,
           votes_count: voteCountMap[s.id] || s.votes_count || 0
@@ -124,63 +167,56 @@ export default function ScreenshotThemeArchive({
         points_awarded: scale[idx] || 0
       }));
 
-      const desc = editedDescriptions[dbEvt.id] || 
-        (dbEvt.description ? dbEvt.description.replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim() : '') ||
-        matchedHistory?.description || 
-        'Themes and guidelines for this cycle.';
+      const isConcluded = evt.status === 'concluded';
+      const cleanDesc = (evt.description || '')
+        .replace(/<!--SUBMISSION_POINTS:\d+-->/g, '')
+        .replace(/<!--.*?-->/g, '')
+        .trim();
 
-      if (winners.length > 0 || !matchedHistory) {
-        list.push({
-          id: dbEvt.id,
-          title: dbEvt.title || matchedHistory?.title || 'Concluded Screenshot Contest',
-          cycleNumber: matchedHistory?.cycleNumber || 6,
-          concludedDate: matchedHistory?.concludedDate || 'Recently Concluded',
-          description: desc,
-          totalSubmissions: evtSubs.length || matchedHistory?.totalSubmissions || 0,
-          totalVotes: evtVotes.length || matchedHistory?.totalVotes || 0,
-          winners: winners.length > 0 ? winners : (matchedHistory?.winners || [])
-        });
-      }
+      const desc = editedDescriptions[evt.id] || cleanDesc || 'Themes and guidelines for this event.';
+
+      list.push({
+        id: evt.id,
+        title: evt.title || `Event #${eventNumber} - Screenshot Contest`,
+        eventNumber,
+        concludedDate: isConcluded ? 'Concluded' : 'In Progress',
+        description: desc,
+        status: evt.status || 'submissions_open',
+        isConcluded,
+        totalSubmissions: evtSubs.length,
+        totalVotes: evtVotes.length,
+        winners
+      });
     }
 
-    // Add historical cycles that aren't already represented
-    for (const hc of HISTORICAL_CYCLES) {
-      if (!list.some(l => l.id === hc.id)) {
-        list.push({
-          ...hc,
-          description: editedDescriptions[hc.id] || hc.description
-        });
-      }
-    }
+    // Sort by eventNumber descending
+    return list.sort((a, b) => b.eventNumber - a.eventNumber);
+  }, [allScreenshotEvents, competitionEvents, allSubmissions, allVotes, editedDescriptions]);
 
-    // Sort by cycleNumber descending
-    return list.sort((a, b) => b.cycleNumber - a.cycleNumber);
-  }, [allScreenshotEvents, allSubmissions, allVotes, activeCompetitionEvent, editedDescriptions]);
-
-  // Selected cycle filter (null = all cycles)
-  const [selectedCycleId, setSelectedCycleId] = useState<string>(() => {
-    return combinedCycles[0]?.id || 'all';
+  // Selected event filter (null = all events)
+  const [selectedEventId, setSelectedEventId] = useState<string>(() => {
+    return combinedEvents[0]?.id || 'all';
   });
 
-  const displayedCycles = useMemo(() => {
-    if (!selectedCycleId || selectedCycleId === 'all') {
-      return combinedCycles;
+  const displayedEvents = useMemo(() => {
+    if (!selectedEventId || selectedEventId === 'all') {
+      return combinedEvents;
     }
-    return combinedCycles.filter(c => c.id === selectedCycleId);
-  }, [combinedCycles, selectedCycleId]);
+    return combinedEvents.filter(e => e.id === selectedEventId);
+  }, [combinedEvents, selectedEventId]);
 
-  const handleStartEditing = (cycle: ArchivedCycle) => {
-    setEditingCycleId(cycle.id);
-    setEditText(cycle.description);
+  const handleStartEditing = (event: ArchivedEvent) => {
+    setEditingEventId(event.id);
+    setEditText(event.description);
     setSaveSuccessNotice(null);
   };
 
-  const handleSaveDescription = async (cycleId: string) => {
+  const handleSaveDescription = async (eventId: string) => {
     setIsSaving(true);
     setSaveSuccessNotice(null);
     try {
       // 1. Save to local storage for instant responsiveness
-      const updated = { ...editedDescriptions, [cycleId]: editText };
+      const updated = { ...editedDescriptions, [eventId]: editText };
       setEditedDescriptions(updated);
       localStorage.setItem('theme_archive_custom_descriptions', JSON.stringify(updated));
 
@@ -190,7 +226,7 @@ export default function ScreenshotThemeArchive({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            eventId: cycleId,
+            eventId: eventId,
             description: editText
           })
         });
@@ -198,9 +234,9 @@ export default function ScreenshotThemeArchive({
         console.warn('Backend update failed, using local storage fallback:', apiErr);
       }
 
-      setSaveSuccessNotice('Archived theme description successfully saved!');
+      setSaveSuccessNotice('Archived event theme description successfully saved!');
       setTimeout(() => setSaveSuccessNotice(null), 4000);
-      setEditingCycleId(null);
+      setEditingEventId(null);
     } catch (err: any) {
       console.error('Failed to save archive description:', err);
     } finally {
@@ -280,7 +316,7 @@ export default function ScreenshotThemeArchive({
                 Screenshot Hall of Fame
               </span>
               <span>·</span>
-              <span>Finished Themes</span>
+              <span>From Event 6 Onwards</span>
               <span>·</span>
               <span>Top 5 Voted Winners</span>
             </div>
@@ -288,40 +324,42 @@ export default function ScreenshotThemeArchive({
               Theme Archive & Hall of Fame
             </h2>
             <p className="text-sm text-slate-300/80 leading-relaxed">
-              Explore previously concluded contest cycles, guidelines, and celebrate the community's top 5 voted screenshots awarded official team competition points.
+              Explore contest event themes, guidelines, and celebrate the community's top 5 voted screenshots awarded official team competition points.
             </p>
           </div>
 
-          {/* Cycle Quick Switcher Segmented Control */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/10 shrink-0">
-            <button
-              onClick={() => setSelectedCycleId('all')}
-              className={cn(
-                "px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
-                selectedCycleId === 'all'
-                  ? currentTeamStyle.btnPrimary
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
-            >
-              All Concluded Cycles ({combinedCycles.length})
-            </button>
-            <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-1 sm:pb-0">
-              {combinedCycles.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => setSelectedCycleId(c.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border",
-                    selectedCycleId === c.id
-                      ? cn(currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder, "shadow-sm")
-                      : "border-transparent text-slate-400 hover:text-white hover:bg-white/5"
-                  )}
-                >
-                  Cycle #{c.cycleNumber}
-                </button>
-              ))}
+          {/* Event Quick Switcher Segmented Control */}
+          {combinedEvents.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/10 shrink-0">
+              <button
+                onClick={() => setSelectedEventId('all')}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
+                  selectedEventId === 'all'
+                    ? currentTeamStyle.btnPrimary
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                )}
+              >
+                All Events ({combinedEvents.length})
+              </button>
+              <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-1 sm:pb-0">
+                {combinedEvents.map(e => (
+                  <button
+                    key={e.id}
+                    onClick={() => setSelectedEventId(e.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border",
+                      selectedEventId === e.id
+                        ? cn(currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder, "shadow-sm")
+                        : "border-transparent text-slate-400 hover:text-white hover:bg-white/5"
+                    )}
+                  >
+                    Event #{e.eventNumber}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -333,213 +371,258 @@ export default function ScreenshotThemeArchive({
         </div>
       )}
 
-      {/* Archived Cycles List */}
-      <div className="space-y-12">
-        {displayedCycles.map(cycle => {
-          const isEditingThisCycle = editingCycleId === cycle.id;
+      {/* Information Banner if Event 6 is currently active and not yet concluded */}
+      {combinedEvents.length > 0 && combinedEvents.some(e => !e.isConcluded) && (
+        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 flex items-start sm:items-center gap-3 text-xs text-slate-300">
+          <Info size={18} className={cn("shrink-0 mt-0.5 sm:mt-0", currentTeamStyle.iconText)} />
+          <div className="space-y-0.5">
+            <p className="font-bold text-white">
+              Screenshot Submissions Active (Event 6 Onwards)
+            </p>
+            <p className="text-slate-400 leading-relaxed">
+              Screenshot submissions on the site officially began with <strong>Event #6</strong>. When an event concludes, its official theme guidelines and community top 5 winners will be permanently archived in the Hall of Fame.
+            </p>
+          </div>
+        </div>
+      )}
 
-          return (
-            <div
-              key={cycle.id}
-              className="rounded-3xl bg-black/40 dark:bg-[#121214] border border-white/10 p-6 md:p-8 space-y-6 shadow-xl"
+      {/* Archived Events List */}
+      {displayedEvents.length === 0 ? (
+        <div className="rounded-3xl bg-black/40 border border-dashed border-white/10 p-12 text-center space-y-4">
+          <Archive size={40} className="mx-auto text-slate-500 opacity-60" />
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-white">
+              No Archived Events from Event 6 Onwards Yet
+            </h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+              Screenshot contest submissions were introduced on the site starting with Event #6. As events conclude, their theme guidelines and top 5 winning screenshots will appear here.
+            </p>
+          </div>
+          {onSwitchToAllSubmissions && (
+            <button
+              onClick={onSwitchToAllSubmissions}
+              className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5", currentTeamStyle.btnPrimary)}
             >
-              {/* Cycle Top Title Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap text-xs text-slate-400">
-                    <span className="font-bold text-white uppercase text-[10px] tracking-wider px-2 py-0.5 rounded bg-white/10 border border-white/10">
-                      Cycle #{cycle.cycleNumber} Concluded
-                    </span>
-                    <span>·</span>
-                    <span className="flex items-center gap-1">
-                      <Calendar size={13} className="text-slate-400" />
-                      {cycle.concludedDate}
-                    </span>
-                    <span>·</span>
-                    <span className="flex items-center gap-1">
-                      <ImageIcon size={13} className="text-slate-400" />
-                      {cycle.totalSubmissions} submissions
-                    </span>
-                    <span>·</span>
-                    <span className="flex items-center gap-1">
-                      <Star size={13} className="text-slate-400" />
-                      {cycle.totalVotes} total votes cast
-                    </span>
+              <Camera size={14} />
+              View Event #6 Submissions
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-12">
+          {displayedEvents.map(event => {
+            const isEditingThisEvent = editingEventId === event.id;
+
+            return (
+              <div
+                key={event.id}
+                className="rounded-3xl bg-black/40 dark:bg-[#121214] border border-white/10 p-6 md:p-8 space-y-6 shadow-xl"
+              >
+                {/* Event Top Title Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap text-xs text-slate-400">
+                      <span className={cn(
+                        "font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded border",
+                        event.isConcluded
+                          ? "bg-slate-500/20 text-slate-300 border-slate-500/30"
+                          : cn(currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)
+                      )}>
+                        Event #{event.eventNumber} {event.isConcluded ? 'Concluded' : '(Active Event)'}
+                      </span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">
+                        <Calendar size={13} className="text-slate-400" />
+                        {event.concludedDate}
+                      </span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">
+                        <ImageIcon size={13} className="text-slate-400" />
+                        {event.totalSubmissions} submissions
+                      </span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">
+                        <Star size={13} className="text-slate-400" />
+                        {event.totalVotes} total votes cast
+                      </span>
+                    </div>
+                    <h3 className="text-xl md:text-2xl font-black text-white tracking-tight pt-1">
+                      {event.title}
+                    </h3>
                   </div>
-                  <h3 className="text-xl md:text-2xl font-black text-white tracking-tight pt-1">
-                    {cycle.title}
-                  </h3>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isAdmin && !isEditingThisEvent && (
+                      <button
+                        onClick={() => handleStartEditing(event)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95",
+                          currentTeamStyle.btnSubtle
+                        )}
+                      >
+                        <Edit3 size={13} />
+                        Edit Theme (Markdown)
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {isAdmin && !isEditingThisCycle && (
-                    <button
-                      onClick={() => handleStartEditing(cycle)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95",
-                        currentTeamStyle.btnSubtle
-                      )}
-                    >
-                      <Edit3 size={13} />
-                      Edit Theme (Markdown)
-                    </button>
+                {/* Theme Description & Criteria Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                      <Sparkles size={13} className={currentTeamStyle.iconText} />
+                      Theme Guidelines & Submission Criteria
+                    </span>
+                  </div>
+
+                  {isEditingThisEvent ? (
+                    <div className="bg-black/50 border border-white/10 rounded-2xl p-4 md:p-5">
+                      <SteamgiftsMarkdownEditor
+                        value={editText}
+                        onChange={setEditText}
+                        placeholder="Add or update markdown guidelines for this event..."
+                        teamStyle={currentTeamStyle}
+                        isSaving={isSaving}
+                        onSave={() => handleSaveDescription(event.id)}
+                        onCancel={() => setEditingEventId(null)}
+                        saveButtonText="Save Theme Markdown"
+                        title={`Editing Event #${event.eventNumber} Guidelines`}
+                      />
+                    </div>
+                  ) : (
+                    <div className={cn(
+                      "rounded-2xl p-5 md:p-6 border bg-gradient-to-br shadow-inner",
+                      currentTeamStyle.cardBg,
+                      currentTeamStyle.cardBorder
+                    )}>
+                      <SteamgiftsMarkdown
+                        content={event.description}
+                        teamAccent={currentTeamStyle.iconText}
+                        teamStyle={currentTeamStyle}
+                      />
+                    </div>
                   )}
                 </div>
-              </div>
 
-              {/* Theme Description & Criteria Section */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Sparkles size={13} className={currentTeamStyle.iconText} />
-                    Theme Guidelines & Submission Criteria
-                  </span>
-                </div>
-
-                {isEditingThisCycle ? (
-                  <div className="bg-black/50 border border-white/10 rounded-2xl p-4 md:p-5">
-                    <SteamgiftsMarkdownEditor
-                      value={editText}
-                      onChange={setEditText}
-                      placeholder="Add or update markdown guidelines for this cycle..."
-                      teamStyle={currentTeamStyle}
-                      isSaving={isSaving}
-                      onSave={() => handleSaveDescription(cycle.id)}
-                      onCancel={() => setEditingCycleId(null)}
-                      saveButtonText="Save Theme Markdown"
-                      title={`Editing Cycle #${cycle.cycleNumber} Guidelines`}
-                    />
+                {/* Top 5 Winning Submissions Section */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                    <div className="flex items-center gap-2">
+                      <Trophy size={18} className="text-amber-400" />
+                      <h4 className="text-base md:text-lg font-black text-white tracking-tight">
+                        {event.isConcluded ? "Winning Submissions (Top 5 with the Most Votes)" : "Current Standings / Featured Submissions"}
+                      </h4>
+                    </div>
+                    <span className="text-xs text-slate-400">
+                      {event.isConcluded 
+                        ? "Awarded official team rewards: +50, +40, +30, +20, +10 points"
+                        : "Official winner points will be awarded upon event conclusion"}
+                    </span>
                   </div>
-                ) : (
-                  <div className={cn(
-                    "rounded-2xl p-5 md:p-6 border bg-gradient-to-br shadow-inner",
-                    currentTeamStyle.cardBg,
-                    currentTeamStyle.cardBorder
-                  )}>
-                    <SteamgiftsMarkdown
-                      content={cycle.description}
-                      teamAccent={currentTeamStyle.iconText}
-                      teamStyle={currentTeamStyle}
-                    />
-                  </div>
-                )}
-              </div>
 
-              {/* Top 5 Winning Submissions Section */}
-              <div className="space-y-4 pt-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <Trophy size={18} className="text-amber-400" />
-                    <h4 className="text-base md:text-lg font-black text-white tracking-tight">
-                      Winning Submissions (Top 5 with the Most Votes)
-                    </h4>
-                  </div>
-                  <span className="text-xs text-slate-400">
-                    Awarded official team rewards: +50, +40, +30, +20, +10 points
-                  </span>
-                </div>
+                  {event.winners && event.winners.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                      {event.winners.map(winner => (
+                        <div
+                          key={winner.id}
+                          onClick={() => onOpenLightbox(winner.id)}
+                          className="group relative flex flex-col bg-black/60 dark:bg-white/[0.03] border border-white/10 hover:border-white/30 rounded-2xl overflow-hidden shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+                        >
+                          {/* Image Container with hover zoom */}
+                          <div className="relative aspect-video w-full overflow-hidden bg-black/80">
+                            <img
+                              src={winner.image_url}
+                              alt={`${winner.game_name} submission`}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 opacity-80 group-hover:opacity-60 transition-opacity" />
 
-                {cycle.winners && cycle.winners.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                    {cycle.winners.map(winner => (
-                      <div
-                        key={winner.id}
-                        onClick={() => onOpenLightbox(winner.id)}
-                        className="group relative flex flex-col bg-black/60 dark:bg-white/[0.03] border border-white/10 hover:border-white/30 rounded-2xl overflow-hidden shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-                      >
-                        {/* Image Container with hover zoom */}
-                        <div className="relative aspect-video w-full overflow-hidden bg-black/80">
-                          <img
-                            src={winner.image_url}
-                            alt={`${winner.game_name} winning submission`}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 opacity-80 group-hover:opacity-60 transition-opacity" />
+                            {/* Rank Badge at top left */}
+                            <div className="absolute top-2.5 left-2.5">
+                              {rankBadge(winner.rank)}
+                            </div>
 
-                          {/* Rank Badge at top left */}
-                          <div className="absolute top-2.5 left-2.5">
-                            {rankBadge(winner.rank)}
-                          </div>
-
-                          {/* Vote Count Badge at top right */}
-                          <div className="absolute top-2.5 right-2.5">
-                            <span className="flex items-center gap-1 bg-black/70 backdrop-blur-md border border-white/20 text-white font-black text-[10px] px-2 py-0.5 rounded-lg shadow-md">
-                              <Star size={11} className="fill-amber-400 text-amber-400" />
-                              {winner.votes_count} votes
-                            </span>
-                          </div>
-
-                          {/* Hover Lightbox Indicator */}
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            <span className="bg-black/80 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 flex items-center gap-1.5 shadow-xl">
-                              <Eye size={13} /> View Fullscreen
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Card Details */}
-                        <div className="p-3.5 flex flex-col justify-between flex-1 space-y-2.5">
-                          <div className="space-y-1">
-                            <p className="text-xs font-bold text-white group-hover:text-sky-300 transition-colors line-clamp-1">
-                              {winner.game_name}
-                            </p>
-                            {winner.caption && (
-                              <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed italic">
-                                "{winner.caption}"
-                              </p>
-                            )}
-                          </div>
-
-                          {/* User info & Team badge */}
-                          <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
-                            <div 
-                              onClick={(e) => {
-                                if (onViewProfile && winner.user_id) {
-                                  e.stopPropagation();
-                                  onViewProfile(winner.user_id);
-                                }
-                              }}
-                              className="flex items-center gap-1.5 min-w-0 hover:opacity-80 transition-opacity"
-                            >
-                              {winner.user_avatar ? (
-                                <img
-                                  src={winner.user_avatar}
-                                  alt={winner.user_name}
-                                  className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/20"
-                                />
-                              ) : (
-                                <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-                                  <User size={10} className="text-white/70" />
-                                </div>
-                              )}
-                              <span className="text-xs font-medium text-slate-300 truncate">
-                                {winner.user_name}
+                            {/* Vote Count Badge at top right */}
+                            <div className="absolute top-2.5 right-2.5">
+                              <span className="flex items-center gap-1 bg-black/70 backdrop-blur-md border border-white/20 text-white font-black text-[10px] px-2 py-0.5 rounded-lg shadow-md">
+                                <Star size={11} className="fill-amber-400 text-amber-400" />
+                                {winner.votes_count} votes
                               </span>
                             </div>
 
-                            <span className={cn(
-                              "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0",
-                              teamBadgeColor(winner.user_team)
-                            )}>
-                              Team {winner.user_team}
-                            </span>
+                            {/* Hover Lightbox Indicator */}
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                              <span className="bg-black/80 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 flex items-center gap-1.5 shadow-xl">
+                                <Eye size={13} /> View Fullscreen
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Card Details */}
+                          <div className="p-3.5 flex flex-col justify-between flex-1 space-y-2.5">
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-white group-hover:text-sky-300 transition-colors line-clamp-1">
+                                {winner.game_name}
+                              </p>
+                              {winner.caption && (
+                                <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed italic">
+                                  "{winner.caption}"
+                                </p>
+                              )}
+                            </div>
+
+                            {/* User info & Team badge */}
+                            <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
+                              <div 
+                                onClick={(e) => {
+                                  if (onViewProfile && winner.user_id) {
+                                    e.stopPropagation();
+                                    onViewProfile(winner.user_id);
+                                  }
+                                }}
+                                className="flex items-center gap-1.5 min-w-0 hover:opacity-80 transition-opacity"
+                              >
+                                {winner.user_avatar ? (
+                                  <img
+                                    src={winner.user_avatar}
+                                    alt={winner.user_name}
+                                    className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/20"
+                                  />
+                                ) : (
+                                  <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                                    <User size={10} className="text-white/70" />
+                                  </div>
+                                )}
+                                <span className="text-xs font-medium text-slate-300 truncate">
+                                  {winner.user_name}
+                                </span>
+                              </div>
+
+                              <span className={cn(
+                                "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0",
+                                teamBadgeColor(winner.user_team)
+                              )}>
+                                Team {winner.user_team}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center bg-black/20 rounded-2xl border border-dashed border-white/10 text-slate-400 text-xs">
-                    <Trophy size={24} className="mx-auto mb-2 opacity-40" />
-                    <p>No winning submissions recorded for this cycle yet.</p>
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center bg-black/20 rounded-2xl border border-dashed border-white/10 text-slate-400 text-xs">
+                      <Trophy size={24} className="mx-auto mb-2 opacity-40" />
+                      <p>No winning submissions recorded for this event yet.</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
