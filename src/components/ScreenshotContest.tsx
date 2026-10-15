@@ -5,7 +5,7 @@ import {
   Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, Users, BarChart3, UserCheck, Search, ListFilter,
   Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown, ExternalLink,
-  Archive, Medal
+  Archive, Medal, CheckSquare, Square
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -272,7 +272,7 @@ export default function ScreenshotContest({
     );
   };
 
-  // Filter and view state
+  // Filter & view state
   const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine' | 'rejected' | 'archive'>('all');
   const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
     const saved = localStorage.getItem('screenshot_view_mode');
@@ -328,14 +328,14 @@ export default function ScreenshotContest({
     targetGameName?: string;
   } | null>(null);
 
-  // Notice modal for voting status and rules
+  // Notice modal for voting status & rules
   const [votingNotice, setVotingNotice] = useState<{ title: string; message: string } | null>(null);
 
   // Admin tally result modal
   const [tallyResults, setTallyResults] = useState<any[] | null>(null);
   const [isTallying, setIsTallying] = useState(false);
 
-  // Admin user submission counts breakdown modal and user filter
+  // Admin user submission counts breakdown modal & user filter
   const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
   const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -347,6 +347,21 @@ export default function ScreenshotContest({
   const [isSavingTheme, setIsSavingTheme] = useState<boolean>(false);
   const [themeSaveError, setThemeSaveError] = useState<string | null>(null);
   const [showThemeToast, setShowThemeToast] = useState<boolean>(false);
+
+  // Bulk Selection & Operations state for Admins
+  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
+  const [isBulkSelectActive, setIsBulkSelectActive] = useState<boolean>(false);
+  const [bulkEditModalOpen, setBulkEditModalOpen] = useState<boolean>(false);
+  const [bulkProcessing, setBulkProcessing] = useState<boolean>(false);
+  const [bulkFeedbackToast, setBulkFeedbackToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Bulk Edit Form state
+  const [bulkEditStatus, setBulkEditStatus] = useState<'keep' | 'approved' | 'pending' | 'rejected'>('keep');
+  const [bulkEditGameNameMode, setBulkEditGameNameMode] = useState<'keep' | 'set'>('keep');
+  const [bulkEditGameName, setBulkEditGameName] = useState<string>('');
+  const [bulkEditSpoilerMode, setBulkEditSpoilerMode] = useState<'keep' | 'mark' | 'unmark'>('keep');
+  const [bulkEditCaptionMode, setBulkEditCaptionMode] = useState<'keep' | 'replace' | 'append' | 'prepend'>('keep');
+  const [bulkEditCaptionText, setBulkEditCaptionText] = useState<string>('');
 
   const cleanThemeDescription = useMemo(() => {
     if (!event?.description) return '';
@@ -566,7 +581,7 @@ interface UserSubmissionStat {
   games: string[];
 }
 
-  // Calculate per-user submission counts and stats for admin view and user indicators
+  // Calculate per-user submission counts & stats for admin view and user indicators
   const userSubmissionCounts = useMemo<Record<string, UserSubmissionStat>>(() => {
     const map: Record<string, UserSubmissionStat> = {};
 
@@ -1431,6 +1446,193 @@ interface UserSubmissionStat {
     }
   };
 
+  // --- ADMIN BULK SELECTION & OPERATIONS ---
+  const handleToggleSelectSub = (subId: string) => {
+    setSelectedSubIds(prev => {
+      const exists = prev.includes(subId);
+      if (exists) {
+        const next = prev.filter(id => id !== subId);
+        if (next.length === 0) setIsBulkSelectActive(false);
+        return next;
+      } else {
+        setIsBulkSelectActive(true);
+        return [...prev, subId];
+      }
+    });
+  };
+
+  const handleSelectAllVisible = () => {
+    const allIds = filteredSubmissions.map(s => s.id);
+    setSelectedSubIds(allIds);
+    setIsBulkSelectActive(true);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedSubIds([]);
+    setIsBulkSelectActive(false);
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedSubIds.length === 0) return;
+    const adminName = user?.steamName || user?.discordName || 'Admin';
+    const count = selectedSubIds.length;
+    setBulkProcessing(true);
+
+    // Optimistic local update
+    setSubmissions(prev => prev.map(s => selectedSubIds.includes(s.id) ? {
+      ...s,
+      status: 'approved',
+      approved_by: adminName,
+      approved_at: new Date().toISOString()
+    } : s));
+
+    try {
+      const res = await fetch('/api/screenshots?action=admin-bulk-set-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submissionIds: selectedSubIds,
+          status: 'approved',
+          adminName
+        })
+      });
+      if (res.ok) {
+        setSelectedSubIds([]);
+        setIsBulkSelectActive(false);
+        setBulkFeedbackToast({ type: 'success', message: `Successfully approved ${count} screenshot${count > 1 ? 's' : ''}!` });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
+        fetchData();
+        window.dispatchEvent(new Event('leaderboard-updated'));
+      } else {
+        const d = await safeParseResponse(res);
+        setBulkFeedbackToast({ type: 'error', message: `Bulk approve failed: ${d.error || 'Server error'}` });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to bulk approve:', err);
+      setBulkFeedbackToast({ type: 'error', message: 'Failed to bulk approve submissions.' });
+      setTimeout(() => setBulkFeedbackToast(null), 4000);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedSubIds.length === 0) return;
+    const count = selectedSubIds.length;
+    if (!confirm(`Are you sure you want to reject ${count} screenshot submission${count > 1 ? 's' : ''}? This will remove awarded points and any voting entries.`)) {
+      return;
+    }
+    const adminName = user?.steamName || user?.discordName || 'Admin';
+    setBulkProcessing(true);
+
+    // Optimistic local update
+    setSubmissions(prev => prev.map(s => selectedSubIds.includes(s.id) ? {
+      ...s,
+      status: 'rejected',
+      is_selected: false,
+      approved_by: adminName,
+      approved_at: new Date().toISOString()
+    } : s));
+
+    try {
+      const res = await fetch('/api/screenshots?action=admin-bulk-set-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submissionIds: selectedSubIds,
+          status: 'rejected',
+          adminName
+        })
+      });
+      if (res.ok) {
+        setSelectedSubIds([]);
+        setIsBulkSelectActive(false);
+        setBulkFeedbackToast({ type: 'success', message: `Successfully rejected ${count} screenshot${count > 1 ? 's' : ''}.` });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
+        fetchData();
+        window.dispatchEvent(new Event('leaderboard-updated'));
+      } else {
+        const d = await safeParseResponse(res);
+        setBulkFeedbackToast({ type: 'error', message: `Bulk reject failed: ${d.error || 'Server error'}` });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to bulk reject:', err);
+      setBulkFeedbackToast({ type: 'error', message: 'Failed to bulk reject submissions.' });
+      setTimeout(() => setBulkFeedbackToast(null), 4000);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleOpenBulkEdit = () => {
+    if (selectedSubIds.length === 0) return;
+    setBulkEditStatus('keep');
+    setBulkEditGameNameMode('keep');
+    setBulkEditGameName('');
+    setBulkEditSpoilerMode('keep');
+    setBulkEditCaptionMode('keep');
+    setBulkEditCaptionText('');
+    setBulkEditModalOpen(true);
+  };
+
+  const handleSaveBulkEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedSubIds.length === 0) return;
+    const adminName = user?.steamName || user?.discordName || 'Admin';
+    const count = selectedSubIds.length;
+    setBulkProcessing(true);
+
+    const payload: any = {
+      submissionIds: selectedSubIds,
+      adminName
+    };
+
+    if (bulkEditStatus !== 'keep') {
+      payload.status = bulkEditStatus;
+    }
+    if (bulkEditGameNameMode === 'set' && bulkEditGameName.trim()) {
+      payload.gameName = bulkEditGameName.trim();
+    }
+    if (bulkEditSpoilerMode === 'mark') {
+      payload.isSpoiler = true;
+    } else if (bulkEditSpoilerMode === 'unmark') {
+      payload.isSpoiler = false;
+    }
+    if (bulkEditCaptionMode !== 'keep') {
+      payload.captionMode = bulkEditCaptionMode;
+      payload.captionText = bulkEditCaptionText;
+    }
+
+    try {
+      const res = await fetch('/api/screenshots?action=admin-bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setBulkEditModalOpen(false);
+        setSelectedSubIds([]);
+        setIsBulkSelectActive(false);
+        setBulkFeedbackToast({ type: 'success', message: `Successfully updated ${count} screenshot${count > 1 ? 's' : ''}!` });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
+        fetchData();
+        window.dispatchEvent(new Event('leaderboard-updated'));
+      } else {
+        const d = await safeParseResponse(res);
+        setBulkFeedbackToast({ type: 'error', message: `Bulk edit failed: ${d.error || 'Server error'}` });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to bulk edit:', err);
+      setBulkFeedbackToast({ type: 'error', message: 'Failed to update screenshots.' });
+      setTimeout(() => setBulkFeedbackToast(null), 4000);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
   const handleAdminTallyPoints = async () => {
     if (!confirm('Calculate top 5 voted screenshots and award +50, +40, +30, +20, +10 points to winning teams?')) return;
     setIsTallying(true);
@@ -1519,7 +1721,7 @@ interface UserSubmissionStat {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-      {/* Admin Early Access Lock Notice and Settings Box */}
+      {/* Admin Early Access Lock Notice & Settings Box */}
       {user?.isAdmin && (
         <div className="bg-slate-500/10 border border-slate-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1578,7 +1780,7 @@ interface UserSubmissionStat {
               )}
             >
               <Sparkles size={14} className={currentTeamStyle.iconText} />
-              Theme and Description
+              Theme & Description
             </button>
 
             <button
@@ -1609,7 +1811,7 @@ interface UserSubmissionStat {
               className="bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
             >
               <Trophy size={14} />
-              {isTallying ? 'Calculating...' : 'Tally and Award Points'}
+              {isTallying ? 'Calculating...' : 'Tally & Award Points'}
             </button>
           </div>
         </div>
@@ -1759,7 +1961,7 @@ interface UserSubmissionStat {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
-                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes and Guidelines` : "Current Event's Themes and Guidelines"}
+                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes & Guidelines` : "Current Event's Themes & Guidelines"}
                         </h3>
                         <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border", currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)}>
                           {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
@@ -1813,7 +2015,7 @@ interface UserSubmissionStat {
                         setThemeSaveError(null);
                       }}
                       saveButtonText="Save Theme Description"
-                      title="Editing Event Themes and Guidelines (Steamgifts Markdown)"
+                      title="Editing Event Themes & Guidelines (Steamgifts Markdown)"
                     />
                     {themeSaveError && (
                       <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
@@ -1823,7 +2025,7 @@ interface UserSubmissionStat {
                     )}
                   </div>
                 ) : (
-                  /* Display Mode for Users and Admins (Steamgifts Markdown) */
+                  /* Display Mode for Users & Admins (Steamgifts Markdown) */
                   <div className="space-y-3 pt-1">
                     {cleanThemeDescription ? (
                       <div className="bg-black/25 dark:bg-black/35 p-5 md:p-6 rounded-2xl border border-white/10 space-y-4 shadow-sm">
@@ -1845,7 +2047,7 @@ interface UserSubmissionStat {
                             )}
                           >
                             <Archive size={13} />
-                            View Past Finished Themes and Top 5 Winners Archive →
+                            View Past Finished Themes & Top 5 Winners Archive →
                           </button>
                           <span className="text-[11px] text-white/40 italic">
                             Formatted with Steamgifts Markdown
@@ -2110,7 +2312,7 @@ interface UserSubmissionStat {
         </div>
       </div>
 
-      {/* Navigation and Controls Bar */}
+      {/* Navigation & Controls Bar */}
       <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-black/5 dark:border-white/5 pb-4">
         {/* Tabs */}
         <div className="flex items-center gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
@@ -2182,7 +2384,7 @@ interface UserSubmissionStat {
           )}
         </div>
 
-        {/* Right Controls: View Switcher and Search Bar */}
+        {/* Right Controls: View Switcher & Search Bar */}
         {activeTab !== 'archive' && (
           <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
             {/* View Mode Toggle: Gallery vs List */}
@@ -2221,6 +2423,36 @@ interface UserSubmissionStat {
                 <span className="hidden sm:inline">List</span>
               </button>
             </div>
+
+            {/* Admin Bulk Select Toggle Button */}
+            {user?.isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedSubIds.length > 0) {
+                    setSelectedSubIds([]);
+                    setIsBulkSelectActive(false);
+                  } else {
+                    setIsBulkSelectActive(!isBulkSelectActive);
+                  }
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0",
+                  (isBulkSelectActive || selectedSubIds.length > 0)
+                    ? "bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm"
+                    : "text-slate-500 dark:text-white/60 hover:text-slate-900 dark:hover:text-white bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10"
+                )}
+                title="Toggle Bulk Select Mode"
+              >
+                <CheckSquare size={14} className={selectedSubIds.length > 0 ? "text-sky-400" : ""} />
+                <span className="hidden sm:inline">Bulk Select</span>
+                {selectedSubIds.length > 0 && (
+                  <span className="bg-sky-500 text-black text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                    {selectedSubIds.length}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Search Input */}
             <div className="relative w-full sm:w-64">
@@ -2280,13 +2512,15 @@ interface UserSubmissionStat {
             const hasVoted = myVotedSubIds.has(sub.id);
             const isMine = sub.user_id === currentUserId;
             const subComments = comments.filter(c => c.submission_id === sub.id);
+            const isSelected = selectedSubIds.includes(sub.id);
 
             return (
               <div
                 key={sub.id}
                 className={cn(
                   "group relative bg-white dark:bg-[#111111] rounded-xl sm:rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden shadow-md dark:shadow-none flex flex-col justify-between transition-all",
-                  hoverBorderClass
+                  hoverBorderClass,
+                  isSelected && "ring-2 ring-sky-400 border-sky-400 dark:border-sky-400 shadow-lg shadow-sky-500/15"
                 )}
               >
                 {/* Image Container */}
@@ -2332,9 +2566,29 @@ interface UserSubmissionStat {
 
                   {/* Top Badges */}
                   <div className="absolute top-2 left-2 right-2 sm:top-3 sm:left-3 sm:right-3 flex items-center justify-between gap-1 sm:gap-2 z-20 pointer-events-none">
-                    <span className="bg-black/70 backdrop-blur-md text-white/90 font-bold text-[9px] sm:text-[11px] px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg border border-white/10 truncate max-w-[80px] sm:max-w-[160px]">
-                      {sub.game_name}
-                    </span>
+                    <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto">
+                      {user?.isAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelectSub(sub.id);
+                          }}
+                          title={isSelected ? "Deselect Screenshot" : "Select for bulk action"}
+                          className={cn(
+                            "p-1 sm:p-1.5 rounded-md sm:rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-md",
+                            isSelected
+                              ? "bg-sky-500 text-black ring-1 ring-sky-300"
+                              : "bg-black/75 hover:bg-black text-white/80 hover:text-white border border-white/20"
+                          )}
+                        >
+                          {isSelected ? <CheckSquare size={12} className="stroke-[2.5]" /> : <Square size={12} />}
+                        </button>
+                      )}
+                      <span className="bg-black/70 backdrop-blur-md text-white/90 font-bold text-[9px] sm:text-[11px] px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg border border-white/10 truncate max-w-[80px] sm:max-w-[160px]">
+                        {sub.game_name}
+                      </span>
+                    </div>
 
                     <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto">
                       {isExternalLinkImage(sub.image_url) && (
@@ -2633,7 +2887,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Actions and Footer */}
+                  {/* Actions & Footer */}
                   <div className="pt-2 sm:pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1 sm:gap-2">
                     {/* Set for Voting toggle if it's user's submission */}
                     {isMine ? (
@@ -2707,6 +2961,7 @@ interface UserSubmissionStat {
             const hasVoted = myVotedSubIds.has(sub.id);
             const isMine = sub.user_id === currentUserId;
             const subComments = comments.filter(c => c.submission_id === sub.id);
+            const isSelected = selectedSubIds.includes(sub.id);
 
             return (
               <motion.div
@@ -2716,9 +2971,28 @@ interface UserSubmissionStat {
                 animate={{ opacity: 1, y: 0 }}
                 className={cn(
                   "group relative bg-white dark:bg-[#111111] rounded-2xl border border-black/5 dark:border-white/10 p-3.5 sm:p-4 shadow-md dark:shadow-none transition-all flex flex-col sm:flex-row items-stretch sm:items-center gap-4 hover:border-black/20 dark:hover:border-white/20",
-                  hoverBorderClass
+                  hoverBorderClass,
+                  isSelected && "ring-2 ring-sky-400 border-sky-400 dark:border-sky-400 bg-sky-500/[0.04]"
                 )}
               >
+                {/* Admin Bulk Checkbox in List View */}
+                {user?.isAdmin && (
+                  <div className="shrink-0 flex items-center justify-start sm:justify-center self-start sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSelectSub(sub.id)}
+                      title={isSelected ? "Deselect Screenshot" : "Select for bulk action"}
+                      className={cn(
+                        "p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-sm",
+                        isSelected
+                          ? "bg-sky-500 text-black ring-1 ring-sky-300"
+                          : "bg-black/5 dark:bg-white/5 hover:bg-black/15 dark:hover:bg-white/15 text-slate-700 dark:text-white/70 border border-black/10 dark:border-white/20"
+                      )}
+                    >
+                      {isSelected ? <CheckSquare size={16} className="stroke-[2.5]" /> : <Square size={16} />}
+                    </button>
+                  </div>
+                )}
                 {/* Left Thumbnail with Lightbox trigger */}
                 <div
                   onClick={() => setLightboxSubId(sub.id)}
@@ -2741,7 +3015,7 @@ interface UserSubmissionStat {
                     </div>
                   )}
 
-                  {/* Spoiler Tag and Reveal Button */}
+                  {/* Spoiler Tag & Reveal Button */}
                   {isSpoilerHidden && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-black/60 backdrop-blur-md z-10 text-center gap-1">
                       <span className="text-[10px] font-black uppercase tracking-wider text-red-400">Spoiler</span>
@@ -2767,7 +3041,7 @@ interface UserSubmissionStat {
 
                 {/* Center Content Section */}
                 <div className="flex-1 min-w-0 space-y-2">
-                  {/* Top Row: User Avatar, Name, Team, Date and Badges */}
+                  {/* Top Row: User Avatar, Name, Team, Date & Badges */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 truncate">
                       {sub.user_avatar ? (
@@ -2797,7 +3071,7 @@ interface UserSubmissionStat {
                       </span>
                     </div>
 
-                    {/* Status and Voting Badges */}
+                    {/* Status & Voting Badges */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       {/* Color-coded status badge matching team color with Tooltip */}
                       {(() => {
@@ -2887,7 +3161,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Caption and Game */}
+                  {/* Caption & Game */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold dark:text-white/90 text-slate-700">
@@ -2942,7 +3216,7 @@ interface UserSubmissionStat {
                     {/* Comments Button */}
                     <button
                       onClick={() => setActiveCommentSubId(sub.id)}
-                      title="View and Add Comments"
+                      title="View & Add Comments"
                       className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5 cursor-pointer border border-black/5 dark:border-white/5"
                     >
                       <MessageSquare size={14} />
@@ -3448,7 +3722,7 @@ interface UserSubmissionStat {
         )}
       </AnimatePresence>
 
-      {/* VOTING STATUS and RULES NOTICE MODAL */}
+      {/* VOTING STATUS & RULES NOTICE MODAL */}
       <AnimatePresence>
         {votingNotice && (
           <div 
@@ -3564,6 +3838,375 @@ interface UserSubmissionStat {
         )}
       </AnimatePresence>
 
+      {/* ADMIN BULK EDIT MODAL */}
+      <AnimatePresence>
+        {bulkEditModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-6 max-w-xl w-full space-y-5 shadow-2xl my-8 max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl">
+                    <Edit3 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      Bulk Edit Screenshots
+                      <span className="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-black px-2 py-0.5 rounded-full">
+                        {selectedSubIds.length} Selected
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-white/50">Changes apply to all selected submissions simultaneously</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBulkEditModalOpen(false)}
+                  className="p-1.5 text-white/50 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Selected Screenshots Thumbnail Carousel */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold text-white/70">Selected Screenshots ({selectedSubIds.length})</label>
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                  {submissions
+                    .filter(s => selectedSubIds.includes(s.id))
+                    .map(sub => (
+                      <div
+                        key={sub.id}
+                        className="relative w-24 h-16 shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/60 group"
+                        title={`${sub.game_name} by ${sub.user_name || 'User'}`}
+                      >
+                        <img src={sub.image_url} alt={sub.game_name} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-1 pointer-events-none">
+                          <span className="text-[9px] font-bold text-white truncate">{sub.game_name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelectSub(sub.id)}
+                          className="absolute top-1 right-1 p-0.5 bg-black/70 hover:bg-red-600 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remove from selection"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Bulk Form */}
+              <form onSubmit={handleSaveBulkEdit} className="space-y-4">
+                {/* 1. Status */}
+                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-2">
+                  <label className="block text-[11px] font-bold text-white/80">Approval Status</label>
+                  <select
+                    value={bulkEditStatus}
+                    onChange={(e) => setBulkEditStatus(e.target.value as any)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-400"
+                  >
+                    <option value="keep">Keep Current Statuses (No Change)</option>
+                    <option value="approved">Mark All as Approved</option>
+                    <option value="pending">Mark All as Pending Review</option>
+                    <option value="rejected">Mark All as Rejected</option>
+                  </select>
+                </div>
+
+                {/* 2. Game Title */}
+                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-2">
+                  <label className="block text-[11px] font-bold text-white/80">Game Title</label>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setBulkEditGameNameMode('keep')}
+                      className={cn(
+                        "p-2 rounded-xl border text-center font-bold transition-all cursor-pointer",
+                        bulkEditGameNameMode === 'keep'
+                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                          : "bg-black/30 text-white/60 border-white/5 hover:border-white/20"
+                      )}
+                    >
+                      Keep Current Titles
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkEditGameNameMode('set')}
+                      className={cn(
+                        "p-2 rounded-xl border text-center font-bold transition-all cursor-pointer",
+                        bulkEditGameNameMode === 'set'
+                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                          : "bg-black/30 text-white/60 border-white/5 hover:border-white/20"
+                      )}
+                    >
+                      Change All Game Titles
+                    </button>
+                  </div>
+                  {bulkEditGameNameMode === 'set' && (
+                    <input
+                      type="text"
+                      placeholder="Enter new game title for all selected..."
+                      value={bulkEditGameName}
+                      onChange={(e) => setBulkEditGameName(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-sky-400 mt-2"
+                      required
+                    />
+                  )}
+                </div>
+
+                {/* 3. Spoiler Blur */}
+                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-2">
+                  <label className="block text-[11px] font-bold text-white/80">Spoiler Tag</label>
+                  <div className="grid grid-cols-3 gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setBulkEditSpoilerMode('keep')}
+                      className={cn(
+                        "p-2 rounded-xl border text-center font-bold transition-all cursor-pointer",
+                        bulkEditSpoilerMode === 'keep'
+                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                          : "bg-black/30 text-white/60 border-white/5 hover:border-white/20"
+                      )}
+                    >
+                      Keep Current
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkEditSpoilerMode('mark')}
+                      className={cn(
+                        "p-2 rounded-xl border text-center font-bold transition-all cursor-pointer",
+                        bulkEditSpoilerMode === 'mark'
+                          ? "bg-red-500/20 text-red-300 border-red-500/40"
+                          : "bg-black/30 text-white/60 border-white/5 hover:border-white/20"
+                      )}
+                    >
+                      Blur (Spoiler)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkEditSpoilerMode('unmark')}
+                      className={cn(
+                        "p-2 rounded-xl border text-center font-bold transition-all cursor-pointer",
+                        bulkEditSpoilerMode === 'unmark'
+                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                          : "bg-black/30 text-white/60 border-white/5 hover:border-white/20"
+                      )}
+                    >
+                      Remove Blur
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Caption / Notes */}
+                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-2">
+                  <label className="block text-[11px] font-bold text-white/80">Caption / Admin Notes</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+                    {[
+                      { id: 'keep', label: 'Keep Current' },
+                      { id: 'replace', label: 'Replace All' },
+                      { id: 'append', label: 'Append Text' },
+                      { id: 'prepend', label: 'Prepend Text' }
+                    ].map(mode => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setBulkEditCaptionMode(mode.id as any)}
+                        className={cn(
+                          "p-2 rounded-xl border text-center font-bold transition-all cursor-pointer",
+                          bulkEditCaptionMode === mode.id
+                            ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                            : "bg-black/30 text-white/60 border-white/5 hover:border-white/20"
+                        )}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                  {bulkEditCaptionMode !== 'keep' && (
+                    <textarea
+                      rows={2}
+                      placeholder={
+                        bulkEditCaptionMode === 'replace'
+                          ? "New caption text to replace all selected..."
+                          : bulkEditCaptionMode === 'append'
+                          ? "Note to append to existing captions..."
+                          : "Note to prepend before existing captions..."
+                      }
+                      value={bulkEditCaptionText}
+                      onChange={(e) => setBulkEditCaptionText(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-sky-400 mt-2"
+                    />
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setBulkEditModalOpen(false)}
+                    className="px-4 py-2 text-xs text-white/60 hover:text-white font-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={bulkProcessing}
+                    className="bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-black font-black text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-sky-500/25 flex items-center gap-1.5"
+                  >
+                    {bulkProcessing ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>Updating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} className="stroke-[3]" />
+                        <span>Apply Changes to {selectedSubIds.length} Screenshots</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FLOATING BULK ACTIONS BAR (FOR ADMINS) */}
+      <AnimatePresence>
+        {user?.isAdmin && selectedSubIds.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 60, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 60, scale: 0.95 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-2xl bg-slate-950/95 dark:bg-[#0c0d12]/95 backdrop-blur-xl border border-sky-500/40 rounded-2xl p-3 sm:p-3.5 shadow-2xl shadow-black/90 flex flex-wrap items-center justify-between gap-3 text-white ring-1 ring-white/10"
+          >
+            {/* Left Status & Selection info */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedSubIds.length === filteredSubmissions.length) {
+                    handleClearSelection();
+                  } else {
+                    handleSelectAllVisible();
+                  }
+                }}
+                className="p-1 rounded-lg bg-sky-500 text-black hover:bg-sky-400 transition-colors cursor-pointer"
+                title={selectedSubIds.length === filteredSubmissions.length ? "Deselect All" : "Select All Visible"}
+              >
+                <CheckSquare size={16} className="stroke-[2.5]" />
+              </button>
+              <div>
+                <span className="text-xs font-black text-white block">
+                  {selectedSubIds.length} of {filteredSubmissions.length} Selected
+                </span>
+                <div className="flex items-center gap-2 text-[10px]">
+                  {selectedSubIds.length < filteredSubmissions.length ? (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllVisible}
+                      className="text-sky-400 hover:text-sky-300 font-bold hover:underline cursor-pointer"
+                    >
+                      Select all {filteredSubmissions.length}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="text-slate-400 hover:text-white hover:underline cursor-pointer"
+                    >
+                      Deselect all
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={bulkProcessing}
+                onClick={handleBulkApprove}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-3 sm:px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-600/25"
+                title="Bulk Approve Selected Screenshots"
+              >
+                <Check size={14} className="stroke-[3]" />
+                <span>Approve</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={bulkProcessing}
+                onClick={handleBulkReject}
+                className="bg-rose-600/90 hover:bg-rose-600 disabled:opacity-50 text-white font-bold text-xs px-3 sm:px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-600/25"
+                title="Bulk Reject Selected Screenshots"
+              >
+                <XCircle size={14} />
+                <span>Reject</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={bulkProcessing}
+                onClick={handleOpenBulkEdit}
+                className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold text-xs px-3 sm:px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-sky-600/25"
+                title="Bulk Edit Selected Screenshots"
+              >
+                <Edit3 size={14} />
+                <span>Edit</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="p-2 text-white/50 hover:text-white rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                title="Clear Selection"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* BULK FEEDBACK TOAST */}
+      <AnimatePresence>
+        {bulkFeedbackToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={cn(
+              "fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-bold backdrop-blur-md border",
+              bulkFeedbackToast.type === 'success'
+                ? "bg-emerald-950/90 text-emerald-200 border-emerald-500/50 shadow-emerald-900/30"
+                : "bg-rose-950/90 text-rose-200 border-rose-500/50 shadow-rose-900/30"
+            )}
+          >
+            {bulkFeedbackToast.type === 'success' ? (
+              <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle size={15} className="text-rose-400 shrink-0" />
+            )}
+            <span>{bulkFeedbackToast.message}</span>
+            <button
+              onClick={() => setBulkFeedbackToast(null)}
+              className="ml-2 text-white/50 hover:text-white"
+            >
+              <X size={12} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ADMIN TALLY RESULTS BREAKDOWN MODAL */}
       <AnimatePresence>
         {tallyResults && (
@@ -3580,7 +4223,7 @@ interface UserSubmissionStat {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">Winner Points Awarded!</h3>
-                  <p className="text-xs text-white/50">Top voted screenshot submissions and awarded bonus team points</p>
+                  <p className="text-xs text-white/50">Top voted screenshot submissions & awarded bonus team points</p>
                 </div>
               </div>
 
@@ -3601,7 +4244,7 @@ interface UserSubmissionStat {
                 onClick={() => setTallyResults(null)}
                 className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs py-2.5 rounded-xl cursor-pointer"
               >
-                Close and Done
+                Close & Done
               </button>
             </motion.div>
           </div>
@@ -3677,7 +4320,7 @@ interface UserSubmissionStat {
                   <button
                     onClick={() => setLightboxMobileView(prev => prev === 'split' ? 'image-only' : 'split')}
                     className="md:hidden landscape:hidden p-1.5 px-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
-                    title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments and details"}
+                    title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments & details"}
                   >
                     {lightboxMobileView === 'split' ? (
                       <>
@@ -3833,12 +4476,12 @@ interface UserSubmissionStat {
                       className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-bold border border-white/20 backdrop-blur-md flex items-center gap-2 shadow-2xl active:scale-95 cursor-pointer animate-in fade-in slide-in-from-bottom-2"
                     >
                       <MessageSquare size={14} className="text-sky-400" />
-                      <span>Show Details and Comments ({subComments.length})</span>
+                      <span>Show Details & Comments ({subComments.length})</span>
                     </button>
                   )}
                 </div>
 
-                {/* Details and Comments Section - Scrollable and constrained so it NEVER covers the image */}
+                {/* Details & Comments Section - Scrollable and constrained so it NEVER covers the image */}
                 <div 
                   className={cn(
                     "bg-[#121215] border-t md:border-t-0 landscape:border-t-0 md:border-l landscape:border-l border-white/10 flex flex-col justify-between overflow-hidden cursor-default transition-all duration-200",
@@ -3889,7 +4532,7 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {/* Team and Voting Entry Badges */}
+                      {/* Team & Voting Entry Badges */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {currentSub.user_team && currentSub.user_team !== 'none' && (
                           <span className={cn(
@@ -3948,7 +4591,7 @@ interface UserSubmissionStat {
                       </div>
                     )}
 
-                    {/* Game Title and Caption Box */}
+                    {/* Game Title & Caption Box */}
                     <div className="space-y-1.5 sm:space-y-2">
                       <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", teamTextAccent)}>Game Title</span>
                       <h3 className="text-sm sm:text-base font-extrabold text-white">{currentSub.game_name}</h3>
@@ -3963,7 +4606,7 @@ interface UserSubmissionStat {
                         <p className="text-xs italic text-white/30">No caption provided</p>
                       )}
 
-                      {/* External Image Link Notice and Button */}
+                      {/* External Image Link Notice & Button */}
                       {isExternalLinkImage(currentSub.image_url) && (
                         <div className="mt-3 p-3 rounded-xl bg-sky-500/[0.08] border border-sky-500/25 space-y-2">
                           <div className="flex items-center justify-between gap-2">
@@ -3997,7 +4640,7 @@ interface UserSubmissionStat {
                       )}
                     </div>
 
-                    {/* Lightbox Voting and Voting Entry Controls */}
+                    {/* Lightbox Voting & Voting Entry Controls */}
                     <div className="space-y-2 pt-1">
                       {currentSub.is_selected && (
                         <button
@@ -4142,7 +4785,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Pinned Bottom Container: Input and Admin actions */}
+                  {/* Pinned Bottom Container: Input & Admin actions */}
                   <div className="p-3 sm:p-4 bg-black/60 backdrop-blur-md border-t border-white/10 shrink-0 space-y-2">
                     {/* Comment Input */}
                     <div className="flex items-center gap-2">
@@ -4299,7 +4942,7 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {/* Counts and Actions */}
+                      {/* Counts & Actions */}
                       <div className="flex items-center gap-3 justify-between sm:justify-end">
                         <div className="text-right">
                           <div className="flex items-center gap-1.5 justify-end">
@@ -4496,7 +5139,7 @@ interface UserSubmissionStat {
                 {/* Drag handle for mobile */}
                 <div className="w-12 h-1 bg-white/20 rounded-full mx-auto sm:hidden -mt-1 mb-1" />
 
-                {/* Header: Submitter info and Screenshot Preview */}
+                {/* Header: Submitter info & Screenshot Preview */}
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-black">
@@ -4545,7 +5188,7 @@ interface UserSubmissionStat {
                   </button>
                 </div>
 
-                {/* External URL notice and button */}
+                {/* External URL notice & button */}
                 {isExternalLinkImage(targetSub.image_url) && (
                   <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -4578,7 +5221,7 @@ interface UserSubmissionStat {
                   </div>
                 )}
 
-                {/* Admin Status and Tools: Only visible to Admins */}
+                {/* Admin Status & Tools: Only visible to Admins */}
                 {user?.isAdmin && (
                   <>
                     {/* Status Selection: Approve / Pending / Reject */}
@@ -4677,7 +5320,7 @@ interface UserSubmissionStat {
                       >
                         <div className="flex items-center gap-2.5">
                           <Edit3 size={16} className="shrink-0" />
-                          <span>Edit Caption, Game and Status</span>
+                          <span>Edit Caption, Game & Status</span>
                         </div>
                         <span className="text-[10px] text-sky-400/70">Open Editor →</span>
                       </button>

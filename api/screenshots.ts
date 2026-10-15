@@ -993,184 +993,127 @@ export default async function handler(req: Request, res: Response) {
         }
       }
 
-      // ADMIN: SET STATUS (Approved, Pending, Rejected)
-      if (action === 'admin-set-status') {
-        const { submissionId, status } = req.body;
+      // ADMIN: SET STATUS (Approved, Pending, Rejected) - Single or Bulk
+      if (action === 'admin-set-status' || action === 'admin-bulk-set-status') {
+        const rawIds = req.body.submissionIds || (req.body.submissionId ? [req.body.submissionId] : []);
+        const submissionIds = (Array.isArray(rawIds) ? rawIds : [rawIds]).filter(Boolean);
+        const { status } = req.body;
         const adminName = req.body.adminName || req.headers['x-admin-name'] || (req as any).user?.steam_name || (req as any).user?.displayName || 'Admin';
-        if (!submissionId || !status) {
-          return res.status(400).json({ error: 'Missing submissionId or status' });
+
+        if (!submissionIds.length || !status) {
+          return res.status(400).json({ error: 'Missing submissionId(s) or status' });
         }
 
         const validStatus: 'approved' | 'pending' | 'rejected' = ['approved', 'pending', 'rejected'].includes(status) ? status : 'approved';
+        const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
+        const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
 
         if (supabase) {
-          const { data: targetSub } = await supabase
-            .from('screenshot_submissions')
-            .select('*')
-            .eq('id', submissionId)
-            .maybeSingle();
-
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-
-          const parsed = parseSubmissionCaption(targetSub.caption);
-          const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
-          const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
-
-          if (validStatus === 'rejected') {
-            const newCaption = encodeSubmissionCaption(parsed.caption, {
-              status: 'rejected',
-              approved_by: effectiveAdmin,
-              approved_at: effectiveApprovedAt
-            });
-
-            await supabase
-              .from('screenshot_submissions')
-              .update({ caption: newCaption, is_selected: false })
-              .eq('id', submissionId);
-
-            // Remove linked submission points in submissions table if previously approved
-            try {
-              await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`);
-            } catch (e) {}
-
-            // Remove votes for this submission if any
-            try {
-              await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId);
-            } catch (e) {}
-
-            if (targetSub.user_id) {
-              await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
-            }
-
-            return res.status(200).json({
-              success: true,
-              submission: {
-                ...targetSub,
-                caption: parsed.caption,
-                status: 'rejected',
-                is_selected: false,
-                approved_by: effectiveAdmin,
-                approved_at: effectiveApprovedAt
-              }
-            });
-          }
-
-          const newCaption = encodeSubmissionCaption(parsed.caption, {
-            status: validStatus,
-            approved_by: effectiveAdmin,
-            approved_at: effectiveApprovedAt
-          });
-
-          await supabase
-            .from('screenshot_submissions')
-            .update({ caption: newCaption })
-            .eq('id', submissionId);
-
           let ptsToAward = getSavedSubmissionPoints();
           const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
           if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
             ptsToAward = Number(currentEvt.submission_points);
           }
 
-          if (validStatus === 'approved') {
-            // Verify linked submission points in submissions table
-            const { data: existingPoints } = await supabase
-              .from('submissions')
-              .select('id, status')
-              .ilike('notes', `%${submissionId}%`);
+          const affectedUserIds = new Set<string>();
+          const updatedSubmissions: any[] = [];
 
-            if (existingPoints && existingPoints.length > 0) {
-              await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${submissionId}%`);
-            } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
-              await supabase.from('submissions').insert([{
-                user_id: targetSub.user_id,
-                game_name: `Screenshot Submission (+${ptsToAward} pts)`,
-                platform: 'Screenshot Event',
-                points: ptsToAward,
-                calculated_score: ptsToAward,
-                status: 'verified',
-                notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${targetSub.game_name || 'Game'}` })}__META_END__`,
-                created_at: new Date().toISOString()
-              }]);
-            }
+          for (const subId of submissionIds) {
+            const { data: targetSub } = await supabase
+              .from('screenshot_submissions')
+              .select('*')
+              .eq('id', subId)
+              .maybeSingle();
 
-            // Create approval notification for screenshot owner
-            if (targetSub.user_id) {
-              const approvalMeta = {
-                type: 'screenshot_approved',
-                submissionId: targetSub.id,
-                submission_id: targetSub.id,
-                gameName: targetSub.game_name || 'Screenshot',
-                game_name: targetSub.game_name || 'Screenshot',
-                imageUrl: targetSub.image_url || '',
-                image_url: targetSub.image_url || ''
-              };
-              const approvalMsg = `Your screenshot submission has been approved! <!--META:${JSON.stringify(approvalMeta)}-->`;
+            if (!targetSub) continue;
+            if (targetSub.user_id) affectedUserIds.add(targetSub.user_id);
+
+            const parsed = parseSubmissionCaption(targetSub.caption);
+
+            if (validStatus === 'rejected') {
+              const newCaption = encodeSubmissionCaption(parsed.caption, {
+                status: 'rejected',
+                approved_by: effectiveAdmin,
+                approved_at: effectiveApprovedAt
+              });
+
+              await supabase
+                .from('screenshot_submissions')
+                .update({ caption: newCaption, is_selected: false })
+                .eq('id', subId);
+
               try {
-                await supabase.from('notifications').insert([{
+                await supabase.from('submissions').delete().ilike('notes', `%${subId}%`);
+              } catch (e) {}
+
+              try {
+                await supabase.from('screenshot_votes').delete().eq('submission_id', subId);
+              } catch (e) {}
+
+              updatedSubmissions.push({
+                ...targetSub,
+                caption: parsed.caption,
+                status: 'rejected',
+                is_selected: false,
+                approved_by: effectiveAdmin,
+                approved_at: effectiveApprovedAt
+              });
+            } else if (validStatus === 'approved') {
+              const newCaption = encodeSubmissionCaption(parsed.caption, {
+                status: 'approved',
+                approved_by: effectiveAdmin,
+                approved_at: effectiveApprovedAt
+              });
+
+              await supabase
+                .from('screenshot_submissions')
+                .update({ caption: newCaption })
+                .eq('id', subId);
+
+              // Verify linked submission points in submissions table
+              const { data: existingPoints } = await supabase
+                .from('submissions')
+                .select('id, status')
+                .ilike('notes', `%${subId}%`);
+
+              if (existingPoints && existingPoints.length > 0) {
+                await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${subId}%`);
+              } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
+                await supabase.from('submissions').insert([{
                   user_id: targetSub.user_id,
-                  title: 'Screenshot Submission Approved',
-                  message: approvalMsg,
-                  read: false,
+                  game_name: `Screenshot Submission (+${ptsToAward} pts)`,
+                  platform: 'Screenshot Event',
+                  points: ptsToAward,
+                  calculated_score: ptsToAward,
+                  status: 'verified',
+                  notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${targetSub.game_name || 'Game'}` })}__META_END__`,
                   created_at: new Date().toISOString()
                 }]);
-              } catch (notifErr) {
-                console.warn('Could not insert approval notification into Supabase:', notifErr);
               }
-              memoryNotifications.unshift({
-                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-                user_id: targetSub.user_id,
-                type: 'screenshot_approved',
-                submissionId: targetSub.id,
-                submission_id: targetSub.id,
-                gameName: targetSub.game_name || 'Screenshot',
-                game_name: targetSub.game_name || 'Screenshot',
-                imageUrl: targetSub.image_url || '',
-                image_url: targetSub.image_url || '',
-                title: 'Screenshot Submission Approved',
-                message: 'Your screenshot submission has been approved!',
-                created_at: new Date().toISOString(),
-                read: false,
-                is_read: false
-              });
-            }
-          } else if (validStatus === 'pending') {
-            // Revert linked points in submissions table to pending
-            await supabase.from('submissions').update({ status: 'pending' }).ilike('notes', `%${submissionId}%`);
-          }
 
-          if (targetSub.user_id) {
-            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
-          }
-
-          return res.status(200).json({
-            success: true,
-            submission: {
-              ...targetSub,
-              caption: parsed.caption,
-              status: validStatus,
-              approved_by: effectiveAdmin,
-              approved_at: effectiveApprovedAt
-            }
-          });
-        } else {
-          const effectiveAdmin = validStatus === 'approved' ? String(adminName) : null;
-          const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
-          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
-            ...s,
-            status: validStatus,
-            is_selected: validStatus === 'rejected' ? false : s.is_selected,
-            approved_by: effectiveAdmin,
-            approved_at: effectiveApprovedAt
-          } : s);
-
-          if (validStatus === 'approved') {
-            const targetSub = memorySubmissions.find(s => s.id === submissionId);
-            if (targetSub && targetSub.user_id) {
-              const alreadyNotif = memoryNotifications.some(n => 
-                String(n.submission_id || n.submissionId) === String(targetSub.id) && n.type === 'screenshot_approved'
-              );
-              if (!alreadyNotif) {
+              // Create approval notification for screenshot owner
+              if (targetSub.user_id) {
+                const approvalMeta = {
+                  type: 'screenshot_approved',
+                  submissionId: targetSub.id,
+                  submission_id: targetSub.id,
+                  gameName: targetSub.game_name || 'Screenshot',
+                  game_name: targetSub.game_name || 'Screenshot',
+                  imageUrl: targetSub.image_url || '',
+                  image_url: targetSub.image_url || ''
+                };
+                const approvalMsg = `Your screenshot submission has been approved! <!--META:${JSON.stringify(approvalMeta)}-->`;
+                try {
+                  await supabase.from('notifications').insert([{
+                    user_id: targetSub.user_id,
+                    title: 'Screenshot Submission Approved',
+                    message: approvalMsg,
+                    read: false,
+                    created_at: new Date().toISOString()
+                  }]);
+                } catch (notifErr) {
+                  console.warn('Could not insert approval notification into Supabase:', notifErr);
+                }
                 memoryNotifications.unshift({
                   id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
                   user_id: targetSub.user_id,
@@ -1183,12 +1126,95 @@ export default async function handler(req: Request, res: Response) {
                   imageUrl: targetSub.image_url || '',
                   title: 'Screenshot Submission Approved',
                   message: `Your screenshot for ${targetSub.game_name || 'Screenshot Submission'} has been approved!`,
-                  content: `Your screenshot for ${targetSub.game_name || 'Screenshot Submission'} has been approved!`,
-                  points: targetSub.points || persistentDefaultSubmissionPoints || 20,
+                  points: ptsToAward,
                   created_at: new Date().toISOString(),
-                  read: false,
-                  is_read: false
+                  read: false
                 });
+              }
+
+              updatedSubmissions.push({
+                ...targetSub,
+                caption: parsed.caption,
+                status: 'approved',
+                approved_by: effectiveAdmin,
+                approved_at: effectiveApprovedAt
+              });
+            } else {
+              // Pending
+              const newCaption = encodeSubmissionCaption(parsed.caption, {
+                status: 'pending',
+                approved_by: null,
+                approved_at: null
+              });
+
+              await supabase
+                .from('screenshot_submissions')
+                .update({ caption: newCaption })
+                .eq('id', subId);
+
+              // Revert linked points in submissions table to pending
+              try {
+                await supabase.from('submissions').update({ status: 'pending' }).ilike('notes', `%${subId}%`);
+              } catch (e) {}
+
+              updatedSubmissions.push({
+                ...targetSub,
+                caption: parsed.caption,
+                status: 'pending',
+                approved_by: null,
+                approved_at: null
+              });
+            }
+          }
+
+          // Reconcile points for all affected users
+          for (const uid of affectedUserIds) {
+            await reconcileUserScreenshotPoints(supabase, uid);
+          }
+
+          return res.status(200).json({
+            success: true,
+            status: validStatus,
+            count: updatedSubmissions.length,
+            submissions: updatedSubmissions,
+            submission: updatedSubmissions[0]
+          });
+        } else {
+          for (const subId of submissionIds) {
+            memorySubmissions = memorySubmissions.map(s => s.id === subId ? {
+              ...s,
+              status: validStatus,
+              is_selected: validStatus === 'rejected' ? false : s.is_selected,
+              approved_by: effectiveAdmin,
+              approved_at: effectiveApprovedAt
+            } : s);
+
+            if (validStatus === 'approved') {
+              const targetSub = memorySubmissions.find(s => s.id === subId);
+              if (targetSub && targetSub.user_id) {
+                const alreadyNotif = memoryNotifications.some(n => 
+                  String(n.submission_id || n.submissionId) === String(targetSub.id) && n.type === 'screenshot_approved'
+                );
+                if (!alreadyNotif) {
+                  memoryNotifications.unshift({
+                    id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                    user_id: targetSub.user_id,
+                    type: 'screenshot_approved',
+                    submission_id: targetSub.id,
+                    submissionId: targetSub.id,
+                    game_name: targetSub.game_name || 'Screenshot Submission',
+                    gameName: targetSub.game_name || 'Screenshot Submission',
+                    image_url: targetSub.image_url || '',
+                    imageUrl: targetSub.image_url || '',
+                    title: 'Screenshot Submission Approved',
+                    message: `Your screenshot for ${targetSub.game_name || 'Screenshot Submission'} has been approved!`,
+                    content: `Your screenshot for ${targetSub.game_name || 'Screenshot Submission'} has been approved!`,
+                    points: targetSub.points || persistentDefaultSubmissionPoints || 20,
+                    created_at: new Date().toISOString(),
+                    read: false,
+                    is_read: false
+                  });
+                }
               }
             }
           }
@@ -1196,8 +1222,7 @@ export default async function handler(req: Request, res: Response) {
           return res.status(200).json({
             success: true,
             status: validStatus,
-            approved_by: effectiveAdmin,
-            approved_at: effectiveApprovedAt
+            count: submissionIds.length
           });
         }
       }
@@ -1512,57 +1537,113 @@ export default async function handler(req: Request, res: Response) {
         return res.status(200).json({ success: true, message: 'Comment deleted successfully' });
       }
 
-      // ADMIN: UPDATE SUBMISSION (edit caption, game_name, is_spoiler, status)
-      if (action === 'admin-update-submission') {
-        const { submissionId, caption, gameName, isSpoiler, status } = req.body;
+      // ADMIN: UPDATE SUBMISSION (edit caption, game_name, is_spoiler, status) - Single or Bulk
+      if (action === 'admin-update-submission' || action === 'admin-bulk-update') {
+        const rawIds = req.body.submissionIds || (req.body.submissionId ? [req.body.submissionId] : []);
+        const submissionIds = (Array.isArray(rawIds) ? rawIds : [rawIds]).filter(Boolean);
+        const { caption, gameName, isSpoiler, status, captionMode, captionText } = req.body;
+        const adminName = req.body.adminName || req.headers['x-admin-name'] || (req as any).user?.steam_name || (req as any).user?.displayName || 'Admin';
 
-        const updateFields: any = {};
-        if (caption !== undefined) updateFields.caption = caption;
-        if (gameName !== undefined) updateFields.game_name = gameName;
-        if (isSpoiler !== undefined) updateFields.is_spoiler = Boolean(isSpoiler);
-        if (status !== undefined) updateFields.status = status;
+        if (!submissionIds.length) {
+          return res.status(400).json({ error: 'Missing submissionId(s)' });
+        }
 
         if (supabase) {
-          const { data: targetSub } = await supabase
-            .from('screenshot_submissions')
-            .select('*')
-            .eq('id', submissionId)
-            .maybeSingle();
-
-          if (!targetSub) return res.status(404).json({ error: 'Submission not found' });
-
-          const parsed = parseSubmissionCaption(targetSub.caption);
-          const effectiveStatus = (status !== undefined) ? status : parsed.status;
-          const effectiveAdmin = (effectiveStatus === 'approved') ? (req.body.adminName || parsed.approved_by || 'Admin') : (effectiveStatus === 'pending' ? null : parsed.approved_by);
-          const effectiveCaption = (caption !== undefined) ? caption : parsed.caption;
-
-          const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
-            status: effectiveStatus,
-            approved_by: effectiveAdmin,
-            approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null)
-          });
-
-          const dbFields: any = { caption: updatedCaption };
-          if (effectiveStatus === 'rejected') {
-            dbFields.is_selected = false;
-            try { await supabase.from('screenshot_votes').delete().eq('submission_id', submissionId); } catch (e) {}
-            try { await supabase.from('submissions').delete().ilike('notes', `%${submissionId}%`); } catch (e) {}
+          let ptsToAward = getSavedSubmissionPoints();
+          const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
+          if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
+            ptsToAward = Number(currentEvt.submission_points);
           }
-          if (gameName !== undefined) dbFields.game_name = gameName;
-          if (isSpoiler !== undefined) dbFields.is_spoiler = Boolean(isSpoiler);
 
-          const { data: updated, error } = await supabase
-            .from('screenshot_submissions')
-            .update(dbFields)
-            .eq('id', submissionId)
-            .select()
-            .single();
+          const affectedUserIds = new Set<string>();
+          const updatedSubmissions: any[] = [];
 
-          if (error) throw error;
+          for (const subId of submissionIds) {
+            const { data: targetSub } = await supabase
+              .from('screenshot_submissions')
+              .select('*')
+              .eq('id', subId)
+              .maybeSingle();
 
-          if (targetSub?.user_id) {
-            await reconcileUserScreenshotPoints(supabase, targetSub.user_id);
-            if (effectiveStatus === 'approved' && parsed.status !== 'approved') {
+            if (!targetSub) continue;
+            if (targetSub.user_id) affectedUserIds.add(targetSub.user_id);
+
+            const parsed = parseSubmissionCaption(targetSub.caption);
+            const effectiveStatus = (status !== undefined && status !== 'keep') ? status : parsed.status;
+            const effectiveAdmin = (effectiveStatus === 'approved') ? (adminName || parsed.approved_by || 'Admin') : (effectiveStatus === 'pending' ? null : parsed.approved_by);
+
+            // Compute effective caption
+            let effectiveCaption = parsed.caption;
+            if (captionMode === 'replace' && typeof captionText === 'string') {
+              effectiveCaption = captionText;
+            } else if (captionMode === 'append' && captionText) {
+              effectiveCaption = effectiveCaption ? `${effectiveCaption} ${captionText}` : captionText;
+            } else if (captionMode === 'prepend' && captionText) {
+              effectiveCaption = effectiveCaption ? `${captionText} ${effectiveCaption}` : captionText;
+            } else if (caption !== undefined) {
+              effectiveCaption = caption;
+            }
+
+            const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
+              status: effectiveStatus,
+              approved_by: effectiveAdmin,
+              approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null)
+            });
+
+            const dbFields: any = { caption: updatedCaption };
+            if (effectiveStatus === 'rejected') {
+              dbFields.is_selected = false;
+              try { await supabase.from('screenshot_votes').delete().eq('submission_id', subId); } catch (e) {}
+              try { await supabase.from('submissions').delete().ilike('notes', `%${subId}%`); } catch (e) {}
+            } else if (effectiveStatus === 'approved' && parsed.status !== 'approved') {
+              // Award points if not awarded yet
+              try {
+                const { data: existingPoints } = await supabase
+                  .from('submissions')
+                  .select('id, status')
+                  .ilike('notes', `%${subId}%`);
+
+                if (existingPoints && existingPoints.length > 0) {
+                  await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${subId}%`);
+                } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
+                  await supabase.from('submissions').insert([{
+                    user_id: targetSub.user_id,
+                    game_name: `Screenshot Submission (+${ptsToAward} pts)`,
+                    platform: 'Screenshot Event',
+                    points: ptsToAward,
+                    calculated_score: ptsToAward,
+                    status: 'verified',
+                    notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: gameName || targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${gameName || targetSub.game_name || 'Game'}` })}__META_END__`,
+                    created_at: new Date().toISOString()
+                  }]);
+                }
+              } catch (e) {}
+            }
+
+            if (gameName !== undefined && String(gameName).trim() !== '') {
+              dbFields.game_name = String(gameName).trim();
+            }
+            if (isSpoiler !== undefined && isSpoiler !== null) {
+              dbFields.is_spoiler = Boolean(isSpoiler);
+            }
+
+            const { data: updated, error } = await supabase
+              .from('screenshot_submissions')
+              .update(dbFields)
+              .eq('id', subId)
+              .select()
+              .single();
+
+            if (!error && updated) {
+              updatedSubmissions.push({
+                ...updated,
+                caption: effectiveCaption,
+                status: effectiveStatus,
+                approved_by: effectiveAdmin
+              });
+            }
+
+            if (effectiveStatus === 'approved' && parsed.status !== 'approved' && targetSub.user_id) {
               const approvalMeta = {
                 type: 'screenshot_approved',
                 submissionId: targetSub.id,
@@ -1581,43 +1662,36 @@ export default async function handler(req: Request, res: Response) {
                   read: false,
                   created_at: new Date().toISOString()
                 }]);
-              } catch (notifErr) {
-                console.warn('Could not insert approval notification into Supabase:', notifErr);
-              }
-              memoryNotifications.unshift({
-                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-                user_id: targetSub.user_id,
-                type: 'screenshot_approved',
-                submissionId: targetSub.id,
-                submission_id: targetSub.id,
-                gameName: gameName || targetSub.game_name || 'Screenshot',
-                game_name: gameName || targetSub.game_name || 'Screenshot',
-                imageUrl: targetSub.image_url || '',
-                image_url: targetSub.image_url || '',
-                title: 'Screenshot Submission Approved',
-                message: 'Your screenshot submission has been approved!',
-                created_at: new Date().toISOString(),
-                read: false,
-                is_read: false
-              });
+              } catch (notifErr) {}
             }
+          }
+
+          for (const uid of affectedUserIds) {
+            await reconcileUserScreenshotPoints(supabase, uid);
           }
 
           return res.status(200).json({
             success: true,
-            submission: {
-              ...updated,
-              caption: effectiveCaption,
-              status: effectiveStatus,
-              approved_by: effectiveAdmin
-            }
+            count: updatedSubmissions.length,
+            submissions: updatedSubmissions,
+            submission: updatedSubmissions[0]
           });
         } else {
-          memorySubmissions = memorySubmissions.map(s => s.id === submissionId ? {
-            ...s,
-            ...updateFields
-          } : s);
-          return res.status(200).json({ success: true });
+          for (const subId of submissionIds) {
+            memorySubmissions = memorySubmissions.map(s => {
+              if (s.id !== subId) return s;
+              const cur = { ...s };
+              if (gameName !== undefined && String(gameName).trim() !== '') cur.game_name = String(gameName).trim();
+              if (isSpoiler !== undefined && isSpoiler !== null) cur.is_spoiler = Boolean(isSpoiler);
+              if (status !== undefined && status !== 'keep') cur.status = status;
+              if (captionMode === 'replace' && typeof captionText === 'string') cur.caption = captionText;
+              else if (captionMode === 'append' && captionText) cur.caption = `${cur.caption || ''} ${captionText}`.trim();
+              else if (captionMode === 'prepend' && captionText) cur.caption = `${captionText} ${cur.caption || ''}`.trim();
+              else if (caption !== undefined) cur.caption = caption;
+              return cur;
+            });
+          }
+          return res.status(200).json({ success: true, count: submissionIds.length });
         }
       }
 
