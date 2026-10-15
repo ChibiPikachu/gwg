@@ -1751,7 +1751,7 @@ interface UserSubmissionStat {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
-                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes & Guidelines` : "Current Cycle's Themes & Guidelines"}
+                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes and Guidelines` : "Current Cycle's Themes and Guidelines"}
                         </h3>
                         <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border", currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)}>
                           {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
