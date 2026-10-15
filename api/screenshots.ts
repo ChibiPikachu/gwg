@@ -544,17 +544,29 @@ export default async function handler(req: Request, res: Response) {
         });
 
         const profileTeamMap = new Map<string, string>();
+        const profileByAnyId = new Map<string, any>();
         (profiles || []).forEach((p: any) => {
           const t = (!p.team || p.team === 'none') ? 'none' : p.team;
-          if (p.steamid) profileTeamMap.set(String(p.steamid).trim(), t);
+          if (p.steamid) {
+            const sid = String(p.steamid).trim();
+            profileTeamMap.set(sid, t);
+            profileByAnyId.set(sid, p);
+          }
           if (p.discord_id) {
             const rawDid = String(p.discord_id).trim();
             const cleanDid = rawDid.replace('discord_', '');
             profileTeamMap.set(rawDid, t);
             profileTeamMap.set(cleanDid, t);
             profileTeamMap.set(`discord_${cleanDid}`, t);
+            profileByAnyId.set(rawDid, p);
+            profileByAnyId.set(cleanDid, p);
+            profileByAnyId.set(`discord_${cleanDid}`, p);
           }
-          if (p.id) profileTeamMap.set(String(p.id).trim(), t);
+          if (p.id) {
+            const pid = String(p.id).trim();
+            profileTeamMap.set(pid, t);
+            profileByAnyId.set(pid, p);
+          }
         });
 
         // Ensure at most ONE submission per user has is_selected: true per event (scoped by event)
@@ -570,26 +582,39 @@ export default async function handler(req: Request, res: Response) {
 
           const rawUid = String(sub.user_id || '').trim();
           const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
-          const candidateKeys = [rawUid, cleanUid, `discord_${cleanUid}`];
+          const matchedProfile = profileByAnyId.get(rawUid) || profileByAnyId.get(cleanUid);
+
+          const candidateKeys = Array.from(new Set([
+            rawUid,
+            cleanUid,
+            `discord_${cleanUid}`,
+            matchedProfile?.steamid ? String(matchedProfile.steamid).trim() : null,
+            matchedProfile?.discord_id ? String(matchedProfile.discord_id).trim() : null,
+            matchedProfile?.discord_id ? `discord_${String(matchedProfile.discord_id).trim().replace('discord_', '')}` : null,
+            matchedProfile?.id ? String(matchedProfile.id).trim() : null
+          ].filter(Boolean))) as string[];
 
           // Determine current reflected team:
           // For submissions in the active competition event (or if no event_id or event is active),
-          // reflect the user's current live team from user_event_teams or profiles table
-          let liveTeam = sub.user_team || 'none';
+          // reflect the user's current live team from user_event_teams, profiles table, or submission
+          let liveTeam = sub.user_team && sub.user_team !== 'none' ? sub.user_team : 'none';
           const isCurrentActive = !sub.event_id || (activeCompEvent && String(sub.event_id) === String(activeCompEvent.id));
           if (isCurrentActive) {
             for (const k of candidateKeys) {
               if (eventTeamMap.has(k) && eventTeamMap.get(k) !== 'none') {
-                liveTeam = eventTeamMap.get(k) || 'none';
+                liveTeam = eventTeamMap.get(k) || liveTeam;
                 break;
               }
               if (profileTeamMap.has(k) && profileTeamMap.get(k) !== 'none') {
-                liveTeam = profileTeamMap.get(k) || 'none';
+                liveTeam = profileTeamMap.get(k) || liveTeam;
                 break;
               }
             }
+            if (matchedProfile?.team && matchedProfile.team !== 'none') {
+              liveTeam = matchedProfile.team;
+            }
             // If the database column has an outdated team, sync it asynchronously
-            if (supabase && sub.id && sub.user_team !== liveTeam) {
+            if (supabase && sub.id && liveTeam !== 'none' && sub.user_team !== liveTeam) {
               supabase.from('screenshot_submissions').update({ user_team: liveTeam }).eq('id', sub.id).then();
             }
           }
@@ -800,7 +825,7 @@ export default async function handler(req: Request, res: Response) {
             approved_at: null
           });
 
-          let effectiveSubmitterTeam = userTeam || 'none';
+          let effectiveSubmitterTeam = userTeam && userTeam !== 'none' ? userTeam : 'none';
           const cleanUId = String(userId).replace('discord_', '');
           
           // Check user_event_teams for active event first
@@ -814,10 +839,19 @@ export default async function handler(req: Request, res: Response) {
           if (uetRow?.team && uetRow.team !== 'none') {
             effectiveSubmitterTeam = uetRow.team;
           } else {
+            const profOrParts = [
+              `steamid.eq.${cleanUId}`,
+              `steamid.eq.${userId}`,
+              `discord_id.eq.${cleanUId}`,
+              `discord_id.eq.${userId}`
+            ];
+            if (isUuid(cleanUId)) profOrParts.unshift(`id.eq.${cleanUId}`);
+            if (isUuid(String(userId))) profOrParts.unshift(`id.eq.${userId}`);
+
             const { data: creatorProf } = await supabase
               .from('profiles')
               .select('team')
-              .or(`steamid.eq.${cleanUId},steamid.eq.${userId},discord_id.eq.${cleanUId},id.eq.${cleanUId}`)
+              .or(profOrParts.join(','))
               .maybeSingle();
             if (creatorProf?.team && creatorProf.team !== 'none') {
               effectiveSubmitterTeam = creatorProf.team;
@@ -1717,9 +1751,9 @@ export default async function handler(req: Request, res: Response) {
         });
       }
 
-      // ADMIN: UPDATE EVENT STATUS & SETTINGS ('draft' | 'submissions_open' | 'voting_active' | 'concluded', submission_points)
-      if (action === 'admin-event-status' || action === 'admin-update-event') {
-        const { status, isAdminOnly, submissionPoints, eventId } = req.body;
+      // ADMIN: UPDATE EVENT STATUS & SETTINGS ('draft' | 'submissions_open' | 'voting_active' | 'concluded', submission_points, description)
+      if (action === 'admin-event-status' || action === 'admin-update-event' || action === 'admin-update-description') {
+        const { status, isAdminOnly, submissionPoints, eventId, description, themeDescription } = req.body;
 
         let activeCompEvent: any = null;
         if (supabase) {
@@ -1739,13 +1773,26 @@ export default async function handler(req: Request, res: Response) {
           updateData.is_admin_only = Boolean(isAdminOnly);
           memoryEvent.is_admin_only = Boolean(isAdminOnly);
         }
+
+        const incomingDesc = description !== undefined ? description : themeDescription;
+
         if (submissionPoints !== undefined && !isNaN(Number(submissionPoints))) {
           const pts = Math.max(0, Number(submissionPoints));
           persistentDefaultSubmissionPoints = pts;
           saveSubmissionPointsLocally(pts);
           updateData.submission_points = pts;
           memoryEvent.submission_points = pts;
+        }
 
+        if (incomingDesc !== undefined) {
+          const cleanDesc = String(incomingDesc).replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim();
+          const currentPts = updateData.submission_points !== undefined 
+            ? updateData.submission_points 
+            : extractSubmissionPoints(memoryEvent);
+          updateData.description = `${cleanDesc} <!--SUBMISSION_POINTS:${currentPts}-->`;
+          memoryEvent.description = updateData.description;
+        } else if (updateData.submission_points !== undefined) {
+          const pts = updateData.submission_points;
           const baseDesc = (memoryEvent.description || 'Screenshot Showcase & Contest')
             .replace(/<!--SUBMISSION_POINTS:\d+-->/g, '')
             .trim();
@@ -1757,7 +1804,7 @@ export default async function handler(req: Request, res: Response) {
           try {
             const { data: existingEvt } = await supabase.from('screenshot_events').select('*').eq('id', targetId).maybeSingle();
             if (existingEvt) {
-              if (updateData.description && existingEvt.description) {
+              if (incomingDesc === undefined && updateData.description && existingEvt.description) {
                 const baseDesc = existingEvt.description.replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim();
                 const currentPts = updateData.submission_points !== undefined ? updateData.submission_points : persistentDefaultSubmissionPoints;
                 updateData.description = `${baseDesc} <!--SUBMISSION_POINTS:${currentPts}-->`;

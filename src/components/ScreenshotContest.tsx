@@ -248,6 +248,19 @@ export default function ScreenshotContest({
   const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
 
+  // Cycle Theme Description state (toggleable for all users, editable for admins)
+  const [showThemeDescription, setShowThemeDescription] = useState<boolean>(false);
+  const [isEditingTheme, setIsEditingTheme] = useState<boolean>(false);
+  const [editThemeText, setEditThemeText] = useState<string>('');
+  const [isSavingTheme, setIsSavingTheme] = useState<boolean>(false);
+  const [themeSaveError, setThemeSaveError] = useState<string | null>(null);
+  const [showThemeToast, setShowThemeToast] = useState<boolean>(false);
+
+  const cleanThemeDescription = useMemo(() => {
+    if (!event?.description) return '';
+    return event.description.replace(/<!--SUBMISSION_POINTS:\d+-->/g, '').trim();
+  }, [event?.description]);
+
   // Mobile-specific states
   const [mobileAdminMenuSubId, setMobileAdminMenuSubId] = useState<string | null>(null);
   const [isMobileImageOnly, setIsMobileImageOnly] = useState(false);
@@ -329,19 +342,24 @@ export default function ScreenshotContest({
 
     const handleTeamUpdate = (e: any) => {
       const detail = e?.detail;
-      if (detail && detail.targetSteamId && detail.team) {
-        const targetId = String(detail.targetSteamId).trim();
-        const cleanTargetId = targetId.replace('discord_', '');
+      if (detail && detail.team) {
         const newTeam = detail.team === 'none' ? 'none' : detail.team;
+        const targetIds: string[] = Array.isArray(detail.targetSteamIds)
+          ? detail.targetSteamIds.map(String)
+          : (detail.targetSteamId ? [String(detail.targetSteamId)] : []);
 
-        setSubmissions(prev => prev.map(s => {
-          const sUid = String(s.user_id || '').trim();
-          const cleanSUid = sUid.replace('discord_', '');
-          if (sUid === targetId || cleanSUid === cleanTargetId) {
-            return { ...s, user_team: newTeam as Team };
-          }
-          return s;
-        }));
+        if (targetIds.length > 0) {
+          const cleanTargets = targetIds.map(t => t.replace('discord_', ''));
+          setSubmissions(prev => prev.map(s => {
+            const sUid = String(s.user_id || '').trim();
+            const cleanSUid = sUid.replace('discord_', '');
+            const matches = targetIds.includes(sUid) || cleanTargets.includes(cleanSUid);
+            if (matches) {
+              return { ...s, user_team: newTeam as Team };
+            }
+            return s;
+          }));
+        }
       }
       fetchData(false);
     };
@@ -1176,6 +1194,48 @@ interface UserSubmissionStat {
     }
   };
 
+  const handleAdminUpdateDescription = async (newDescription: string) => {
+    setIsSavingTheme(true);
+    setThemeSaveError(null);
+    const cleanDesc = newDescription.trim();
+
+    // Optimistically update event
+    setEvent(prev => prev ? {
+      ...prev,
+      description: cleanDesc ? `${cleanDesc} <!--SUBMISSION_POINTS:${editSubmissionPoints}-->` : `<!--SUBMISSION_POINTS:${editSubmissionPoints}-->`
+    } : prev);
+
+    try {
+      const res = await fetch('/api/screenshots?action=admin-update-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: activeCompetitionEvent?.id || event?.id,
+          description: cleanDesc,
+          submissionPoints: editSubmissionPoints
+        })
+      });
+
+      if (res.ok) {
+        const data = await safeParseResponse(res);
+        if (data?.event) {
+          setEvent(data.event);
+        }
+        setIsEditingTheme(false);
+        setShowThemeToast(true);
+        setTimeout(() => setShowThemeToast(false), 3500);
+      } else {
+        const errData = await safeParseResponse(res);
+        setThemeSaveError(errData?.error || 'Failed to save description');
+      }
+    } catch (err: any) {
+      console.error('Failed to update theme description:', err);
+      setThemeSaveError(err?.message || 'Error saving description');
+    } finally {
+      setIsSavingTheme(false);
+    }
+  };
+
   const handleAdminToggleSpoiler = async (sub: ScreenshotSubmission) => {
     try {
       const res = await fetch('/api/screenshots?action=admin-update-submission', {
@@ -1410,6 +1470,19 @@ interface UserSubmissionStat {
               User Submissions ({userSubmissionsList.length})
             </button>
 
+            {/* Admin Cycle Themes & Description Shortcut */}
+            <button
+              onClick={() => {
+                setShowThemeDescription(true);
+                setIsEditingTheme(true);
+                setEditThemeText(cleanThemeDescription);
+              }}
+              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+            >
+              <Sparkles size={14} className="text-amber-400" />
+              Theme & Description
+            </button>
+
             <button
               onClick={handleAdminToggleVoting}
               className={cn(
@@ -1513,6 +1586,29 @@ interface UserSubmissionStat {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3">
+            {/* Cycle Themes & Description Toggle Button */}
+            <button
+              onClick={() => {
+                setShowThemeDescription(prev => !prev);
+                if (isEditingTheme) setIsEditingTheme(false);
+              }}
+              aria-expanded={showThemeDescription}
+              title="Toggle cycle themes and guidelines"
+              className={cn(
+                "w-full sm:w-auto font-bold text-sm px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer border shadow-md",
+                showThemeDescription
+                  ? "bg-amber-500/20 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-amber-500/10 ring-1 ring-amber-500/30"
+                  : "bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white text-slate-800 border-black/10 dark:border-white/15"
+              )}
+            >
+              <Sparkles size={18} className={showThemeDescription ? "text-amber-400 fill-amber-400/20" : "text-amber-400"} />
+              <span>{showThemeDescription ? "Hide Cycle Themes" : "Cycle Themes & Description"}</span>
+              <ChevronDown
+                size={16}
+                className={cn("transition-transform duration-300", showThemeDescription ? "rotate-180 text-amber-400" : "text-slate-400")}
+              />
+            </button>
+
             <button
               onClick={openSubmitModal}
               title={
@@ -1544,6 +1640,168 @@ interface UserSubmissionStat {
             </button>
           </div>
         </div>
+
+        {/* Expandable Current Cycle's Theme Description Section */}
+        <AnimatePresence>
+          {showThemeDescription && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 24 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="overflow-hidden border-t border-black/10 dark:border-white/10 pt-6"
+            >
+              <div className="bg-gradient-to-br from-amber-500/[0.07] via-black/20 to-amber-500/[0.03] dark:from-amber-500/[0.08] dark:to-transparent border border-amber-500/25 rounded-2xl p-5 md:p-6 space-y-4 shadow-inner">
+                {/* Header row of the description panel */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-500/20">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-inner">
+                      <Sparkles size={20} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
+                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes & Guidelines` : "Current Cycle's Themes & Guidelines"}
+                        </h3>
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-white/50">
+                        Themes, creative prompts, and criteria defined for this cycle's submissions.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                    {user?.isAdmin && !isEditingTheme && (
+                      <button
+                        onClick={() => {
+                          setIsEditingTheme(true);
+                          setEditThemeText(cleanThemeDescription);
+                          setThemeSaveError(null);
+                        }}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all cursor-pointer shadow-sm active:scale-95"
+                      >
+                        <Edit3 size={14} />
+                        {cleanThemeDescription ? "Edit Theme Description" : "Add Theme Description"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setShowThemeDescription(false);
+                        setIsEditingTheme(false);
+                      }}
+                      title="Hide theme description"
+                      className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Edit Mode for Admins */}
+                {isEditingTheme ? (
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
+                      <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                        <Edit3 size={13} /> Editing Cycle Themes & Description (Admin Mode)
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const template = "🌟 Cycle Themes:\n• Theme 1: Neon Horizons & Nightscapes\n• Theme 2: Minimalist Architecture\n• Theme 3: Dramatic Action & Particle Moments\n\n📋 Submission Guidelines:\n• HUD turned off preferred for cinematic presentation\n• Up to 10 screenshots may be submitted, choose 1 for the voting cycle!\n• Original captures only (during or before event)";
+                            setEditThemeText(template);
+                          }}
+                          className="text-[11px] font-bold text-amber-300/80 hover:text-amber-300 hover:underline cursor-pointer"
+                        >
+                          + Insert Sample Theme Template
+                        </button>
+                        <span className="text-white/40">|</span>
+                        <span>{editThemeText.length} characters</span>
+                      </div>
+                    </div>
+
+                    <textarea
+                      rows={7}
+                      value={editThemeText}
+                      onChange={(e) => setEditThemeText(e.target.value)}
+                      placeholder="Add themes, topics, inspiration, or guidelines for this cycle's submissions (e.g. Theme 1: Cyberpunk City, Theme 2: Peaceful Nature, etc.)..."
+                      className="w-full bg-black/60 dark:bg-black/70 border border-amber-500/30 focus:border-amber-400 rounded-xl p-3.5 text-sm dark:text-white text-slate-100 placeholder:text-white/30 focus:outline-none transition-all leading-relaxed font-sans"
+                    />
+
+                    {themeSaveError && (
+                      <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>{themeSaveError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+                      <p className="text-[11px] text-slate-400 italic">
+                        Tip: Changes are instantly visible to all users upon clicking Save.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingTheme(false);
+                            setThemeSaveError(null);
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/15 text-slate-300 transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdminUpdateDescription(editThemeText)}
+                          disabled={isSavingTheme}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black transition-all flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 disabled:opacity-50"
+                        >
+                          <Check size={14} />
+                          {isSavingTheme ? "Saving Description..." : "Save Description"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Display Mode for Users & Admins */
+                  <div className="space-y-3 pt-1">
+                    {cleanThemeDescription ? (
+                      <div className="prose prose-invert max-w-none text-sm dark:text-slate-200 text-slate-700 leading-relaxed whitespace-pre-wrap font-sans bg-black/20 dark:bg-black/30 p-4 rounded-xl border border-white/5">
+                        {cleanThemeDescription}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 px-4 bg-black/20 dark:bg-black/30 rounded-xl border border-dashed border-amber-500/20 space-y-2">
+                        <p className="text-sm dark:text-slate-300 text-slate-600 font-medium">
+                          No specific themes have been announced for this cycle yet.
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-white/40 max-w-md mx-auto">
+                          Participants are free to submit screenshots from any game or genre for team points and voting!
+                        </p>
+                        {user?.isAdmin && (
+                          <div className="pt-2">
+                            <button
+                              onClick={() => {
+                                setIsEditingTheme(true);
+                                setEditThemeText('');
+                              }}
+                              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                            >
+                              <Plus size={14} />
+                              Add Theme Description Now
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* FEATURED SCREENSHOTS SHOWCASE GRID */}
@@ -4363,6 +4621,21 @@ interface UserSubmissionStat {
             </motion.div>
           );
         })()}
+      </AnimatePresence>
+
+      {/* Theme Saved Confirmation Toast */}
+      <AnimatePresence>
+        {showThemeToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold border border-emerald-400/50 backdrop-blur-md"
+          >
+            <CheckCircle size={16} className="text-white shrink-0" />
+            <span>Cycle theme description successfully saved!</span>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
