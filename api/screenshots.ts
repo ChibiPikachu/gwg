@@ -523,6 +523,7 @@ export default async function handler(req: Request, res: Response) {
         const { data: subs } = await supabase.from('screenshot_submissions').select('*').order('created_at', { ascending: false });
         const { data: votes } = await supabase.from('screenshot_votes').select('*');
         const { data: comments } = await supabase.from('screenshot_comments').select('*').order('created_at', { ascending: true });
+        const { data: allScreenshotEvents } = await supabase.from('screenshot_events').select('*').order('created_at', { ascending: false });
 
         // Load profiles and user_event_teams to ensure submissions strictly reflect user's current live team (or unassigned/none)
         const { data: profiles } = await supabase.from('profiles').select('steamid, discord_id, id, team');
@@ -676,6 +677,7 @@ export default async function handler(req: Request, res: Response) {
           },
           events: compEvents,
           activeEvent: activeCompEvent,
+          screenshotEvents: allScreenshotEvents || [],
           submissions: sanitizedSubs,
           votes: votes || [],
           comments: sanitizedComments
@@ -1854,9 +1856,12 @@ export default async function handler(req: Request, res: Response) {
 
         return res.status(200).json({
           success: true,
+          targetId,
+          description: updateData.description,
           event: {
             ...memoryEvent,
             id: targetId,
+            description: updateData.description || memoryEvent.description,
             submission_points: effectivePts,
             is_voting_active: memoryEvent.status === 'voting_active'
           }

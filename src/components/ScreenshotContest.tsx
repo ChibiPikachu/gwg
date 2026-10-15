@@ -4,13 +4,17 @@ import {
   Sparkles, Trophy, ShieldCheck, Filter, Star, CheckCircle, AlertCircle, 
   Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, Users, BarChart3, UserCheck, Search, ListFilter,
-  Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown, ExternalLink
+  Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown, ExternalLink,
+  Archive, Medal
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
+import SteamgiftsMarkdown from './SteamgiftsMarkdown';
+import SteamgiftsMarkdownEditor from './SteamgiftsMarkdownEditor';
+import ScreenshotThemeArchive from './ScreenshotThemeArchive';
 
 interface ScreenshotSubmission {
   id: string;
@@ -234,6 +238,7 @@ export default function ScreenshotContest({
   const currentTeamStyle = TEAM_CARD_STYLES[userTeam] || TEAM_CARD_STYLES['none'];
 
   const [event, setEvent] = useState<ScreenshotEvent | null>(null);
+  const [allScreenshotEvents, setAllScreenshotEvents] = useState<any[]>([]);
   // Competition Events state (linked with Events component)
   const [competitionEvents, setCompetitionEvents] = useState<any[]>([]);
   const [activeCompetitionEvent, setActiveCompetitionEvent] = useState<any | null>(null);
@@ -267,8 +272,8 @@ export default function ScreenshotContest({
     );
   };
 
-  // Filter and view state
-  const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine' | 'rejected'>('all');
+  // Filter & view state
+  const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine' | 'rejected' | 'archive'>('all');
   const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
     const saved = localStorage.getItem('screenshot_view_mode');
     return saved === 'list' ? 'list' : 'gallery';
@@ -323,14 +328,14 @@ export default function ScreenshotContest({
     targetGameName?: string;
   } | null>(null);
 
-  // Notice modal for voting status and rules
+  // Notice modal for voting status & rules
   const [votingNotice, setVotingNotice] = useState<{ title: string; message: string } | null>(null);
 
   // Admin tally result modal
   const [tallyResults, setTallyResults] = useState<any[] | null>(null);
   const [isTallying, setIsTallying] = useState(false);
 
-  // Admin user submission counts breakdown modal and user filter
+  // Admin user submission counts breakdown modal & user filter
   const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
   const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -399,6 +404,9 @@ export default function ScreenshotContest({
         setSubmissions(data.submissions || []);
         setVotes(data.votes || []);
         setComments(data.comments || []);
+        if (data.screenshotEvents && Array.isArray(data.screenshotEvents)) {
+          setAllScreenshotEvents(data.screenshotEvents);
+        }
       }
 
       // Also ensure competition events are synchronized from /api/events
@@ -558,7 +566,7 @@ interface UserSubmissionStat {
   games: string[];
 }
 
-  // Calculate per-user submission counts and stats for admin view and user indicators
+  // Calculate per-user submission counts & stats for admin view and user indicators
   const userSubmissionCounts = useMemo<Record<string, UserSubmissionStat>>(() => {
     const map: Record<string, UserSubmissionStat> = {};
 
@@ -1511,7 +1519,7 @@ interface UserSubmissionStat {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-      {/* Admin Early Access Lock Notice and Settings Box */}
+      {/* Admin Early Access Lock Notice & Settings Box */}
       {user?.isAdmin && (
         <div className="bg-slate-500/10 border border-slate-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1570,7 +1578,7 @@ interface UserSubmissionStat {
               )}
             >
               <Sparkles size={14} className={currentTeamStyle.iconText} />
-              Theme and Description
+              Theme & Description
             </button>
 
             <button
@@ -1601,7 +1609,7 @@ interface UserSubmissionStat {
               className="bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
             >
               <Trophy size={14} />
-              {isTallying ? 'Calculating...' : 'Tally and Award Points'}
+              {isTallying ? 'Calculating...' : 'Tally & Award Points'}
             </button>
           </div>
         </div>
@@ -1722,7 +1730,7 @@ interface UserSubmissionStat {
               )}
             >
               <Sparkles size={14} className={currentTeamStyle.iconText} />
-              <span>{showThemeDescription ? "Hide Themes" : "Show Themes"}</span>
+              <span>{showThemeDescription ? "Hide Themes" : "Themes and Description"}</span>
               <ChevronDown
                 size={14}
                 className={cn("transition-transform duration-300", showThemeDescription ? cn("rotate-180", currentTeamStyle.iconText) : "text-slate-400")}
@@ -1751,7 +1759,7 @@ interface UserSubmissionStat {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
-                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes and Guidelines` : "Current Cycle's Themes and Guidelines"}
+                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes & Guidelines` : "Current Cycle's Themes & Guidelines"}
                         </h3>
                         <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border", currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)}>
                           {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
@@ -1790,77 +1798,59 @@ interface UserSubmissionStat {
                   </div>
                 </div>
 
-                {/* Edit Mode for Admins */}
+                {/* Edit Mode for Admins (Steamgifts Markdown) */}
                 {isEditingTheme ? (
                   <div className="space-y-4 pt-1">
-                    <div className="flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
-                      <span className={cn("font-bold flex items-center gap-1.5", currentTeamStyle.iconText)}>
-                        <Edit3 size={13} /> Editing Cycle Themes and Description (Admin Mode)
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const template = "🌟 Cycle Themes:\n• Theme 1: Neon Horizons and Nightscapes\n• Theme 2: Minimalist Architecture\n• Theme 3: Dramatic Action and Particle Moments\n\n📋 Submission Guidelines:\n• HUD turned off preferred for cinematic presentation\n• Up to 10 screenshots may be submitted, choose 1 for the voting cycle!\n• Original captures only (during or before event)";
-                            setEditThemeText(template);
-                          }}
-                          className={cn("text-[11px] font-bold hover:underline cursor-pointer", currentTeamStyle.badgeText)}
-                        >
-                          + Insert Sample Theme Template
-                        </button>
-                        <span className="text-white/40">|</span>
-                        <span>{editThemeText.length} characters</span>
-                      </div>
-                    </div>
-
-                    <textarea
-                      rows={7}
+                    <SteamgiftsMarkdownEditor
                       value={editThemeText}
-                      onChange={(e) => setEditThemeText(e.target.value)}
-                      placeholder="Add themes, topics, inspiration, or guidelines for this cycle's submissions (e.g. Theme 1: Cyberpunk City, Theme 2: Peaceful Nature, etc.)..."
-                      className={cn("w-full bg-black/60 dark:bg-black/70 border rounded-xl p-3.5 text-sm dark:text-white text-slate-100 placeholder:text-white/30 focus:outline-none transition-all leading-relaxed font-sans", currentTeamStyle.inputBorder, currentTeamStyle.inputFocus)}
+                      onChange={setEditThemeText}
+                      placeholder="Add themes, guidelines, and inspiration for this cycle's submissions using Steamgifts Markdown (e.g. ## Theme 1, * bullet points, [spoiler]secret[/spoiler])..."
+                      teamStyle={currentTeamStyle}
+                      isSaving={isSavingTheme}
+                      onSave={() => handleAdminUpdateDescription(editThemeText)}
+                      onCancel={() => {
+                        setIsEditingTheme(false);
+                        setThemeSaveError(null);
+                      }}
+                      saveButtonText="Save Theme Description"
+                      title="Editing Cycle Themes & Guidelines (Steamgifts Markdown)"
                     />
-
                     {themeSaveError && (
                       <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
                         <AlertCircle size={14} className="shrink-0" />
                         <span>{themeSaveError}</span>
                       </div>
                     )}
-
-                    <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
-                      <p className="text-[11px] text-slate-400 italic">
-                        Tip: Changes are instantly visible to all users upon clicking Save.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingTheme(false);
-                            setThemeSaveError(null);
-                          }}
-                          className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/15 text-slate-300 transition-colors cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAdminUpdateDescription(editThemeText)}
-                          disabled={isSavingTheme}
-                          className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 disabled:opacity-50", currentTeamStyle.btnPrimary)}
-                        >
-                          <Check size={14} />
-                          {isSavingTheme ? "Saving Description..." : "Save Description"}
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 ) : (
-                  /* Display Mode for Users and Admins */
+                  /* Display Mode for Users & Admins (Steamgifts Markdown) */
                   <div className="space-y-3 pt-1">
                     {cleanThemeDescription ? (
-                      <div className="prose prose-invert max-w-none text-sm dark:text-slate-200 text-slate-700 leading-relaxed whitespace-pre-wrap font-sans bg-black/20 dark:bg-black/30 p-4 rounded-xl border border-white/5">
-                        {cleanThemeDescription}
+                      <div className="bg-black/25 dark:bg-black/35 p-5 md:p-6 rounded-2xl border border-white/10 space-y-4 shadow-sm">
+                        <SteamgiftsMarkdown
+                          content={cleanThemeDescription}
+                          teamAccent={currentTeamStyle.iconText}
+                          teamStyle={currentTeamStyle}
+                        />
+                        <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('archive');
+                              setShowThemeDescription(false);
+                            }}
+                            className={cn(
+                              "font-bold hover:underline cursor-pointer flex items-center gap-1.5 transition-colors",
+                              currentTeamStyle.badgeText
+                            )}
+                          >
+                            <Archive size={13} />
+                            View Past Finished Themes & Top 5 Winners Archive →
+                          </button>
+                          <span className="text-[11px] text-white/40 italic">
+                            Formatted with Steamgifts Markdown
+                          </span>
+                        </div>
                       </div>
                     ) : (
                       <div className={cn("text-center py-6 px-4 bg-black/20 dark:bg-black/30 rounded-xl border border-dashed space-y-2", currentTeamStyle.cardBorder)}>
@@ -1870,8 +1860,8 @@ interface UserSubmissionStat {
                         <p className="text-xs text-slate-400 dark:text-white/40 max-w-md mx-auto">
                           Participants are free to submit screenshots from any game or genre for team points and voting!
                         </p>
-                        {user?.isAdmin && (
-                          <div className="pt-2">
+                        <div className="pt-2 flex items-center justify-center gap-3 flex-wrap">
+                          {user?.isAdmin && (
                             <button
                               onClick={() => {
                                 setIsEditingTheme(true);
@@ -1880,10 +1870,20 @@ interface UserSubmissionStat {
                               className={cn("px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer inline-flex items-center gap-1.5", currentTeamStyle.btnSubtle)}
                             >
                               <Plus size={14} />
-                              Add Theme Description Now
+                              Add Theme Description (Markdown)
                             </button>
-                          </div>
-                        )}
+                          )}
+                          <button
+                            onClick={() => {
+                              setActiveTab('archive');
+                              setShowThemeDescription(false);
+                            }}
+                            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <Archive size={13} />
+                            Browse Theme Archive
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2110,7 +2110,7 @@ interface UserSubmissionStat {
         </div>
       </div>
 
-      {/* Navigation and Controls Bar */}
+      {/* Navigation & Controls Bar */}
       <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-black/5 dark:border-white/5 pb-4">
         {/* Tabs */}
         <div className="flex items-center gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
@@ -2149,8 +2149,21 @@ interface UserSubmissionStat {
                 : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
-            <Star size={14} className="text-amber-400" />
+            <Star size={14} className={currentTeamStyle.iconText} />
             For Voting ({eventScopedSubmissions.filter(s => s.is_selected && s.status !== 'rejected').length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('archive')}
+            className={cn(
+              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+              activeTab === 'archive'
+                ? teamActiveTab
+                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+            )}
+          >
+            <Archive size={14} className={currentTeamStyle.iconText} />
+            Theme Archive
           </button>
 
           {user?.isAdmin && (
@@ -2169,61 +2182,76 @@ interface UserSubmissionStat {
           )}
         </div>
 
-        {/* Right Controls: View Switcher and Search Bar */}
-        <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
-          {/* View Mode Toggle: Gallery vs List */}
-          <div className="flex items-center bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/10 dark:border-white/10 shrink-0">
-            <button
-              onClick={() => {
-                setViewMode('gallery');
-                localStorage.setItem('screenshot_view_mode', 'gallery');
-              }}
-              title="Gallery View (Large Cards)"
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                viewMode === 'gallery'
-                  ? teamActiveTab
-                  : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              <LayoutGrid size={14} />
-              <span className="hidden sm:inline">Gallery</span>
-            </button>
+        {/* Right Controls: View Switcher & Search Bar */}
+        {activeTab !== 'archive' && (
+          <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
+            {/* View Mode Toggle: Gallery vs List */}
+            <div className="flex items-center bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/10 dark:border-white/10 shrink-0">
+              <button
+                onClick={() => {
+                  setViewMode('gallery');
+                  localStorage.setItem('screenshot_view_mode', 'gallery');
+                }}
+                title="Gallery View (Large Cards)"
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                  viewMode === 'gallery'
+                    ? teamActiveTab
+                    : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
+                )}
+              >
+                <LayoutGrid size={14} />
+                <span className="hidden sm:inline">Gallery</span>
+              </button>
 
-            <button
-              onClick={() => {
-                setViewMode('list');
-                localStorage.setItem('screenshot_view_mode', 'list');
-              }}
-              title="List View (Streamlined Rows)"
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                viewMode === 'list'
-                  ? teamActiveTab
-                  : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              <List size={14} />
-              <span className="hidden sm:inline">List</span>
-            </button>
-          </div>
+              <button
+                onClick={() => {
+                  setViewMode('list');
+                  localStorage.setItem('screenshot_view_mode', 'list');
+                }}
+                title="List View (Streamlined Rows)"
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                  viewMode === 'list'
+                    ? teamActiveTab
+                    : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
+                )}
+              >
+                <List size={14} />
+                <span className="hidden sm:inline">List</span>
+              </button>
+            </div>
 
-          {/* Search Input */}
-          <div className="relative w-full sm:w-64">
-            <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" />
-            <input
-              type="text"
-              placeholder="Search game, caption, or user..."
-              value={searchGame}
-              onChange={(e) => setSearchGame(e.target.value)}
-              className={cn("w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-medium dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none transition-colors", teamFocusBorder)}
-            />
+            {/* Search Input */}
+            <div className="relative w-full sm:w-64">
+              <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" />
+              <input
+                type="text"
+                placeholder="Search game, caption, or user..."
+                value={searchGame}
+                onChange={(e) => setSearchGame(e.target.value)}
+                className={cn("w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-medium dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none transition-colors", teamFocusBorder)}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Submissions Content */}
-      {loading ? (
+      {/* Submissions Content or Theme Archive */}
+      {activeTab === 'archive' ? (
+        <ScreenshotThemeArchive
+          currentTeamStyle={currentTeamStyle}
+          userTeam={userTeam as Team}
+          isAdmin={Boolean(user?.isAdmin)}
+          onOpenLightbox={(subId) => setLightboxSubId(subId)}
+          onViewProfile={onViewProfile}
+          allScreenshotEvents={allScreenshotEvents}
+          allSubmissions={submissions}
+          allVotes={votes}
+          competitionEvents={competitionEvents}
+          activeCompetitionEvent={activeCompetitionEvent}
+        />
+      ) : loading ? (
         <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
           <RefreshCw size={28} className={cn("animate-spin", teamTextAccent)} />
           <p className="text-xs font-medium">Loading screenshots gallery...</p>
@@ -2604,7 +2632,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Actions and Footer */}
+                  {/* Actions & Footer */}
                   <div className="pt-2 sm:pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1 sm:gap-2">
                     {/* Set for Voting toggle if it's user's submission */}
                     {isMine ? (
@@ -2712,7 +2740,7 @@ interface UserSubmissionStat {
                     </div>
                   )}
 
-                  {/* Spoiler Tag and Reveal Button */}
+                  {/* Spoiler Tag & Reveal Button */}
                   {isSpoilerHidden && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-black/60 backdrop-blur-md z-10 text-center gap-1">
                       <span className="text-[10px] font-black uppercase tracking-wider text-red-400">Spoiler</span>
@@ -2738,7 +2766,7 @@ interface UserSubmissionStat {
 
                 {/* Center Content Section */}
                 <div className="flex-1 min-w-0 space-y-2">
-                  {/* Top Row: User Avatar, Name, Team, Date and Badges */}
+                  {/* Top Row: User Avatar, Name, Team, Date & Badges */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 truncate">
                       {sub.user_avatar ? (
@@ -2768,7 +2796,7 @@ interface UserSubmissionStat {
                       </span>
                     </div>
 
-                    {/* Status and Voting Badges */}
+                    {/* Status & Voting Badges */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       {/* Color-coded status badge matching team color with Tooltip */}
                       {(() => {
@@ -2858,7 +2886,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Caption and Game */}
+                  {/* Caption & Game */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold dark:text-white/90 text-slate-700">
@@ -2913,7 +2941,7 @@ interface UserSubmissionStat {
                     {/* Comments Button */}
                     <button
                       onClick={() => setActiveCommentSubId(sub.id)}
-                      title="View and Add Comments"
+                      title="View & Add Comments"
                       className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5 cursor-pointer border border-black/5 dark:border-white/5"
                     >
                       <MessageSquare size={14} />
@@ -3419,7 +3447,7 @@ interface UserSubmissionStat {
         )}
       </AnimatePresence>
 
-      {/* VOTING STATUS and RULES NOTICE MODAL */}
+      {/* VOTING STATUS & RULES NOTICE MODAL */}
       <AnimatePresence>
         {votingNotice && (
           <div 
@@ -3551,7 +3579,7 @@ interface UserSubmissionStat {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">Winner Points Awarded!</h3>
-                  <p className="text-xs text-white/50">Top voted screenshot submissions and awarded bonus team points</p>
+                  <p className="text-xs text-white/50">Top voted screenshot submissions & awarded bonus team points</p>
                 </div>
               </div>
 
@@ -3572,7 +3600,7 @@ interface UserSubmissionStat {
                 onClick={() => setTallyResults(null)}
                 className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs py-2.5 rounded-xl cursor-pointer"
               >
-                Close and Done
+                Close & Done
               </button>
             </motion.div>
           </div>
@@ -3648,7 +3676,7 @@ interface UserSubmissionStat {
                   <button
                     onClick={() => setLightboxMobileView(prev => prev === 'split' ? 'image-only' : 'split')}
                     className="md:hidden landscape:hidden p-1.5 px-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
-                    title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments and details"}
+                    title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments & details"}
                   >
                     {lightboxMobileView === 'split' ? (
                       <>
@@ -3804,12 +3832,12 @@ interface UserSubmissionStat {
                       className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-bold border border-white/20 backdrop-blur-md flex items-center gap-2 shadow-2xl active:scale-95 cursor-pointer animate-in fade-in slide-in-from-bottom-2"
                     >
                       <MessageSquare size={14} className="text-sky-400" />
-                      <span>Show Details and Comments ({subComments.length})</span>
+                      <span>Show Details & Comments ({subComments.length})</span>
                     </button>
                   )}
                 </div>
 
-                {/* Details and Comments Section - Scrollable and constrained so it NEVER covers the image */}
+                {/* Details & Comments Section - Scrollable and constrained so it NEVER covers the image */}
                 <div 
                   className={cn(
                     "bg-[#121215] border-t md:border-t-0 landscape:border-t-0 md:border-l landscape:border-l border-white/10 flex flex-col justify-between overflow-hidden cursor-default transition-all duration-200",
@@ -3860,7 +3888,7 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {/* Team and Voting Entry Badges */}
+                      {/* Team & Voting Entry Badges */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {currentSub.user_team && currentSub.user_team !== 'none' && (
                           <span className={cn(
@@ -3919,7 +3947,7 @@ interface UserSubmissionStat {
                       </div>
                     )}
 
-                    {/* Game Title and Caption Box */}
+                    {/* Game Title & Caption Box */}
                     <div className="space-y-1.5 sm:space-y-2">
                       <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", teamTextAccent)}>Game Title</span>
                       <h3 className="text-sm sm:text-base font-extrabold text-white">{currentSub.game_name}</h3>
@@ -3934,7 +3962,7 @@ interface UserSubmissionStat {
                         <p className="text-xs italic text-white/30">No caption provided</p>
                       )}
 
-                      {/* External Image Link Notice and Button */}
+                      {/* External Image Link Notice & Button */}
                       {isExternalLinkImage(currentSub.image_url) && (
                         <div className="mt-3 p-3 rounded-xl bg-sky-500/[0.08] border border-sky-500/25 space-y-2">
                           <div className="flex items-center justify-between gap-2">
@@ -3968,7 +3996,7 @@ interface UserSubmissionStat {
                       )}
                     </div>
 
-                    {/* Lightbox Voting and Voting Entry Controls */}
+                    {/* Lightbox Voting & Voting Entry Controls */}
                     <div className="space-y-2 pt-1">
                       {currentSub.is_selected && (
                         <button
@@ -4113,7 +4141,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Pinned Bottom Container: Input and Admin actions */}
+                  {/* Pinned Bottom Container: Input & Admin actions */}
                   <div className="p-3 sm:p-4 bg-black/60 backdrop-blur-md border-t border-white/10 shrink-0 space-y-2">
                     {/* Comment Input */}
                     <div className="flex items-center gap-2">
@@ -4270,7 +4298,7 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {/* Counts and Actions */}
+                      {/* Counts & Actions */}
                       <div className="flex items-center gap-3 justify-between sm:justify-end">
                         <div className="text-right">
                           <div className="flex items-center gap-1.5 justify-end">
@@ -4467,7 +4495,7 @@ interface UserSubmissionStat {
                 {/* Drag handle for mobile */}
                 <div className="w-12 h-1 bg-white/20 rounded-full mx-auto sm:hidden -mt-1 mb-1" />
 
-                {/* Header: Submitter info and Screenshot Preview */}
+                {/* Header: Submitter info & Screenshot Preview */}
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-black">
@@ -4516,7 +4544,7 @@ interface UserSubmissionStat {
                   </button>
                 </div>
 
-                {/* External URL notice and button */}
+                {/* External URL notice & button */}
                 {isExternalLinkImage(targetSub.image_url) && (
                   <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -4549,7 +4577,7 @@ interface UserSubmissionStat {
                   </div>
                 )}
 
-                {/* Admin Status and Tools: Only visible to Admins */}
+                {/* Admin Status & Tools: Only visible to Admins */}
                 {user?.isAdmin && (
                   <>
                     {/* Status Selection: Approve / Pending / Reject */}
@@ -4648,7 +4676,7 @@ interface UserSubmissionStat {
                       >
                         <div className="flex items-center gap-2.5">
                           <Edit3 size={16} className="shrink-0" />
-                          <span>Edit Caption, Game and Status</span>
+                          <span>Edit Caption, Game & Status</span>
                         </div>
                         <span className="text-[10px] text-sky-400/70">Open Editor →</span>
                       </button>
