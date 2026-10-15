@@ -118,6 +118,92 @@ const TEAM_BG_ACCENT: Record<string, string> = {
   none: 'bg-slate-500/10 border-slate-500/20 text-slate-400'
 };
 
+const TEAM_CARD_STYLES: Record<string, {
+  cardBg: string;
+  cardBorder: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeText: string;
+  iconBg: string;
+  iconBorder: string;
+  iconText: string;
+  inputBorder: string;
+  inputFocus: string;
+  btnPrimary: string;
+  btnSubtle: string;
+}> = {
+  blue: {
+    cardBg: 'from-sky-500/[0.08] via-black/20 to-sky-500/[0.02] dark:from-sky-500/[0.08] dark:to-transparent',
+    cardBorder: 'border-sky-500/30',
+    badgeBg: 'bg-sky-500/20',
+    badgeBorder: 'border-sky-500/40',
+    badgeText: 'text-sky-300',
+    iconBg: 'bg-sky-500/20',
+    iconBorder: 'border-sky-500/30',
+    iconText: 'text-sky-400',
+    inputBorder: 'border-sky-500/30 focus:border-sky-400',
+    inputFocus: 'focus:border-sky-400 focus:ring-1 focus:ring-sky-500/30',
+    btnPrimary: 'bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-500/25 border border-sky-500',
+    btnSubtle: 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40'
+  },
+  green: {
+    cardBg: 'from-green-500/[0.08] via-black/20 to-green-500/[0.02] dark:from-green-500/[0.08] dark:to-transparent',
+    cardBorder: 'border-green-500/30',
+    badgeBg: 'bg-green-500/20',
+    badgeBorder: 'border-green-500/40',
+    badgeText: 'text-green-300',
+    iconBg: 'bg-green-500/20',
+    iconBorder: 'border-green-500/30',
+    iconText: 'text-green-400',
+    inputBorder: 'border-green-500/30 focus:border-green-400',
+    inputFocus: 'focus:border-green-400 focus:ring-1 focus:ring-green-500/30',
+    btnPrimary: 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/25 border border-green-500',
+    btnSubtle: 'bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/40'
+  },
+  purple: {
+    cardBg: 'from-purple-500/[0.08] via-black/20 to-purple-500/[0.02] dark:from-purple-500/[0.08] dark:to-transparent',
+    cardBorder: 'border-purple-500/30',
+    badgeBg: 'bg-purple-500/20',
+    badgeBorder: 'border-purple-500/40',
+    badgeText: 'text-purple-300',
+    iconBg: 'bg-purple-500/20',
+    iconBorder: 'border-purple-500/30',
+    iconText: 'text-purple-400',
+    inputBorder: 'border-purple-500/30 focus:border-purple-400',
+    inputFocus: 'focus:border-purple-400 focus:ring-1 focus:ring-purple-500/30',
+    btnPrimary: 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/25 border border-purple-500',
+    btnSubtle: 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40'
+  },
+  red: {
+    cardBg: 'from-red-500/[0.08] via-black/20 to-red-500/[0.02] dark:from-red-500/[0.08] dark:to-transparent',
+    cardBorder: 'border-red-500/30',
+    badgeBg: 'bg-red-500/20',
+    badgeBorder: 'border-red-500/40',
+    badgeText: 'text-red-300',
+    iconBg: 'bg-red-500/20',
+    iconBorder: 'border-red-500/30',
+    iconText: 'text-red-400',
+    inputBorder: 'border-red-500/30 focus:border-red-400',
+    inputFocus: 'focus:border-red-400 focus:ring-1 focus:ring-red-500/30',
+    btnPrimary: 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-500/25 border border-red-500',
+    btnSubtle: 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40'
+  },
+  none: {
+    cardBg: 'from-slate-500/[0.08] via-black/20 to-slate-500/[0.02] dark:from-slate-500/[0.08] dark:to-transparent',
+    cardBorder: 'border-slate-500/30',
+    badgeBg: 'bg-slate-500/20',
+    badgeBorder: 'border-slate-500/40',
+    badgeText: 'text-slate-300',
+    iconBg: 'bg-slate-500/20',
+    iconBorder: 'border-slate-500/30',
+    iconText: 'text-slate-400',
+    inputBorder: 'border-slate-500/30 focus:border-slate-400',
+    inputFocus: 'focus:border-slate-400 focus:ring-1 focus:ring-slate-500/30',
+    btnPrimary: 'bg-slate-700 hover:bg-slate-600 text-white shadow-lg shadow-slate-500/25 border border-slate-600',
+    btnSubtle: 'bg-slate-500/20 hover:bg-slate-500/30 text-slate-300 border border-slate-500/40'
+  }
+};
+
 export const isExternalLinkImage = (url: string | null | undefined): boolean => {
   if (!url) return false;
   const trimmed = url.trim();
@@ -145,6 +231,7 @@ export default function ScreenshotContest({
   const teamTextAccent = TEAM_TEXT_ACCENT[userTeam] || TEAM_TEXT_ACCENT['none'];
   const teamBgAccent = TEAM_BG_ACCENT[userTeam] || TEAM_BG_ACCENT['none'];
   const userTeamColors = TEAM_COLORS[userTeam as Team] || TEAM_COLORS['none'];
+  const currentTeamStyle = TEAM_CARD_STYLES[userTeam] || TEAM_CARD_STYLES['none'];
 
   const [event, setEvent] = useState<ScreenshotEvent | null>(null);
   // Competition Events state (linked with Events component)
@@ -1477,9 +1564,12 @@ interface UserSubmissionStat {
                 setIsEditingTheme(true);
                 setEditThemeText(cleanThemeDescription);
               }}
-              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+              className={cn(
+                "border font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95",
+                currentTeamStyle.btnSubtle
+              )}
             >
-              <Sparkles size={14} className="text-amber-400" />
+              <Sparkles size={14} className={currentTeamStyle.iconText} />
               Theme & Description
             </button>
 
@@ -1585,30 +1675,7 @@ interface UserSubmissionStat {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            {/* Cycle Themes & Description Toggle Button */}
-            <button
-              onClick={() => {
-                setShowThemeDescription(prev => !prev);
-                if (isEditingTheme) setIsEditingTheme(false);
-              }}
-              aria-expanded={showThemeDescription}
-              title="Toggle cycle themes and guidelines"
-              className={cn(
-                "w-full sm:w-auto font-bold text-sm px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer border shadow-md",
-                showThemeDescription
-                  ? "bg-amber-500/20 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-amber-500/10 ring-1 ring-amber-500/30"
-                  : "bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white text-slate-800 border-black/10 dark:border-white/15"
-              )}
-            >
-              <Sparkles size={18} className={showThemeDescription ? "text-amber-400 fill-amber-400/20" : "text-amber-400"} />
-              <span>{showThemeDescription ? "Hide Cycle Themes" : "Cycle Themes & Description"}</span>
-              <ChevronDown
-                size={16}
-                className={cn("transition-transform duration-300", showThemeDescription ? "rotate-180 text-amber-400" : "text-slate-400")}
-              />
-            </button>
-
+          <div className="flex flex-col items-stretch sm:items-end gap-2.5 w-full sm:w-auto shrink-0">
             <button
               onClick={openSubmitModal}
               title={
@@ -1638,6 +1705,29 @@ interface UserSubmissionStat {
                       ? "Submissions Closed (Voting Active)"
                       : "Submissions Closed"}
             </button>
+
+            {/* Cycle Themes & Description Toggle Button (Thinner, placed directly below Submit Screenshot) */}
+            <button
+              onClick={() => {
+                setShowThemeDescription(prev => !prev);
+                if (isEditingTheme) setIsEditingTheme(false);
+              }}
+              aria-expanded={showThemeDescription}
+              title="Toggle cycle themes and guidelines"
+              className={cn(
+                "w-full sm:w-auto font-bold text-xs px-3.5 py-2 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer border shadow-sm",
+                showThemeDescription
+                  ? cn(currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder, "ring-1", currentTeamStyle.badgeBorder)
+                  : cn("bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white/80 text-slate-700 border-black/10 dark:border-white/10", hoverBorderClass)
+              )}
+            >
+              <Sparkles size={14} className={currentTeamStyle.iconText} />
+              <span>{showThemeDescription ? "Hide Cycle Themes" : "Cycle Themes & Description"}</span>
+              <ChevronDown
+                size={14}
+                className={cn("transition-transform duration-300", showThemeDescription ? cn("rotate-180", currentTeamStyle.iconText) : "text-slate-400")}
+              />
+            </button>
           </div>
         </div>
 
@@ -1651,11 +1741,11 @@ interface UserSubmissionStat {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
               className="overflow-hidden border-t border-black/10 dark:border-white/10 pt-6"
             >
-              <div className="bg-gradient-to-br from-amber-500/[0.07] via-black/20 to-amber-500/[0.03] dark:from-amber-500/[0.08] dark:to-transparent border border-amber-500/25 rounded-2xl p-5 md:p-6 space-y-4 shadow-inner">
+              <div className={cn("bg-gradient-to-br border rounded-2xl p-5 md:p-6 space-y-4 shadow-inner", currentTeamStyle.cardBg, currentTeamStyle.cardBorder)}>
                 {/* Header row of the description panel */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-500/20">
+                <div className={cn("flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b", currentTeamStyle.cardBorder)}>
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-inner">
+                    <div className={cn("p-2.5 rounded-xl border shadow-inner", currentTeamStyle.iconBg, currentTeamStyle.iconText, currentTeamStyle.iconBorder)}>
                       <Sparkles size={20} />
                     </div>
                     <div>
@@ -1663,7 +1753,7 @@ interface UserSubmissionStat {
                         <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
                           {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes & Guidelines` : "Current Cycle's Themes & Guidelines"}
                         </h3>
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border", currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)}>
                           {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
                         </span>
                       </div>
@@ -1681,7 +1771,7 @@ interface UserSubmissionStat {
                           setEditThemeText(cleanThemeDescription);
                           setThemeSaveError(null);
                         }}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all cursor-pointer shadow-sm active:scale-95"
+                        className={cn("flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95", currentTeamStyle.btnSubtle)}
                       >
                         <Edit3 size={14} />
                         {cleanThemeDescription ? "Edit Theme Description" : "Add Theme Description"}
@@ -1704,7 +1794,7 @@ interface UserSubmissionStat {
                 {isEditingTheme ? (
                   <div className="space-y-4 pt-1">
                     <div className="flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
-                      <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                      <span className={cn("font-bold flex items-center gap-1.5", currentTeamStyle.iconText)}>
                         <Edit3 size={13} /> Editing Cycle Themes & Description (Admin Mode)
                       </span>
                       <div className="flex items-center gap-2">
@@ -1714,7 +1804,7 @@ interface UserSubmissionStat {
                             const template = "🌟 Cycle Themes:\n• Theme 1: Neon Horizons & Nightscapes\n• Theme 2: Minimalist Architecture\n• Theme 3: Dramatic Action & Particle Moments\n\n📋 Submission Guidelines:\n• HUD turned off preferred for cinematic presentation\n• Up to 10 screenshots may be submitted, choose 1 for the voting cycle!\n• Original captures only (during or before event)";
                             setEditThemeText(template);
                           }}
-                          className="text-[11px] font-bold text-amber-300/80 hover:text-amber-300 hover:underline cursor-pointer"
+                          className={cn("text-[11px] font-bold hover:underline cursor-pointer", currentTeamStyle.badgeText)}
                         >
                           + Insert Sample Theme Template
                         </button>
@@ -1728,7 +1818,7 @@ interface UserSubmissionStat {
                       value={editThemeText}
                       onChange={(e) => setEditThemeText(e.target.value)}
                       placeholder="Add themes, topics, inspiration, or guidelines for this cycle's submissions (e.g. Theme 1: Cyberpunk City, Theme 2: Peaceful Nature, etc.)..."
-                      className="w-full bg-black/60 dark:bg-black/70 border border-amber-500/30 focus:border-amber-400 rounded-xl p-3.5 text-sm dark:text-white text-slate-100 placeholder:text-white/30 focus:outline-none transition-all leading-relaxed font-sans"
+                      className={cn("w-full bg-black/60 dark:bg-black/70 border rounded-xl p-3.5 text-sm dark:text-white text-slate-100 placeholder:text-white/30 focus:outline-none transition-all leading-relaxed font-sans", currentTeamStyle.inputBorder, currentTeamStyle.inputFocus)}
                     />
 
                     {themeSaveError && (
@@ -1757,7 +1847,7 @@ interface UserSubmissionStat {
                           type="button"
                           onClick={() => handleAdminUpdateDescription(editThemeText)}
                           disabled={isSavingTheme}
-                          className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black transition-all flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 disabled:opacity-50"
+                          className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 disabled:opacity-50", currentTeamStyle.btnPrimary)}
                         >
                           <Check size={14} />
                           {isSavingTheme ? "Saving Description..." : "Save Description"}
@@ -1773,7 +1863,7 @@ interface UserSubmissionStat {
                         {cleanThemeDescription}
                       </div>
                     ) : (
-                      <div className="text-center py-6 px-4 bg-black/20 dark:bg-black/30 rounded-xl border border-dashed border-amber-500/20 space-y-2">
+                      <div className={cn("text-center py-6 px-4 bg-black/20 dark:bg-black/30 rounded-xl border border-dashed space-y-2", currentTeamStyle.cardBorder)}>
                         <p className="text-sm dark:text-slate-300 text-slate-600 font-medium">
                           No specific themes have been announced for this cycle yet.
                         </p>
@@ -1787,7 +1877,7 @@ interface UserSubmissionStat {
                                 setIsEditingTheme(true);
                                 setEditThemeText('');
                               }}
-                              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                              className={cn("px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer inline-flex items-center gap-1.5", currentTeamStyle.btnSubtle)}
                             >
                               <Plus size={14} />
                               Add Theme Description Now
