@@ -1951,7 +1951,7 @@ interface UserSubmissionStat {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
               className="overflow-hidden border-t border-black/10 dark:border-white/10 pt-6"
             >
-              <div className={cn("bg-gradient-to-br border rounded-2xl p-5 md:p-6 space-y-4", currentTeamStyle.cardBg, currentTeamStyle.cardBorder)}>
+              <div className={cn("bg-gradient-to-br border rounded-2xl p-5 md:p-6 space-y-4 shadow-inner", currentTeamStyle.cardBg, currentTeamStyle.cardBorder)}>
                 {/* Header row of the description panel */}
                 <div className={cn("flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b", currentTeamStyle.cardBorder)}>
                   <div className="flex items-center gap-3">
@@ -2049,9 +2049,6 @@ interface UserSubmissionStat {
                             <Archive size={13} />
                             View Past Finished Themes & Top 5 Winners Archive →
                           </button>
-                          <span className="text-[11px] text-white/40 italic">
-                            Formatted with Steamgifts Markdown
-                          </span>
                         </div>
                       </div>
                     ) : (
