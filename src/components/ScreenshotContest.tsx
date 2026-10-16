@@ -1932,7 +1932,7 @@ interface UserSubmissionStat {
               )}
             >
               <Sparkles size={14} className={currentTeamStyle.iconText} />
-              <span>{showThemeDescription ? "Hide Themes" : "Themes and Description"}</span>
+              <span>{showThemeDescription ? "Hide Themes" : "Show Themes"}</span>
               <ChevronDown
                 size={14}
                 className={cn("transition-transform duration-300", showThemeDescription ? cn("rotate-180", currentTeamStyle.iconText) : "text-slate-400")}
