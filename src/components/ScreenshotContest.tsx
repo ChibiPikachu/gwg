@@ -279,6 +279,7 @@ export default function ScreenshotContest({
     return saved === 'list' ? 'list' : 'gallery';
   });
   const [searchGame, setSearchGame] = useState('');
+  const [adminStatusFilter, setAdminStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
   const [isDragging, setIsDragging] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
 
@@ -1662,15 +1663,53 @@ interface UserSubmissionStat {
     return eventScopedSubmissions.filter(s => (s.status === 'approved' || s.status === 'verified')).slice(0, 6);
   }, [eventScopedSubmissions]);
 
+  // Status counts for admin filtering within current event scope
+  const statusCounts = useMemo(() => {
+    let pool = eventScopedSubmissions;
+    if (adminFilterUserId) {
+      pool = pool.filter(s => s.user_id === adminFilterUserId);
+    }
+    if (activeTab === 'voting') {
+      pool = pool.filter(s => s.is_selected);
+    } else if (activeTab === 'mine') {
+      pool = pool.filter(s => isUserSubmission(s.user_id));
+    }
+
+    const approved = pool.filter(s => s.status === 'approved' || s.status === 'verified').length;
+    const pending = pool.filter(s => s.status === 'pending' || !s.status).length;
+    const rejected = pool.filter(s => s.status === 'rejected').length;
+    const all = approved + pending;
+
+    return { all, approved, pending, rejected, total: pool.length };
+  }, [eventScopedSubmissions, adminFilterUserId, activeTab, currentUserId, user]);
+
   // Filtered Submissions list
   const filteredSubmissions = useMemo(() => {
     return eventScopedSubmissions.filter(sub => {
-      // Rejected submissions: only admins can see them, and ONLY in the 'rejected' panel
-      if (sub.status === 'rejected') {
-        if (!user?.isAdmin) return false;
-        if (activeTab !== 'rejected') return false;
+      // Regular non-admin users must NEVER see rejected submissions anywhere
+      if (!user?.isAdmin && sub.status === 'rejected') {
+        return false;
+      }
+
+      // Admin Status Filter (Approved, Pending, Rejected, or All)
+      if (user?.isAdmin) {
+        if (adminStatusFilter === 'approved') {
+          if (sub.status !== 'approved' && sub.status !== 'verified') return false;
+        } else if (adminStatusFilter === 'pending') {
+          if (sub.status !== 'pending' && sub.status) return false;
+        } else if (adminStatusFilter === 'rejected') {
+          if (sub.status !== 'rejected') return false;
+        } else {
+          // adminStatusFilter === 'all'
+          if (activeTab === 'rejected') {
+            if (sub.status !== 'rejected') return false;
+          } else {
+            // In general view, hide rejected unless specifically filtering for rejected
+            if (sub.status === 'rejected') return false;
+          }
+        }
       } else {
-        // Non-rejected submissions never show in the 'rejected' panel
+        if (sub.status === 'rejected') return false;
         if (activeTab === 'rejected') return false;
       }
 
@@ -1686,7 +1725,7 @@ interface UserSubmissionStat {
       }
       return true;
     });
-  }, [eventScopedSubmissions, activeTab, currentUserId, searchGame, adminFilterUserId, user?.isAdmin]);
+  }, [eventScopedSubmissions, activeTab, currentUserId, searchGame, adminFilterUserId, user?.isAdmin, adminStatusFilter]);
 
   // Lightbox Navigation Handlers
   const handlePrevLightbox = () => {
@@ -2364,26 +2403,138 @@ interface UserSubmissionStat {
             <Archive size={14} className={currentTeamStyle.iconText} />
             Theme Archive
           </button>
-
-          {user?.isAdmin && (
-            <button
-              onClick={() => setActiveTab('rejected')}
-              className={cn(
-                "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
-                activeTab === 'rejected'
-                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
-                  : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
-              )}
-            >
-              <XCircle size={14} className="text-rose-400" />
-              Rejected ({eventScopedSubmissions.filter(s => s.status === 'rejected').length})
-            </button>
-          )}
         </div>
 
-        {/* Right Controls: View Switcher and Search Bar */}
+        {/* Right Controls: Admin Status Filter, View Switcher, and Search Bar */}
         {activeTab !== 'archive' && (
-          <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3 w-full lg:w-auto justify-between lg:justify-end">
+            {/* Admin Status Filter (Approve / Pending / Reject) */}
+            {user?.isAdmin && (
+              <>
+                {/* Desktop / Tablet Segmented Pill Filter */}
+                <div className="hidden md:flex items-center bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/10 dark:border-white/10 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter('all')}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                      adminStatusFilter === 'all'
+                        ? "bg-white dark:bg-white/15 text-slate-900 dark:text-white shadow-sm"
+                        : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
+                    )}
+                  >
+                    <span>All</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                      adminStatusFilter === 'all'
+                        ? "bg-black/10 dark:bg-white/20 text-slate-900 dark:text-white"
+                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                    )}>
+                      {statusCounts.all}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter('approved')}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                      adminStatusFilter === 'approved'
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                        : "text-slate-500 dark:text-white/50 hover:text-emerald-400"
+                    )}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span>Approved</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                      adminStatusFilter === 'approved'
+                        ? "bg-emerald-500/30 text-emerald-200"
+                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                    )}>
+                      {statusCounts.approved}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter('pending')}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                      adminStatusFilter === 'pending'
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                        : "text-slate-500 dark:text-white/50 hover:text-amber-400"
+                    )}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span>Pending</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                      adminStatusFilter === 'pending'
+                        ? "bg-amber-500/30 text-amber-200"
+                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                    )}>
+                      {statusCounts.pending}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter('rejected')}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                      adminStatusFilter === 'rejected'
+                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
+                        : "text-slate-500 dark:text-white/50 hover:text-rose-400"
+                    )}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                    <span>Rejected</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                      adminStatusFilter === 'rejected'
+                        ? "bg-rose-500/30 text-rose-200"
+                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                    )}>
+                      {statusCounts.rejected}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Mobile Compact Dropdown Status Filter */}
+                <div className="md:hidden relative flex items-center shrink-0">
+                  <div className={cn(
+                    "flex items-center gap-1.5 bg-black/5 dark:bg-white/5 border rounded-xl pl-2.5 pr-2 py-1.5 transition-all text-xs font-bold",
+                    adminStatusFilter === 'all'
+                      ? "border-black/10 dark:border-white/10 text-slate-700 dark:text-white"
+                      : adminStatusFilter === 'approved'
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                      : adminStatusFilter === 'pending'
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                      : "border-rose-500/40 bg-rose-500/10 text-rose-300"
+                  )}>
+                    <span className={cn(
+                      "w-2 h-2 rounded-full shrink-0",
+                      adminStatusFilter === 'all' ? "bg-slate-400 dark:bg-white/60" :
+                      adminStatusFilter === 'approved' ? "bg-emerald-400" :
+                      adminStatusFilter === 'pending' ? "bg-amber-400" : "bg-rose-400"
+                    )} />
+                    <select
+                      value={adminStatusFilter}
+                      onChange={(e) => setAdminStatusFilter(e.target.value as any)}
+                      className="bg-transparent font-bold focus:outline-none cursor-pointer appearance-none pr-4 text-xs text-inherit"
+                    >
+                      <option value="all" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white">All ({statusCounts.all})</option>
+                      <option value="approved" className="bg-white dark:bg-[#1a1a1a] text-emerald-600 dark:text-emerald-400 font-bold">Approved ({statusCounts.approved})</option>
+                      <option value="pending" className="bg-white dark:bg-[#1a1a1a] text-amber-600 dark:text-amber-400 font-bold">Pending ({statusCounts.pending})</option>
+                      <option value="rejected" className="bg-white dark:bg-[#1a1a1a] text-rose-600 dark:text-rose-400 font-bold">Rejected ({statusCounts.rejected})</option>
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 dark:text-white/40 pointer-events-none -ml-3" />
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* View Mode Toggle: Gallery vs List */}
             <div className="flex items-center bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/10 dark:border-white/10 shrink-0">
               <button
@@ -2421,38 +2572,8 @@ interface UserSubmissionStat {
               </button>
             </div>
 
-            {/* Admin Bulk Select Toggle Button */}
-            {user?.isAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedSubIds.length > 0) {
-                    setSelectedSubIds([]);
-                    setIsBulkSelectActive(false);
-                  } else {
-                    setIsBulkSelectActive(!isBulkSelectActive);
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0",
-                  (isBulkSelectActive || selectedSubIds.length > 0)
-                    ? "bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm"
-                    : "text-slate-500 dark:text-white/60 hover:text-slate-900 dark:hover:text-white bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10"
-                )}
-                title="Toggle Bulk Select Mode"
-              >
-                <CheckSquare size={14} className={selectedSubIds.length > 0 ? "text-sky-400" : ""} />
-                <span className="hidden sm:inline">Bulk Select</span>
-                {selectedSubIds.length > 0 && (
-                  <span className="bg-sky-500 text-black text-[10px] font-black px-1.5 py-0.2 rounded-full">
-                    {selectedSubIds.length}
-                  </span>
-                )}
-              </button>
-            )}
-
             {/* Search Input */}
-            <div className="relative w-full sm:w-64">
+            <div className="relative w-full sm:w-60 md:w-64">
               <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" />
               <input
                 type="text"
@@ -2465,6 +2586,36 @@ interface UserSubmissionStat {
           </div>
         )}
       </div>
+
+      {/* Active Admin Status Filter Notice Banner */}
+      {user?.isAdmin && activeTab !== 'archive' && adminStatusFilter !== 'all' && (
+        <div className={cn(
+          "flex items-center justify-between px-3.5 py-2 rounded-xl border text-xs shadow-sm transition-all animate-in fade-in slide-in-from-top-1",
+          adminStatusFilter === 'approved'
+            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+            : adminStatusFilter === 'pending'
+            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+            : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+        )}>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "w-2 h-2 rounded-full shrink-0",
+              adminStatusFilter === 'approved' ? "bg-emerald-400" :
+              adminStatusFilter === 'pending' ? "bg-amber-400" : "bg-rose-400"
+            )} />
+            <span>
+              Filtering by <strong>{adminStatusFilter === 'approved' ? 'Approved' : adminStatusFilter === 'pending' ? 'Pending Review' : 'Rejected'}</strong> ({filteredSubmissions.length} screenshot{filteredSubmissions.length !== 1 ? 's' : ''})
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdminStatusFilter('all')}
+            className="text-xs font-bold underline hover:opacity-80 cursor-pointer ml-3 shrink-0"
+          >
+            Show All Submissions
+          </button>
+        </div>
+      )}
 
       {/* Submissions Content or Theme Archive */}
       {activeTab === 'archive' ? (
@@ -2491,14 +2642,25 @@ interface UserSubmissionStat {
           <Camera size={40} className={cn("mx-auto opacity-30", teamTextAccent)} />
           <h3 className="text-base font-bold dark:text-white text-slate-800">No screenshots found</h3>
           <p className="text-xs opacity-50 max-w-md mx-auto">
-            {searchGame ? 'Try clearing your search filter.' : 'Be the first to submit a screenshot for your team!'}
+            {adminStatusFilter !== 'all'
+              ? `No ${adminStatusFilter === 'pending' ? 'pending review' : adminStatusFilter} screenshots found in this view.`
+              : searchGame ? 'Try clearing your search filter.' : 'Be the first to submit a screenshot for your team!'}
           </p>
-          <button
-            onClick={openSubmitModal}
-            className={cn("mt-2 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer", teamSubtleBtn)}
-          >
-            + Upload Screenshot
-          </button>
+          {adminStatusFilter !== 'all' ? (
+            <button
+              onClick={() => setAdminStatusFilter('all')}
+              className={cn("mt-2 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer", teamSubtleBtn)}
+            >
+              Show All Submissions
+            </button>
+          ) : (
+            <button
+              onClick={openSubmitModal}
+              className={cn("mt-2 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer", teamSubtleBtn)}
+            >
+              + Upload Screenshot
+            </button>
+          )}
         </div>
       ) : viewMode === 'gallery' ? (
         /* GALLERY VIEW: Large Card-Based Grid */
