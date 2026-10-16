@@ -272,7 +272,7 @@ export default function ScreenshotContest({
     );
   };
 
-  // Filter & view state
+  // Filter and view state
   const [activeTab, setActiveTab] = useState<'all' | 'voting' | 'mine' | 'rejected' | 'archive'>('all');
   const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
     const saved = localStorage.getItem('screenshot_view_mode');
@@ -328,14 +328,14 @@ export default function ScreenshotContest({
     targetGameName?: string;
   } | null>(null);
 
-  // Notice modal for voting status & rules
+  // Notice modal for voting status and rules
   const [votingNotice, setVotingNotice] = useState<{ title: string; message: string } | null>(null);
 
   // Admin tally result modal
   const [tallyResults, setTallyResults] = useState<any[] | null>(null);
   const [isTallying, setIsTallying] = useState(false);
 
-  // Admin user submission counts breakdown modal & user filter
+  // Admin user submission counts breakdown modal and user filter
   const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
   const [adminFilterUserId, setAdminFilterUserId] = useState<string | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -348,7 +348,7 @@ export default function ScreenshotContest({
   const [themeSaveError, setThemeSaveError] = useState<string | null>(null);
   const [showThemeToast, setShowThemeToast] = useState<boolean>(false);
 
-  // Bulk Selection & Operations state for Admins
+  // Bulk Selection and Operations state for Admins
   const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
   const [isBulkSelectActive, setIsBulkSelectActive] = useState<boolean>(false);
   const [bulkEditModalOpen, setBulkEditModalOpen] = useState<boolean>(false);
@@ -581,7 +581,7 @@ interface UserSubmissionStat {
   games: string[];
 }
 
-  // Calculate per-user submission counts & stats for admin view and user indicators
+  // Calculate per-user submission counts and stats for admin view and user indicators
   const userSubmissionCounts = useMemo<Record<string, UserSubmissionStat>>(() => {
     const map: Record<string, UserSubmissionStat> = {};
 
@@ -1446,7 +1446,7 @@ interface UserSubmissionStat {
     }
   };
 
-  // --- ADMIN BULK SELECTION & OPERATIONS ---
+  // --- ADMIN BULK SELECTION and OPERATIONS ---
   const handleToggleSelectSub = (subId: string) => {
     setSelectedSubIds(prev => {
       const exists = prev.includes(subId);
@@ -1721,7 +1721,7 @@ interface UserSubmissionStat {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-      {/* Admin Early Access Lock Notice & Settings Box */}
+      {/* Admin Early Access Lock Notice and Settings Box */}
       {user?.isAdmin && (
         <div className="bg-slate-500/10 border border-slate-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1780,7 +1780,7 @@ interface UserSubmissionStat {
               )}
             >
               <Sparkles size={14} className={currentTeamStyle.iconText} />
-              Theme & Description
+              Theme and Description
             </button>
 
             <button
@@ -1811,7 +1811,7 @@ interface UserSubmissionStat {
               className="bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
             >
               <Trophy size={14} />
-              {isTallying ? 'Calculating...' : 'Tally & Award Points'}
+              {isTallying ? 'Calculating...' : 'Tally and Award Points'}
             </button>
           </div>
         </div>
@@ -1961,7 +1961,7 @@ interface UserSubmissionStat {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base md:text-lg font-black dark:text-white text-slate-900 tracking-tight">
-                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes & Guidelines` : "Current Event's Themes & Guidelines"}
+                          {activeCompetitionEvent?.title ? `${activeCompetitionEvent.title} Themes and Guidelines` : "Current Event's Themes and Guidelines"}
                         </h3>
                         <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border", currentTeamStyle.badgeBg, currentTeamStyle.badgeText, currentTeamStyle.badgeBorder)}>
                           {event?.status === 'voting_active' ? 'Voting Period' : 'Submissions Active'}
@@ -2015,7 +2015,7 @@ interface UserSubmissionStat {
                         setThemeSaveError(null);
                       }}
                       saveButtonText="Save Theme Description"
-                      title="Editing Event Themes & Guidelines (Steamgifts Markdown)"
+                      title="Editing Event Themes and Guidelines (Steamgifts Markdown)"
                     />
                     {themeSaveError && (
                       <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
@@ -2025,7 +2025,7 @@ interface UserSubmissionStat {
                     )}
                   </div>
                 ) : (
-                  /* Display Mode for Users & Admins (Steamgifts Markdown) */
+                  /* Display Mode for Users and Admins (Steamgifts Markdown) */
                   <div className="space-y-3 pt-1">
                     {cleanThemeDescription ? (
                       <div className="bg-black/25 dark:bg-black/35 p-5 md:p-6 rounded-2xl border border-white/10 space-y-4 shadow-sm">
@@ -2047,7 +2047,7 @@ interface UserSubmissionStat {
                             )}
                           >
                             <Archive size={13} />
-                            View Past Finished Themes & Top 5 Winners Archive →
+                            View Past Finished Themes and Top 5 Winners Archive →
                           </button>
                         </div>
                       </div>
@@ -2309,7 +2309,7 @@ interface UserSubmissionStat {
         </div>
       </div>
 
-      {/* Navigation & Controls Bar */}
+      {/* Navigation and Controls Bar */}
       <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-black/5 dark:border-white/5 pb-4">
         {/* Tabs */}
         <div className="flex items-center gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
@@ -2381,7 +2381,7 @@ interface UserSubmissionStat {
           )}
         </div>
 
-        {/* Right Controls: View Switcher & Search Bar */}
+        {/* Right Controls: View Switcher and Search Bar */}
         {activeTab !== 'archive' && (
           <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
             {/* View Mode Toggle: Gallery vs List */}
@@ -2884,7 +2884,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Actions & Footer */}
+                  {/* Actions and Footer */}
                   <div className="pt-2 sm:pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1 sm:gap-2">
                     {/* Set for Voting toggle if it's user's submission */}
                     {isMine ? (
@@ -3012,7 +3012,7 @@ interface UserSubmissionStat {
                     </div>
                   )}
 
-                  {/* Spoiler Tag & Reveal Button */}
+                  {/* Spoiler Tag and Reveal Button */}
                   {isSpoilerHidden && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-black/60 backdrop-blur-md z-10 text-center gap-1">
                       <span className="text-[10px] font-black uppercase tracking-wider text-red-400">Spoiler</span>
@@ -3038,7 +3038,7 @@ interface UserSubmissionStat {
 
                 {/* Center Content Section */}
                 <div className="flex-1 min-w-0 space-y-2">
-                  {/* Top Row: User Avatar, Name, Team, Date & Badges */}
+                  {/* Top Row: User Avatar, Name, Team, Date and Badges */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 truncate">
                       {sub.user_avatar ? (
@@ -3068,7 +3068,7 @@ interface UserSubmissionStat {
                       </span>
                     </div>
 
-                    {/* Status & Voting Badges */}
+                    {/* Status and Voting Badges */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       {/* Color-coded status badge matching team color with Tooltip */}
                       {(() => {
@@ -3158,7 +3158,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Caption & Game */}
+                  {/* Caption and Game */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold dark:text-white/90 text-slate-700">
@@ -3213,7 +3213,7 @@ interface UserSubmissionStat {
                     {/* Comments Button */}
                     <button
                       onClick={() => setActiveCommentSubId(sub.id)}
-                      title="View & Add Comments"
+                      title="View and Add Comments"
                       className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5 cursor-pointer border border-black/5 dark:border-white/5"
                     >
                       <MessageSquare size={14} />
@@ -3719,7 +3719,7 @@ interface UserSubmissionStat {
         )}
       </AnimatePresence>
 
-      {/* VOTING STATUS & RULES NOTICE MODAL */}
+      {/* VOTING STATUS and RULES NOTICE MODAL */}
       <AnimatePresence>
         {votingNotice && (
           <div 
@@ -4084,7 +4084,7 @@ interface UserSubmissionStat {
             exit={{ opacity: 0, y: 60, scale: 0.95 }}
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-2xl bg-slate-950/95 dark:bg-[#0c0d12]/95 backdrop-blur-xl border border-sky-500/40 rounded-2xl p-3 sm:p-3.5 shadow-2xl shadow-black/90 flex flex-wrap items-center justify-between gap-3 text-white ring-1 ring-white/10"
           >
-            {/* Left Status & Selection info */}
+            {/* Left Status and Selection info */}
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -4220,7 +4220,7 @@ interface UserSubmissionStat {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">Winner Points Awarded!</h3>
-                  <p className="text-xs text-white/50">Top voted screenshot submissions & awarded bonus team points</p>
+                  <p className="text-xs text-white/50">Top voted screenshot submissions and awarded bonus team points</p>
                 </div>
               </div>
 
@@ -4241,7 +4241,7 @@ interface UserSubmissionStat {
                 onClick={() => setTallyResults(null)}
                 className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs py-2.5 rounded-xl cursor-pointer"
               >
-                Close & Done
+                Close and Done
               </button>
             </motion.div>
           </div>
@@ -4317,7 +4317,7 @@ interface UserSubmissionStat {
                   <button
                     onClick={() => setLightboxMobileView(prev => prev === 'split' ? 'image-only' : 'split')}
                     className="md:hidden landscape:hidden p-1.5 px-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
-                    title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments & details"}
+                    title={lightboxMobileView === 'split' ? "Expand image full-screen" : "Show comments and details"}
                   >
                     {lightboxMobileView === 'split' ? (
                       <>
@@ -4473,12 +4473,12 @@ interface UserSubmissionStat {
                       className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-bold border border-white/20 backdrop-blur-md flex items-center gap-2 shadow-2xl active:scale-95 cursor-pointer animate-in fade-in slide-in-from-bottom-2"
                     >
                       <MessageSquare size={14} className="text-sky-400" />
-                      <span>Show Details & Comments ({subComments.length})</span>
+                      <span>Show Details and Comments ({subComments.length})</span>
                     </button>
                   )}
                 </div>
 
-                {/* Details & Comments Section - Scrollable and constrained so it NEVER covers the image */}
+                {/* Details and Comments Section - Scrollable and constrained so it NEVER covers the image */}
                 <div 
                   className={cn(
                     "bg-[#121215] border-t md:border-t-0 landscape:border-t-0 md:border-l landscape:border-l border-white/10 flex flex-col justify-between overflow-hidden cursor-default transition-all duration-200",
@@ -4529,7 +4529,7 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {/* Team & Voting Entry Badges */}
+                      {/* Team and Voting Entry Badges */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {currentSub.user_team && currentSub.user_team !== 'none' && (
                           <span className={cn(
@@ -4588,7 +4588,7 @@ interface UserSubmissionStat {
                       </div>
                     )}
 
-                    {/* Game Title & Caption Box */}
+                    {/* Game Title and Caption Box */}
                     <div className="space-y-1.5 sm:space-y-2">
                       <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", teamTextAccent)}>Game Title</span>
                       <h3 className="text-sm sm:text-base font-extrabold text-white">{currentSub.game_name}</h3>
@@ -4603,7 +4603,7 @@ interface UserSubmissionStat {
                         <p className="text-xs italic text-white/30">No caption provided</p>
                       )}
 
-                      {/* External Image Link Notice & Button */}
+                      {/* External Image Link Notice and Button */}
                       {isExternalLinkImage(currentSub.image_url) && (
                         <div className="mt-3 p-3 rounded-xl bg-sky-500/[0.08] border border-sky-500/25 space-y-2">
                           <div className="flex items-center justify-between gap-2">
@@ -4637,7 +4637,7 @@ interface UserSubmissionStat {
                       )}
                     </div>
 
-                    {/* Lightbox Voting & Voting Entry Controls */}
+                    {/* Lightbox Voting and Voting Entry Controls */}
                     <div className="space-y-2 pt-1">
                       {currentSub.is_selected && (
                         <button
@@ -4782,7 +4782,7 @@ interface UserSubmissionStat {
                     </div>
                   </div>
 
-                  {/* Pinned Bottom Container: Input & Admin actions */}
+                  {/* Pinned Bottom Container: Input and Admin actions */}
                   <div className="p-3 sm:p-4 bg-black/60 backdrop-blur-md border-t border-white/10 shrink-0 space-y-2">
                     {/* Comment Input */}
                     <div className="flex items-center gap-2">
@@ -4939,7 +4939,7 @@ interface UserSubmissionStat {
                         </div>
                       </div>
 
-                      {/* Counts & Actions */}
+                      {/* Counts and Actions */}
                       <div className="flex items-center gap-3 justify-between sm:justify-end">
                         <div className="text-right">
                           <div className="flex items-center gap-1.5 justify-end">
@@ -5136,7 +5136,7 @@ interface UserSubmissionStat {
                 {/* Drag handle for mobile */}
                 <div className="w-12 h-1 bg-white/20 rounded-full mx-auto sm:hidden -mt-1 mb-1" />
 
-                {/* Header: Submitter info & Screenshot Preview */}
+                {/* Header: Submitter info and Screenshot Preview */}
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-black">
@@ -5185,7 +5185,7 @@ interface UserSubmissionStat {
                   </button>
                 </div>
 
-                {/* External URL notice & button */}
+                {/* External URL notice and button */}
                 {isExternalLinkImage(targetSub.image_url) && (
                   <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -5218,7 +5218,7 @@ interface UserSubmissionStat {
                   </div>
                 )}
 
-                {/* Admin Status & Tools: Only visible to Admins */}
+                {/* Admin Status and Tools: Only visible to Admins */}
                 {user?.isAdmin && (
                   <>
                     {/* Status Selection: Approve / Pending / Reject */}
@@ -5317,7 +5317,7 @@ interface UserSubmissionStat {
                       >
                         <div className="flex items-center gap-2.5">
                           <Edit3 size={16} className="shrink-0" />
-                          <span>Edit Caption, Game & Status</span>
+                          <span>Edit Caption, Game and Status</span>
                         </div>
                         <span className="text-[10px] text-sky-400/70">Open Editor →</span>
                       </button>
