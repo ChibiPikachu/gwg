@@ -5183,7 +5183,7 @@ interface UserSubmissionStat {
                                 className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                               >
                                 <Edit3 size={12} className="text-sky-400" />
-                                <span>Edit Link to Fix Mistakes</span>
+                                <span>Edit Link</span>
                               </button>
                             )}
                           </div>
