@@ -1541,7 +1541,7 @@ export default async function handler(req: Request, res: Response) {
       if (action === 'admin-update-submission' || action === 'admin-bulk-update') {
         const rawIds = req.body.submissionIds || (req.body.submissionId ? [req.body.submissionId] : []);
         const submissionIds = (Array.isArray(rawIds) ? rawIds : [rawIds]).filter(Boolean);
-        const { caption, gameName, isSpoiler, status, captionMode, captionText } = req.body;
+        const { caption, gameName, isSpoiler, status, captionMode, captionText, imageUrl } = req.body;
         const adminName = req.body.adminName || req.headers['x-admin-name'] || (req as any).user?.steam_name || (req as any).user?.displayName || 'Admin';
 
         if (!submissionIds.length) {
@@ -1620,6 +1620,9 @@ export default async function handler(req: Request, res: Response) {
               } catch (e) {}
             }
 
+            if (imageUrl !== undefined && String(imageUrl).trim() !== '') {
+              dbFields.image_url = String(imageUrl).trim();
+            }
             if (gameName !== undefined && String(gameName).trim() !== '') {
               dbFields.game_name = String(gameName).trim();
             }
@@ -1681,6 +1684,7 @@ export default async function handler(req: Request, res: Response) {
             memorySubmissions = memorySubmissions.map(s => {
               if (s.id !== subId) return s;
               const cur = { ...s };
+              if (imageUrl !== undefined && String(imageUrl).trim() !== '') cur.image_url = String(imageUrl).trim();
               if (gameName !== undefined && String(gameName).trim() !== '') cur.game_name = String(gameName).trim();
               if (isSpoiler !== undefined && isSpoiler !== null) cur.is_spoiler = Boolean(isSpoiler);
               if (status !== undefined && status !== 'keep') cur.status = status;
@@ -1692,6 +1696,108 @@ export default async function handler(req: Request, res: Response) {
             });
           }
           return res.status(200).json({ success: true, count: submissionIds.length });
+        }
+      }
+
+      // USER OR ADMIN: UPDATE OWN SUBMISSION (edit image link, caption, game_name, is_spoiler)
+      if (action === 'update-submission' || action === 'user-update-submission' || action === 'edit-submission') {
+        const { submissionId, userId, isAdmin, imageUrl, gameName, caption, isSpoiler } = req.body;
+
+        if (!submissionId) {
+          return res.status(400).json({ error: 'Submission ID is required' });
+        }
+
+        if (supabase) {
+          const { data: targetSub, error: fetchErr } = await supabase
+            .from('screenshot_submissions')
+            .select('*')
+            .eq('id', submissionId)
+            .maybeSingle();
+
+          if (fetchErr || !targetSub) {
+            return res.status(404).json({ error: 'Submission not found' });
+          }
+
+          const targetUserId = targetSub?.user_id;
+
+          // Verify ownership if not admin
+          if (!isAdmin) {
+            const reqUid = String(userId || '').trim();
+            const cleanReq = reqUid.replace(/^discord_/, '');
+            const cleanTarget = String(targetUserId || '').replace(/^discord_/, '');
+            const isOwner = Boolean(
+              reqUid && (
+                targetUserId === reqUid ||
+                cleanTarget === cleanReq ||
+                cleanTarget === reqUid ||
+                targetUserId === cleanReq
+              )
+            );
+            if (!isOwner) {
+              return res.status(403).json({ error: 'You are only allowed to edit your own submissions.' });
+            }
+          }
+
+          const parsed = parseSubmissionCaption(targetSub.caption);
+          const effectiveCaption = caption !== undefined ? caption : parsed.caption;
+          const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
+            status: parsed.status,
+            approved_by: parsed.approved_by,
+            approved_at: parsed.approved_at
+          });
+
+          const dbFields: any = { caption: updatedCaption };
+
+          if (imageUrl !== undefined && String(imageUrl).trim() !== '') {
+            dbFields.image_url = String(imageUrl).trim();
+          }
+          if (gameName !== undefined && String(gameName).trim() !== '') {
+            dbFields.game_name = String(gameName).trim();
+          }
+          if (isSpoiler !== undefined && isSpoiler !== null) {
+            dbFields.is_spoiler = Boolean(isSpoiler);
+          }
+
+          const { data: updated, error } = await supabase
+            .from('screenshot_submissions')
+            .update(dbFields)
+            .eq('id', submissionId)
+            .select()
+            .single();
+
+          if (error) {
+            return res.status(500).json({ error: error.message || 'Failed to update submission' });
+          }
+
+          return res.status(200).json({
+            success: true,
+            submission: {
+              ...updated,
+              caption: effectiveCaption,
+              status: parsed.status,
+              approved_by: parsed.approved_by,
+              approved_at: parsed.approved_at
+            }
+          });
+        } else {
+          let updatedSub: any = null;
+          memorySubmissions = memorySubmissions.map(s => {
+            if (s.id !== submissionId) return s;
+            if (!isAdmin && String(s.user_id) !== String(userId)) return s;
+            const cur = { ...s };
+            if (imageUrl !== undefined && String(imageUrl).trim() !== '') cur.image_url = String(imageUrl).trim();
+            if (gameName !== undefined && String(gameName).trim() !== '') cur.game_name = String(gameName).trim();
+            if (isSpoiler !== undefined && isSpoiler !== null) cur.is_spoiler = Boolean(isSpoiler);
+            if (caption !== undefined) cur.caption = caption;
+            updatedSub = cur;
+            return cur;
+          });
+
+          if (!updatedSub) {
+            return res.status(404).json({ error: 'Submission not found or unauthorized' });
+          }
+
+          return res.status(200).json({ success: true, submission: updatedSub });
         }
       }
 

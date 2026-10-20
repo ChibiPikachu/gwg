@@ -215,6 +215,26 @@ export const isExternalLinkImage = (url: string | null | undefined): boolean => 
   return /^https?:\/\//i.test(trimmed);
 };
 
+export const normalizeEmbedImageUrl = (url: string | null | undefined): string => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+
+  // Imgur page URL: https://imgur.com/ABC1234 -> https://i.imgur.com/ABC1234.png
+  const imgurMatch = trimmed.match(/^https?:\/\/(?:www\.)?imgur\.com\/([a-zA-Z0-9]+)$/);
+  if (imgurMatch && !['a', 'gallery', 'signin', 'upload'].includes(imgurMatch[1])) {
+    return `https://i.imgur.com/${imgurMatch[1]}.png`;
+  }
+
+  // Gyazo page URL: https://gyazo.com/1234567890abcdef -> https://i.gyazo.com/1234567890abcdef.png
+  const gyazoMatch = trimmed.match(/^https?:\/\/gyazo\.com\/([a-zA-Z0-9]+)$/);
+  if (gyazoMatch) {
+    return `https://i.gyazo.com/${gyazoMatch[1]}.png`;
+  }
+
+  return trimmed;
+};
+
 export default function ScreenshotContest({ 
   onViewProfile,
   initialSubmissionId,
@@ -313,12 +333,23 @@ export default function ScreenshotContest({
   const [editingCommentText, setEditingCommentText] = useState('');
   const [isSavingComment, setIsSavingComment] = useState(false);
 
-  // Admin Edit Modal state
+  // Edit Modal state (allows users and admins to edit screenshot link, game title, caption, spoiler)
   const [editingSub, setEditingSub] = useState<ScreenshotSubmission | null>(null);
   const [editCaption, setEditCaption] = useState('');
   const [editGameName, setEditGameName] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState('');
   const [editIsSpoiler, setEditIsSpoiler] = useState(false);
   const [editStatus, setEditStatus] = useState<'pending' | 'approved' | 'rejected'>('approved');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Track external image loading errors gracefully to show an interactive fallback card
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
+  const handleImageError = (subId: string) => {
+    setBrokenImages(prev => ({ ...prev, [subId]: true }));
+  };
 
   // Single Voting Entry replacement confirmation modal
   const [replaceVotingModal, setReplaceVotingModal] = useState<{
@@ -1419,33 +1450,120 @@ interface UserSubmissionStat {
 
   const handleAdminDelete = (subId: string) => handleDeleteSubmission(subId);
 
-  const handleAdminSaveEdit = async (e: React.FormEvent) => {
+  const openEditSubmissionModal = (sub: ScreenshotSubmission) => {
+    setEditingSub(sub);
+    setEditCaption(sub.caption || '');
+    setEditGameName(sub.game_name || '');
+    setEditImageUrl(sub.image_url || '');
+    setEditImagePreview(sub.image_url || '');
+    setEditImageFile(null);
+    setEditIsSpoiler(Boolean(sub.is_spoiler));
+    setEditStatus((sub.status as any) || 'approved');
+    setEditError(null);
+  };
+
+  const handleEditFileChange = (file: File) => {
+    if (file.size > 8 * 1024 * 1024) {
+      setEditError('Image file size must be less than 8MB');
+      return;
+    }
+    setEditImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setEditImagePreview(result);
+      setEditImageUrl(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveEditSubmission = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSub) return;
+
+    const finalUrl = (editImagePreview || editImageUrl).trim();
+    if (!finalUrl) {
+      setEditError('Please provide an image URL link or choose an image file');
+      return;
+    }
+    if (!editGameName.trim()) {
+      setEditError('Please enter the name of the game');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+
     const adminName = user?.steamName || user?.discordName || 'Admin';
 
     try {
-      const res = await fetch('/api/screenshots?action=admin-update-submission', {
+      const endpoint = user?.isAdmin
+        ? '/api/screenshots?action=admin-update-submission'
+        : '/api/screenshots?action=update-submission';
+
+      const payload: any = {
+        submissionId: editingSub.id,
+        imageUrl: finalUrl,
+        gameName: editGameName.trim(),
+        caption: editCaption.trim(),
+        isSpoiler: editIsSpoiler,
+        userId: currentUserId,
+        isAdmin: Boolean(user?.isAdmin)
+      };
+
+      if (user?.isAdmin) {
+        payload.status = editStatus;
+        payload.adminName = adminName;
+      }
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          submissionId: editingSub.id,
-          caption: editCaption,
-          gameName: editGameName,
-          isSpoiler: editIsSpoiler,
-          status: editStatus,
-          adminName
-        })
+        body: JSON.stringify(payload)
       });
-      if (res.ok) {
+
+      const data = await safeParseResponse(res);
+      if (!res.ok) {
+        setEditError(data.error || 'Failed to update submission');
+      } else {
+        // Clear broken image record if previously broken
+        setBrokenImages(prev => {
+          const next = { ...prev };
+          delete next[editingSub.id];
+          return next;
+        });
+
+        // Optimistic local update
+        setSubmissions(prev => prev.map(s => {
+          if (s.id !== editingSub.id) return s;
+          return {
+            ...s,
+            image_url: finalUrl,
+            game_name: editGameName.trim(),
+            caption: editCaption.trim(),
+            is_spoiler: editIsSpoiler,
+            status: user?.isAdmin ? editStatus : s.status
+          };
+        }));
+
         setEditingSub(null);
+        setBulkFeedbackToast({
+          type: 'success',
+          message: 'Screenshot submission updated successfully!'
+        });
+        setTimeout(() => setBulkFeedbackToast(null), 4000);
         fetchData();
         window.dispatchEvent(new Event('leaderboard-updated'));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to edit submission:', err);
+      setEditError(err.message || 'Error updating submission');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
+
+  const handleAdminSaveEdit = handleSaveEditSubmission;
 
   // --- ADMIN BULK SELECTION and OPERATIONS ---
   const handleToggleSelectSub = (subId: string) => {
@@ -2687,17 +2805,35 @@ interface UserSubmissionStat {
                   onClick={() => setLightboxSubId(sub.id)}
                   className="relative aspect-video bg-black/90 overflow-hidden flex items-center justify-center cursor-pointer group/img"
                 >
-                  <img
-                    src={sub.image_url}
-                    alt={sub.caption || sub.game_name}
-                    className={cn(
-                      "w-full h-full object-cover transition-transform duration-500 group-hover:scale-105",
-                      isSpoilerHidden && "blur-xl scale-110 select-none pointer-events-none opacity-40"
-                    )}
-                  />
+                  {brokenImages[sub.id] ? (
+                    <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-3 text-center gap-2">
+                      <ExternalLink size={24} className="text-sky-400 opacity-80" />
+                      <span className="text-[11px] font-bold text-white/80 line-clamp-1">{sub.game_name}</span>
+                      <a
+                        href={sub.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                      >
+                        <ExternalLink size={10} />
+                        <span>Open in Another Tab</span>
+                      </a>
+                    </div>
+                  ) : (
+                    <img
+                      src={normalizeEmbedImageUrl(sub.image_url)}
+                      alt={sub.caption || sub.game_name}
+                      onError={() => handleImageError(sub.id)}
+                      className={cn(
+                        "w-full h-full object-cover transition-transform duration-500 group-hover:scale-105",
+                        isSpoilerHidden && "blur-xl scale-110 select-none pointer-events-none opacity-40"
+                      )}
+                    />
+                  )}
 
                   {/* Hover Fullscreen View Overlay */}
-                  {!isSpoilerHidden && (
+                  {!isSpoilerHidden && !brokenImages[sub.id] && (
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1.5 pointer-events-none z-10">
                       <Maximize2 size={24} className="drop-shadow-lg" />
                       <span className="text-[10px] font-black tracking-widest uppercase drop-shadow-md">Full-Screen View</span>
@@ -2705,7 +2841,7 @@ interface UserSubmissionStat {
                   )}
 
                   {/* Spoiler Overlay */}
-                  {isSpoilerHidden && (
+                  {isSpoilerHidden && !brokenImages[sub.id] && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/60 backdrop-blur-md z-10 text-center gap-2">
                       <div className="p-2 bg-red-500/20 text-red-400 rounded-full">
                         <EyeOff size={20} />
@@ -2760,7 +2896,7 @@ interface UserSubmissionStat {
                           title="External URL (opens in new tab)"
                         >
                           <ExternalLink size={10} />
-                           
+                          <span className="hidden min-[480px]:inline">Open Tab</span>
                         </a>
                       )}
                       {/* Color-Coded Status Badge matching Team Palette with Tooltip */}
@@ -2905,14 +3041,10 @@ interface UserSubmissionStat {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingSub(sub);
-                          setEditCaption(sub.caption);
-                          setEditGameName(sub.game_name);
-                          setEditIsSpoiler(sub.is_spoiler);
-                          setEditStatus(sub.status as any || 'approved');
+                          openEditSubmissionModal(sub);
                         }}
-                        title="Edit Submission"
-                        className="p-1.5 bg-black/80 hover:bg-black text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
+                        title="Edit Submission Link & Details"
+                        className="p-1.5 bg-black/80 hover:bg-sky-600 text-sky-400 hover:text-white rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
                       >
                         <Edit3 size={12} />
                       </button>
@@ -2922,16 +3054,27 @@ interface UserSubmissionStat {
                           handleDeleteSubmission(sub.id);
                         }}
                         title="Delete Submission"
-                        className="p-1.5 bg-black/80 hover:bg-black text-red-400 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
+                        className="p-1.5 bg-black/80 hover:bg-red-600 text-red-400 hover:text-white rounded-lg border border-red-500/30 transition-colors cursor-pointer"
                       >
                         <Trash2 size={12} />
                       </button>
                     </div>
                   )}
 
-                  {/* Desktop delete button for non-admin submission owner */}
+                  {/* Desktop edit & delete buttons for non-admin submission owner */}
                   {!user?.isAdmin && isUserSubmission(sub.user_id) && (
-                    <div className="hidden sm:flex absolute bottom-3 right-3 items-center gap-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="hidden sm:flex absolute bottom-3 right-3 items-center gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditSubmissionModal(sub);
+                        }}
+                        title="Edit Screenshot Link & Details"
+                        className="p-1.5 bg-black/80 hover:bg-sky-600 text-sky-400 hover:text-white rounded-lg border border-sky-500/40 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold shadow-md"
+                      >
+                        <Edit3 size={12} />
+                        <span>Edit</span>
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -3157,17 +3300,35 @@ interface UserSubmissionStat {
                   onClick={() => setLightboxSubId(sub.id)}
                   className="w-full sm:w-48 md:w-56 aspect-video shrink-0 rounded-xl overflow-hidden relative bg-black/90 cursor-pointer group/thumb border border-black/10 dark:border-white/10"
                 >
-                  <img
-                    src={sub.image_url}
-                    alt={sub.caption || sub.game_name}
-                    className={cn(
-                      "w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105",
-                      isSpoilerHidden && "blur-lg scale-110 select-none pointer-events-none opacity-40"
-                    )}
-                  />
+                  {brokenImages[sub.id] ? (
+                    <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-3 text-center gap-1.5">
+                      <ExternalLink size={20} className="text-sky-400 opacity-80" />
+                      <span className="text-[10px] font-bold text-white/80 line-clamp-1">{sub.game_name}</span>
+                      <a
+                        href={sub.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2 py-0.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-[9px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <ExternalLink size={9} />
+                        <span>Open in Tab</span>
+                      </a>
+                    </div>
+                  ) : (
+                    <img
+                      src={normalizeEmbedImageUrl(sub.image_url)}
+                      alt={sub.caption || sub.game_name}
+                      onError={() => handleImageError(sub.id)}
+                      className={cn(
+                        "w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105",
+                        isSpoilerHidden && "blur-lg scale-110 select-none pointer-events-none opacity-40"
+                      )}
+                    />
+                  )}
 
                   {/* Hover Fullscreen Overlay */}
-                  {!isSpoilerHidden && (
+                  {!isSpoilerHidden && !brokenImages[sub.id] && (
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center text-white gap-1 pointer-events-none z-10">
                       <Maximize2 size={18} className="drop-shadow-lg" />
                       <span className="text-[9px] font-black uppercase tracking-wider">Expand</span>
@@ -3175,7 +3336,7 @@ interface UserSubmissionStat {
                   )}
 
                   {/* Spoiler Tag and Reveal Button */}
-                  {isSpoilerHidden && (
+                  {isSpoilerHidden && !brokenImages[sub.id] && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-black/60 backdrop-blur-md z-10 text-center gap-1">
                       <span className="text-[10px] font-black uppercase tracking-wider text-red-400">Spoiler</span>
                       <button
@@ -3333,10 +3494,10 @@ interface UserSubmissionStat {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                          title="External URL (opens in new tab)"
+                          title="External image link (opens in new tab)"
                         >
                           <ExternalLink size={10} />
-                           
+                          <span>Open Link</span>
                         </a>
                       )}
                     </div>
@@ -3477,13 +3638,9 @@ interface UserSubmissionStat {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setEditingSub(sub);
-                            setEditCaption(sub.caption);
-                            setEditGameName(sub.game_name);
-                            setEditIsSpoiler(sub.is_spoiler);
-                            setEditStatus(sub.status as any || 'approved');
+                            openEditSubmissionModal(sub);
                           }}
-                          title="Edit Submission"
+                          title="Edit Submission Link & Details"
                           className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer"
                         >
                           <Edit3 size={11} />
@@ -3519,8 +3676,19 @@ interface UserSubmissionStat {
                         <span>Options</span>
                       </button>
 
-                      {/* Desktop Delete Button */}
+                      {/* Desktop Edit & Delete Buttons */}
                       <div className="hidden sm:flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditSubmissionModal(sub);
+                          }}
+                          title="Edit Submission Link & Details"
+                          className="p-1.5 bg-black/5 dark:bg-white/5 hover:bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                        >
+                          <Edit3 size={11} />
+                          <span>Edit</span>
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -3917,78 +4085,239 @@ interface UserSubmissionStat {
         )}
       </AnimatePresence>
 
-      {/* ADMIN EDIT SUBMISSION MODAL */}
+      {/* EDIT SUBMISSION MODAL (Available to Submission Owners and Admins) */}
       <AnimatePresence>
         {editingSub && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto cursor-pointer"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEditingSub(null);
+            }}
+          >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-white/10 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-5 sm:p-6 max-w-lg w-full space-y-4 shadow-2xl my-6 max-h-[92vh] overflow-y-auto cursor-default"
+              onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Edit3 size={16} className="text-sky-400" />
-                Admin Edit Submission
-              </h3>
+              {/* Modal Header */}
+              <div className="flex items-start justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                    <Edit3 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                      {user?.isAdmin ? "Admin Edit Submission" : "Edit Your Screenshot Submission"}
+                      {user?.isAdmin && (
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase font-black tracking-wider">
+                          Admin
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-white/50">
+                      Fix mistakes in your image link, update your game title, or replace the screenshot.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingSub(null)}
+                  className="p-1.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-              <form onSubmit={handleAdminSaveEdit} className="space-y-3">
+              {editError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveEditSubmission} className="space-y-4">
+                {/* Image Link Input and File Selector */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-white/80">
+                      Screenshot Image Link (URL or Upload) <span className="text-red-400">*</span>
+                    </label>
+                    <label
+                      htmlFor="editFileInput"
+                      className="text-[11px] font-bold text-sky-400 hover:text-sky-300 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <Upload size={12} />
+                      <span>Upload New File</span>
+                    </label>
+                    <input
+                      id="editFileInput"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => e.target.files?.[0] && handleEditFileChange(e.target.files[0])}
+                      className="hidden"
+                    />
+                  </div>
+
+                  <input
+                    type="url"
+                    value={editImageUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditImageUrl(val);
+                      setEditImagePreview(val);
+                      setEditImageFile(null);
+                      setEditError(null);
+                    }}
+                    placeholder="https://... (Steam screenshot URL, direct image link, etc.)"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-sky-400 transition-colors font-mono"
+                  />
+
+                  {/* External Link Notice & Option to Open in Another Tab */}
+                  {isExternalLinkImage(editImageUrl) && (
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-sky-500/10 border border-sky-500/25 text-xs">
+                      <span className="text-[11px] text-sky-300 flex items-center gap-1.5 font-medium truncate max-w-[240px]">
+                        <ExternalLink size={12} className="shrink-0" />
+                        <span>External Link Detected</span>
+                      </span>
+                      <a
+                        href={editImageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold text-sky-400 hover:text-white underline inline-flex items-center gap-1 shrink-0 ml-2"
+                        title="Open this link in another tab to verify it loads"
+                      >
+                        <span>Open in Another Tab</span>
+                        <ExternalLink size={10} />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Image Preview Box */}
+                  <div className="relative rounded-2xl overflow-hidden aspect-video bg-black/80 border border-white/10 flex items-center justify-center group">
+                    {editImagePreview ? (
+                      <img
+                        src={normalizeEmbedImageUrl(editImagePreview)}
+                        alt="Screenshot preview"
+                        className="w-full h-full object-contain"
+                        onError={() => {
+                          setEditError('Unable to embed image from this URL. If it is an external page, you can open it in another tab or paste a direct image URL.');
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center p-4 text-white/40 text-xs space-y-1">
+                        <ImageIcon size={28} className="mx-auto opacity-50 text-white/30" />
+                        <p>No image URL or file selected</p>
+                      </div>
+                    )}
+
+                    {editImageFile && (
+                      <div className="absolute bottom-2 left-2 bg-black/80 backdrop-blur-sm text-[10px] text-white/90 font-mono px-2 py-0.5 rounded-lg border border-white/15">
+                        {editImageFile.name} ({(editImageFile.size / (1024 * 1024)).toFixed(2)} MB)
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Game Title */}
                 <div>
-                  <label className="block text-[11px] font-bold text-white/70 mb-1">Game Title</label>
+                  <label className="block text-xs font-bold text-white/80 mb-1">
+                    Game Title <span className="text-red-400">*</span>
+                  </label>
                   <input
                     type="text"
+                    required
                     value={editGameName}
                     onChange={(e) => setEditGameName(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white"
+                    placeholder="e.g. Life is Strange, Elden Ring, Cyberpunk 2077..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-400 transition-colors"
                   />
                 </div>
 
+                {/* Caption */}
                 <div>
-                  <label className="block text-[11px] font-bold text-white/70 mb-1">Caption</label>
+                  <label className="block text-xs font-bold text-white/80 mb-1">
+                    Caption (Optional)
+                  </label>
                   <textarea
                     rows={2}
                     value={editCaption}
                     onChange={(e) => setEditCaption(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white"
+                    placeholder="Describe your shot or add notes..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-400 transition-colors resize-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-white/70 mb-1">Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as any)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                  >
-                    <option value="approved">Approved</option>
-                    <option value="pending">Pending Review</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                </div>
+                {/* Admin Status Dropdown OR User Status Display */}
+                {user?.isAdmin ? (
+                  <div>
+                    <label className="block text-xs font-bold text-white/80 mb-1">
+                      Admin Status Override
+                    </label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as any)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-400 cursor-pointer"
+                    >
+                      <option value="approved">Approved</option>
+                      <option value="pending">Pending Review</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+                    <span className="text-white/60 font-medium">Submission Status</span>
+                    <span className={cn(
+                      "font-bold uppercase tracking-wider text-[10px] px-2.5 py-0.5 rounded-full",
+                      editingSub.status === 'approved' || editingSub.status === 'verified'
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : editingSub.status === 'rejected'
+                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                        : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    )}>
+                      {editingSub.status === 'approved' || editingSub.status === 'verified' ? 'Approved' : editingSub.status === 'rejected' ? 'Rejected' : 'Pending Review'}
+                    </span>
+                  </div>
+                )}
 
-                <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer pt-2">
+                {/* Spoiler Toggle */}
+                <label className="flex items-center gap-2.5 text-xs text-white/80 cursor-pointer select-none pt-1">
                   <input
                     type="checkbox"
                     checked={editIsSpoiler}
                     onChange={(e) => setEditIsSpoiler(e.target.checked)}
-                    className="w-4 h-4 rounded bg-black/40 border-white/20 text-red-500 focus:ring-0"
+                    className="w-4 h-4 rounded bg-black/40 border-white/20 text-red-500 focus:ring-0 cursor-pointer"
                   />
-                  <span>Mark as Spoiler (Add Blur Overlay)</span>
+                  <span>Mark as Spoiler (Add Blur Overlay to protect others from story spoilers)</span>
                 </label>
 
-                <div className="pt-3 flex items-center justify-end gap-2">
+                {/* Footer Buttons */}
+                <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-2.5">
                   <button
                     type="button"
                     onClick={() => setEditingSub(null)}
-                    className="px-3 py-2 text-xs text-white/60 hover:text-white"
+                    className="px-4 py-2 text-xs font-bold text-white/60 hover:text-white hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs px-4 py-2 rounded-xl"
+                    disabled={isSavingEdit}
+                    className="bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-black font-bold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-sky-500/20 flex items-center gap-1.5"
                   >
-                    Save Changes
+                    {isSavingEdit ? (
+                      <>
+                        <RefreshCw size={13} className="animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} className="stroke-[2.5]" />
+                        <span>Save Changes</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -4494,6 +4823,18 @@ interface UserSubmissionStat {
                     )}
                   </button>
 
+                  {/* Edit button in Lightbox top bar for owners and admins */}
+                  {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
+                    <button
+                      onClick={() => openEditSubmissionModal(currentSub)}
+                      className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-white/10 hover:bg-sky-500/20 text-slate-200 hover:text-sky-300 border border-white/20 hover:border-sky-500/40 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer"
+                      title="Edit Submission Link & Details"
+                    >
+                      <Edit3 size={13} />
+                      <span className="hidden sm:inline">Edit</span>
+                    </button>
+                  )}
+
                   {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
                     <button
                       onClick={() => setMobileAdminMenuSubId(currentSub.id)}
@@ -4511,11 +4852,11 @@ interface UserSubmissionStat {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-sm hover:scale-[1.02]"
-                      title="External URL (opens in new tab)"
+                      className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-black border border-sky-500/40 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-sm hover:scale-[1.02]"
+                      title="External image link (opens in another tab)"
                     >
                       <ExternalLink size={13} />
-                       
+                      <span className="hidden sm:inline">Open in Another Tab</span>
                     </a>
                   )}
 
@@ -4586,24 +4927,61 @@ interface UserSubmissionStat {
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="px-3 py-1.5 rounded-full bg-black/75 hover:bg-black/95 text-sky-300 hover:text-white border border-sky-500/40 backdrop-blur-md text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-xl hover:scale-105 cursor-pointer"
-                        title="External URL (opens in new tab)"
+                        title="External image link (opens in another tab)"
                       >
                         <ExternalLink size={12} />
-                         
+                        <span>Open in Another Tab</span>
                       </a>
                     </div>
                   )}
 
                   {/* Full Image */}
                   <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
-                    <img
-                      src={currentSub.image_url}
-                      alt={currentSub.caption || currentSub.game_name}
-                      className={cn(
-                        "max-w-full max-h-full object-contain rounded-lg sm:rounded-xl shadow-2xl transition-all duration-300 pointer-events-auto",
-                        isSpoilerHidden && "blur-2xl scale-105 pointer-events-none select-none opacity-30"
-                      )}
-                    />
+                    {brokenImages[currentSub.id] ? (
+                      <div className="flex flex-col items-center justify-center p-8 bg-slate-900/90 border border-white/10 rounded-2xl max-w-md text-center gap-3 pointer-events-auto shadow-2xl">
+                        <div className="w-12 h-12 rounded-2xl bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/30">
+                          <ExternalLink size={24} />
+                        </div>
+                        <h4 className="text-sm font-bold text-white">External Screenshot Link</h4>
+                        <p className="text-xs text-white/60">
+                          This screenshot is hosted on an external service. You can open and view the original image in another tab.
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                          <a
+                            href={currentSub.image_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg"
+                          >
+                            <ExternalLink size={14} />
+                            <span>Open in Another Tab</span>
+                          </a>
+                          {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLightboxSubId(null);
+                                openEditSubmissionModal(currentSub);
+                              }}
+                              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/20"
+                            >
+                              <Edit3 size={14} />
+                              <span>Edit / Fix Link</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={normalizeEmbedImageUrl(currentSub.image_url)}
+                        alt={currentSub.caption || currentSub.game_name}
+                        onError={() => handleImageError(currentSub.id)}
+                        className={cn(
+                          "max-w-full max-h-full object-contain rounded-lg sm:rounded-xl shadow-2xl transition-all duration-300 pointer-events-auto",
+                          isSpoilerHidden && "blur-2xl scale-105 pointer-events-none select-none opacity-30"
+                        )}
+                      />
+                    )}
 
                     {/* Spoiler Blur Overlay inside Lightbox */}
                     {isSpoilerHidden && (
@@ -4785,16 +5163,30 @@ interface UserSubmissionStat {
                           <p className="text-[11px] text-white/60 leading-relaxed">
                             This screenshot was uploaded via an external link and not uploaded to the girlswhogame app.
                           </p>
-                          <a
-                            href={currentSub.image_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm group"
-                            title="External URL (opens in new tab)"
-                          >
-                            <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                             
-                          </a>
+                          <div className="flex flex-col gap-1.5">
+                            <a
+                              href={currentSub.image_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full py-2 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm group"
+                              title="External image link (opens in another tab)"
+                            >
+                              <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                              <span>Open in Another Tab</span>
+                            </a>
+                            {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  openEditSubmissionModal(currentSub);
+                                }}
+                                className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Edit3 size={12} className="text-sky-400" />
+                                <span>Edit Link to Fix Mistakes</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -5375,8 +5767,34 @@ interface UserSubmissionStat {
                       title="External URL (opens in new tab)"
                     >
                       <ExternalLink size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                       
+                      <span>Open in Another Tab</span>
                     </a>
+                  </div>
+                )}
+
+                {/* Edit Submission Link & Details (Available to Submission Owner and Admin) */}
+                {(user?.isAdmin || isUserSubmission(targetSub.user_id)) && (
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-white/50 block">
+                      Edit Submission
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileAdminMenuSubId(null);
+                        openEditSubmissionModal(targetSub);
+                      }}
+                      className="w-full text-left p-3 rounded-xl font-bold text-xs bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 flex items-center justify-between transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Edit3 size={16} className="shrink-0 text-sky-400" />
+                        <div>
+                          <div className="font-bold">Edit Image Link & Details</div>
+                          <div className="text-[10px] text-white/50 font-normal">Fix mistakes in screenshot link, game, or caption</div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-sky-400">Open Editor →</span>
+                    </button>
                   </div>
                 )}
 
@@ -5462,26 +5880,6 @@ interface UserSubmissionStat {
                         <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-white/70">
                           {targetSub.is_spoiler ? "Spoiler: YES" : "Spoiler: NO"}
                         </span>
-                      </button>
-
-                      {/* Edit Submission (Caption, Game Name, Spoiler, Status) */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileAdminMenuSubId(null);
-                          setEditingSub(targetSub);
-                          setEditCaption(targetSub.caption);
-                          setEditGameName(targetSub.game_name);
-                          setEditIsSpoiler(targetSub.is_spoiler);
-                          setEditStatus(targetSub.status as any || 'approved');
-                        }}
-                        className="w-full text-left p-3 rounded-xl font-bold text-xs bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-300 flex items-center justify-between transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Edit3 size={16} className="shrink-0" />
-                          <span>Edit Caption, Game and Status</span>
-                        </div>
-                        <span className="text-[10px] text-sky-400/70">Open Editor →</span>
                       </button>
 
                       {/* Filter Submissions by this User */}
