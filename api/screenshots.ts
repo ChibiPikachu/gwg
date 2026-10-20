@@ -86,38 +86,260 @@ let memoryVotes: any[] = [];
 let memoryComments: any[] = [];
 let memoryNotifications: any[] = [];
 
+const scrapedUrlCache = new Map<string, string>();
+
+export function isWebpageUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return false;
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  if (/\.(png|jpe?g|webp|gif|avif)(\?.*)?$/i.test(trimmed)) return false;
+  if (trimmed.includes('images.steamusercontent.com/ugc/')) return false;
+  if (trimmed.includes('i.imgur.com/')) return false;
+  if (trimmed.includes('i.gyazo.com/')) return false;
+  return true;
+}
+
+export async function scrapeExternalImageUrl(targetUrl: string | null | undefined): Promise<{ imageUrl: string; originalUrl: string; gameTitle?: string }> {
+  if (!targetUrl || typeof targetUrl !== 'string') {
+    return { imageUrl: '', originalUrl: '' };
+  }
+  const trimmed = targetUrl.trim();
+  if (!trimmed) {
+    return { imageUrl: '', originalUrl: '' };
+  }
+
+  // Base64 or blob: return as is
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return { imageUrl: trimmed, originalUrl: trimmed };
+  }
+
+  // Check cache
+  if (scrapedUrlCache.has(trimmed)) {
+    return { imageUrl: scrapedUrlCache.get(trimmed)!, originalUrl: trimmed };
+  }
+
+  // Imgur page URL: https://imgur.com/ABC1234 -> https://i.imgur.com/ABC1234.png
+  const imgurMatch = trimmed.match(/^https?:\/\/(?:www\.)?imgur\.com\/([a-zA-Z0-9]+)$/);
+  if (imgurMatch && !['a', 'gallery', 'signin', 'upload'].includes(imgurMatch[1])) {
+    const directImg = `https://i.imgur.com/${imgurMatch[1]}.png`;
+    scrapedUrlCache.set(trimmed, directImg);
+    return { imageUrl: directImg, originalUrl: trimmed };
+  }
+
+  // Gyazo page URL: https://gyazo.com/1234567890abcdef -> https://i.gyazo.com/1234567890abcdef.png
+  const gyazoMatch = trimmed.match(/^https?:\/\/gyazo\.com\/([a-zA-Z0-9]+)$/);
+  if (gyazoMatch) {
+    const directImg = `https://i.gyazo.com/${gyazoMatch[1]}.png`;
+    scrapedUrlCache.set(trimmed, directImg);
+    return { imageUrl: directImg, originalUrl: trimmed };
+  }
+
+  // If already a direct Steam user content image
+  if (trimmed.includes('images.steamusercontent.com/ugc/')) {
+    scrapedUrlCache.set(trimmed, trimmed);
+    return { imageUrl: trimmed, originalUrl: trimmed };
+  }
+
+  // Direct image file extensions
+  if (/\.(png|jpe?g|webp|gif|avif)(\?.*)?$/i.test(trimmed)) {
+    scrapedUrlCache.set(trimmed, trimmed);
+    return { imageUrl: trimmed, originalUrl: trimmed };
+  }
+
+  let scrapedGameTitle: string | undefined = undefined;
+
+  // Scrape external webpage (e.g. Steam Community screenshot page, Reddit, Discord, Flickr, etc.)
+  try {
+    const res = await fetch(trimmed, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cookie': 'timezoneOffset=0,0; birthtime=0; mature_content=1;'
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.startsWith('image/')) {
+        scrapedUrlCache.set(trimmed, trimmed);
+        return { imageUrl: trimmed, originalUrl: trimmed };
+      }
+
+      const html = await res.text();
+
+      // Extract Game Name / Title if available on page
+      const appMatch = html.match(/<div[^>]*class=[\"']apphub_AppName[\"'][^>]*>([^<]+)<\/div>/i) ||
+                       html.match(/<a[^>]*class=[\"']apphub_AppName[\"'][^>]*>([^<]+)<\/a>/i);
+      if (appMatch && appMatch[1]) {
+        scrapedGameTitle = appMatch[1].trim();
+      }
+      const titleMatch = html.match(/<div[^>]*class=[\"']workshopItemTitle[\"'][^>]*>([^<]+)<\/div>/i);
+      if (titleMatch && titleMatch[1] && !scrapedGameTitle) {
+        scrapedGameTitle = titleMatch[1].trim();
+      }
+
+      // 1. Steam high-resolution enlarged screenshot link:
+      const steamHighResMatch = html.match(/href=[\"'](https:\/\/images\.steamusercontent\.com\/ugc\/[^\"']+)[\"'][^>]*>\s*<img[^>]+id=[\"']ActualMedia[\"']/i) ||
+                                html.match(/<a[^>]+href=[\"'](https:\/\/images\.steamusercontent\.com\/ugc\/[^\"']+)[\"'][^>]*target=[\"']_blank[\"']>\s*<img id=[\"']ActualMedia[\"']/i) ||
+                                html.match(/<a[^>]+href=[\"'](https:\/\/images\.steamusercontent\.com\/ugc\/[^\"']+)[\"'][^>]*>\s*<img[^>]+src=[\"']https:\/\/images\.steamusercontent\.com/i);
+      if (steamHighResMatch && steamHighResMatch[1]) {
+        let directUrl = steamHighResMatch[1].replace(/&amp;/g, '&');
+        scrapedUrlCache.set(trimmed, directUrl);
+        return { imageUrl: directUrl, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+      }
+
+      // 2. Steam ActualMedia element: <img id="ActualMedia" src="..."
+      const steamActualMedia = html.match(/<img[^>]*id=[\"']ActualMedia[\"'][^>]*src=[\"']([^\"']+)[\"']/i) ||
+                               html.match(/<img[^>]*src=[\"']([^\"']+)[\"'][^>]*id=[\"']ActualMedia[\"']/i) ||
+                               html.match(/id=[\"']ActualMedia[\"'][^>]*src=[\"']([^\"']+)[\"']/i);
+      if (steamActualMedia && steamActualMedia[1]) {
+        let directUrl = steamActualMedia[1].replace(/&amp;/g, '&');
+        if (directUrl.includes('images.steamusercontent.com')) {
+          directUrl = directUrl.replace(/imw=\d+&imh=\d+/, 'imw=5000&imh=5000').replace(/letterbox=true/, 'letterbox=false');
+        }
+        scrapedUrlCache.set(trimmed, directUrl);
+        return { imageUrl: directUrl, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+      }
+
+      // 3. Steam generic images.steamusercontent.com/ugc/ URL inside HTML
+      const generalSteamImg = html.match(/[\"'](https:\/\/images\.steamusercontent\.com\/ugc\/[^\"']+)[\"']/i);
+      if (generalSteamImg && generalSteamImg[1]) {
+        let directUrl = generalSteamImg[1].replace(/&amp;/g, '&');
+        if (directUrl.includes('images.steamusercontent.com')) {
+          directUrl = directUrl.replace(/imw=\d+&imh=\d+/, 'imw=5000&imh=5000').replace(/letterbox=true/, 'letterbox=false');
+        }
+        scrapedUrlCache.set(trimmed, directUrl);
+        return { imageUrl: directUrl, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+      }
+
+      // 4. OpenGraph og:image: <meta property="og:image" content="..."
+      const ogMatch = html.match(/<meta[^>]*property=[\"']og:image[\"'][^>]*content=[\"']([^\"']+)[\"']/i) ||
+                      html.match(/<meta[^>]*content=[\"']([^\"']+)[\"'][^>]*property=[\"']og:image[\"']/i);
+      if (ogMatch && ogMatch[1]) {
+        let ogUrl = ogMatch[1].replace(/&amp;/g, '&');
+        if (ogUrl.includes('images.steamusercontent.com')) {
+          ogUrl = ogUrl.replace(/imw=\d+&imh=\d+/, 'imw=5000&imh=5000').replace(/letterbox=true/, 'letterbox=false');
+        }
+        scrapedUrlCache.set(trimmed, ogUrl);
+        return { imageUrl: ogUrl, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+      }
+
+      // 5. twitter:image: <meta name="twitter:image" content="..."
+      const twitterMatch = html.match(/<meta[^>]*name=[\"']twitter:image(?::src)?[\"'][^>]*content=[\"']([^\"']+)[\"']/i) ||
+                           html.match(/<meta[^>]*content=[\"']([^\"']+)[\"'][^>]*name=[\"']twitter:image(?::src)?[\"']/i);
+      if (twitterMatch && twitterMatch[1]) {
+        const twUrl = twitterMatch[1].replace(/&amp;/g, '&');
+        scrapedUrlCache.set(trimmed, twUrl);
+        return { imageUrl: twUrl, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+      }
+
+      // 6. link rel="image_src": <link rel="image_src" href="..."
+      const linkMatch = html.match(/<link[^>]*rel=[\"']image_src[\"'][^>]*href=[\"']([^\"']+)[\"']/i);
+      if (linkMatch && linkMatch[1]) {
+        const linkUrl = linkMatch[1].replace(/&amp;/g, '&');
+        scrapedUrlCache.set(trimmed, linkUrl);
+        return { imageUrl: linkUrl, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+      }
+    }
+  } catch (err: any) {
+    console.warn(`Scrape external image HTTP failed for ${trimmed}:`, err?.message || err);
+  }
+
+  // Steam RemoteStorage API fallback if scraping HTML returned error or rate limited
+  if (trimmed.includes('steamcommunity.com')) {
+    const idMatch = trimmed.match(/[?&]id=(\d+)/);
+    if (idMatch && idMatch[1]) {
+      try {
+        const body = new URLSearchParams();
+        body.append('itemcount', '1');
+        body.append('publishedfileids[0]', idMatch[1]);
+        const apiRes = await fetch('https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/', {
+          method: 'POST',
+          body,
+          signal: AbortSignal.timeout(5000)
+        });
+        if (apiRes.ok) {
+          const apiJson = await apiRes.json();
+          const details = apiJson?.response?.publishedfiledetails?.[0];
+          if (details?.file_url) {
+            scrapedUrlCache.set(trimmed, details.file_url);
+            return {
+              imageUrl: details.file_url,
+              originalUrl: trimmed,
+              gameTitle: details.title || scrapedGameTitle
+            };
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Steam RemoteStorage API fallback failed:', apiErr);
+      }
+    }
+  }
+
+  // Fallback to original url
+  return { imageUrl: trimmed, originalUrl: trimmed, gameTitle: scrapedGameTitle };
+}
+
 function parseSubmissionCaption(rawCaption: string | null | undefined): {
   caption: string;
   status: 'pending' | 'approved' | 'rejected';
   approved_by: string | null;
   approved_at: string | null;
+  original_url: string | null;
 } {
   const text = rawCaption || '';
+  let original_url: string | null = null;
+  const origMatch = text.match(/<!--ORIGINAL_URL:(.*?)-->/);
+  if (origMatch && origMatch[1]) {
+    original_url = origMatch[1].trim();
+  }
+
   const match = text.match(/<!--APPROVAL:(\{.*?\})-->/);
   if (match && match[1]) {
     try {
       const parsed = JSON.parse(match[1]);
-      const cleanCaption = text.replace(/<!--APPROVAL:\{.*?\}-->/g, '').trim();
+      const cleanCaption = text
+        .replace(/<!--APPROVAL:\{.*?\}-->/g, '')
+        .replace(/<!--ORIGINAL_URL:.*?-->/g, '')
+        .trim();
       return {
         caption: cleanCaption,
         status: (parsed.status === 'approved' || parsed.status === 'rejected') ? parsed.status : 'pending',
         approved_by: parsed.approved_by || null,
-        approved_at: parsed.approved_at || null
+        approved_at: parsed.approved_at || null,
+        original_url
       };
     } catch (e) {}
   }
+  const cleanCaption = text.replace(/<!--ORIGINAL_URL:.*?-->/g, '').trim();
   return {
-    caption: text,
+    caption: cleanCaption,
     status: 'pending',
     approved_by: null,
-    approved_at: null
+    approved_at: null,
+    original_url
   };
 }
 
-function encodeSubmissionCaption(cleanCaption: string | null | undefined, meta: { status: string; approved_by: string | null; approved_at?: string | null }): string {
-  const baseCaption = (cleanCaption || '').replace(/<!--APPROVAL:\{.*?\}-->/g, '').trim();
-  const metaTag = `<!--APPROVAL:${JSON.stringify(meta)}-->`;
-  return baseCaption ? `${baseCaption} ${metaTag}` : metaTag;
+function encodeSubmissionCaption(
+  cleanCaption: string | null | undefined,
+  meta: { status: string; approved_by: string | null; approved_at?: string | null; original_url?: string | null }
+): string {
+  const baseCaption = (cleanCaption || '')
+    .replace(/<!--APPROVAL:\{.*?\}-->/g, '')
+    .replace(/<!--ORIGINAL_URL:.*?-->/g, '')
+    .trim();
+  const metaTag = `<!--APPROVAL:${JSON.stringify({
+    status: meta.status,
+    approved_by: meta.approved_by,
+    approved_at: meta.approved_at
+  })}-->`;
+  const origTag = meta.original_url ? ` <!--ORIGINAL_URL:${meta.original_url.trim()}-->` : '';
+  return baseCaption ? `${baseCaption} ${metaTag}${origTag}` : `${metaTag}${origTag}`.trim();
 }
 
 function parseCommentContent(rawContent: string | null | undefined): {
@@ -327,6 +549,48 @@ export default async function handler(req: Request, res: Response) {
   const action = req.query.action || req.body?.action || 'get';
 
   try {
+    // SCRAPE / RESOLVE EXTERNAL IMAGE LINK (Steam screenshot page, Imgur, Gyazo, or general webpage)
+    if (action === 'scrape-image' || action === 'scrape-link' || action === 'resolve-image') {
+      const target = (req.query.url as string) || req.body?.url;
+      if (!target) {
+        return res.status(400).json({ error: 'Missing url parameter' });
+      }
+      const result = await scrapeExternalImageUrl(target);
+      return res.status(200).json({
+        success: true,
+        imageUrl: result.imageUrl,
+        originalUrl: result.originalUrl,
+        gameTitle: result.gameTitle
+      });
+    }
+
+    // IMAGE PROXY (in case external CDN blocks hotlinking or CORS)
+    if (action === 'proxy-image' || action === 'image-proxy') {
+      const target = (req.query.url as string) || req.body?.url;
+      if (!target || typeof target !== 'string') {
+        return res.status(400).send('Missing url parameter');
+      }
+      try {
+        const fetchRes = await fetch(target, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': target
+          },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (!fetchRes.ok) {
+          return res.status(fetchRes.status).send('Failed to fetch image');
+        }
+        const contentType = fetchRes.headers.get('content-type') || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        const buffer = await fetchRes.arrayBuffer();
+        return res.status(200).send(Buffer.from(buffer));
+      } catch (err: any) {
+        return res.status(502).send(err?.message || 'Proxy error');
+      }
+    }
+
     if (method === 'GET') {
       if (action === 'notifications' || req.query.notifications === 'true') {
         const queryUserId = (req.query.userId || req.query.user_id) as string;
@@ -573,7 +837,7 @@ export default async function handler(req: Request, res: Response) {
         // Ensure at most ONE submission per user has is_selected: true per event (scoped by event)
         // and parse approval metadata from caption
         const seenSelectedPerEvent = new Set<string>();
-        const sanitizedSubs = (subs || []).map((sub: any) => {
+        const sanitizedSubs = await Promise.all((subs || []).map(async (sub: any) => {
           const parsed = parseSubmissionCaption(sub.caption);
           const effectiveStatus = (parsed.status === 'rejected' || sub.status === 'rejected')
             ? 'rejected'
@@ -620,8 +884,45 @@ export default async function handler(req: Request, res: Response) {
             }
           }
 
+          let effectiveImg = sub.image_url;
+          let effectiveOrig = parsed.original_url || sub.image_url;
+
+          // Auto-scrape webpage URLs so that direct images are returned to the client
+          if (effectiveImg && isWebpageUrl(effectiveImg)) {
+            try {
+              const scraped = await scrapeExternalImageUrl(effectiveImg);
+              if (scraped && scraped.imageUrl && scraped.imageUrl !== effectiveImg) {
+                effectiveOrig = effectiveImg;
+                effectiveImg = scraped.imageUrl;
+                if (supabase && sub.id) {
+                  const updatedCap = encodeSubmissionCaption(parsed.caption, {
+                    status: parsed.status,
+                    approved_by: parsed.approved_by,
+                    approved_at: parsed.approved_at,
+                    original_url: effectiveOrig
+                  });
+                  supabase.from('screenshot_submissions').update({
+                    image_url: effectiveImg,
+                    caption: updatedCap
+                  }).eq('id', sub.id).then();
+                }
+              }
+            } catch (scrapeErr) {
+              console.warn(`Auto-scrape failed for sub ${sub.id}:`, scrapeErr);
+            }
+          } else if (effectiveOrig && isWebpageUrl(effectiveOrig) && (!effectiveImg || isWebpageUrl(effectiveImg))) {
+            try {
+              const scraped = await scrapeExternalImageUrl(effectiveOrig);
+              if (scraped && scraped.imageUrl) {
+                effectiveImg = scraped.imageUrl;
+              }
+            } catch {}
+          }
+
           const processedSub = {
             ...sub,
+            image_url: effectiveImg,
+            original_url: effectiveOrig,
             user_team: liveTeam,
             caption: parsed.caption,
             status: effectiveStatus,
@@ -649,7 +950,7 @@ export default async function handler(req: Request, res: Response) {
           seenSelectedPerEvent.add(key1);
           seenSelectedPerEvent.add(key2);
           return processedSub;
-        });
+        }));
 
         const sanitizedComments = (comments || []).map((c: any) => {
           const parsed = parseCommentContent(c.content);
@@ -735,6 +1036,11 @@ export default async function handler(req: Request, res: Response) {
         if (!userId) {
           return res.status(400).json({ error: 'User ID is required' });
         }
+
+        // Automatically scrape external image link (e.g. Steam Community screenshot page, Imgur, Gyazo, etc.)
+        const scraped = await scrapeExternalImageUrl(imageUrl);
+        const effectiveImageUrl = scraped.imageUrl || imageUrl;
+        const effectiveOriginalUrl = (scraped.originalUrl && scraped.originalUrl !== effectiveImageUrl) ? scraped.originalUrl : imageUrl;
 
         const rawUid = String(userId).trim();
         const cleanUid = rawUid.startsWith('discord_') ? rawUid.replace('discord_', '') : rawUid;
@@ -824,7 +1130,8 @@ export default async function handler(req: Request, res: Response) {
           const initialCaption = encodeSubmissionCaption(caption || '', {
             status: 'pending',
             approved_by: null,
-            approved_at: null
+            approved_at: null,
+            original_url: effectiveOriginalUrl
           });
 
           let effectiveSubmitterTeam = userTeam && userTeam !== 'none' ? userTeam : 'none';
@@ -866,7 +1173,7 @@ export default async function handler(req: Request, res: Response) {
             user_name: userName || 'Anonymous User',
             user_avatar: userAvatar || '',
             user_team: effectiveSubmitterTeam,
-            image_url: imageUrl,
+            image_url: effectiveImageUrl,
             caption: initialCaption,
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
@@ -877,14 +1184,12 @@ export default async function handler(req: Request, res: Response) {
           const { data: inserted, error } = await supabase.from('screenshot_submissions').insert([newSub]).select().single();
           if (error) throw error;
 
-          // Screenshot contest submissions live exclusively in screenshot_submissions table.
-          // Points are only awarded if and when an admin approves the submission.
-          // Do NOT insert a pending entry into the submissions table on upload so it does not pollute My Submissions.
-
           return res.status(200).json({
             success: true,
             submission: {
               ...inserted,
+              image_url: effectiveImageUrl,
+              original_url: effectiveOriginalUrl,
               caption: caption || '',
               status: 'pending',
               approved_by: null,
@@ -910,7 +1215,8 @@ export default async function handler(req: Request, res: Response) {
             user_name: userName || 'Anonymous User',
             user_avatar: userAvatar || '',
             user_team: userTeam || 'none',
-            image_url: imageUrl,
+            image_url: effectiveImageUrl,
+            original_url: effectiveOriginalUrl,
             caption: caption || '',
             game_name: gameName || 'Steam Game',
             is_spoiler: Boolean(isSpoiler),
@@ -1584,10 +1890,20 @@ export default async function handler(req: Request, res: Response) {
               effectiveCaption = caption;
             }
 
+            let effectiveDirectImg: string | undefined = undefined;
+            let effectiveOriginalUrl = parsed.original_url;
+
+            if (imageUrl !== undefined && String(imageUrl).trim() !== '') {
+              const scraped = await scrapeExternalImageUrl(String(imageUrl).trim());
+              effectiveDirectImg = scraped.imageUrl || String(imageUrl).trim();
+              effectiveOriginalUrl = (scraped.originalUrl && scraped.originalUrl !== effectiveDirectImg) ? scraped.originalUrl : String(imageUrl).trim();
+            }
+
             const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
               status: effectiveStatus,
               approved_by: effectiveAdmin,
-              approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null)
+              approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null),
+              original_url: effectiveOriginalUrl
             });
 
             const dbFields: any = { caption: updatedCaption };
@@ -1620,8 +1936,8 @@ export default async function handler(req: Request, res: Response) {
               } catch (e) {}
             }
 
-            if (imageUrl !== undefined && String(imageUrl).trim() !== '') {
-              dbFields.image_url = String(imageUrl).trim();
+            if (effectiveDirectImg !== undefined && String(effectiveDirectImg).trim() !== '') {
+              dbFields.image_url = String(effectiveDirectImg).trim();
             }
             if (gameName !== undefined && String(gameName).trim() !== '') {
               dbFields.game_name = String(gameName).trim();
@@ -1740,16 +2056,27 @@ export default async function handler(req: Request, res: Response) {
 
           const parsed = parseSubmissionCaption(targetSub.caption);
           const effectiveCaption = caption !== undefined ? caption : parsed.caption;
+
+          let effectiveDirectImg: string | undefined = undefined;
+          let effectiveOriginalUrl = parsed.original_url;
+
+          if (imageUrl !== undefined && String(imageUrl).trim() !== '') {
+            const scraped = await scrapeExternalImageUrl(String(imageUrl).trim());
+            effectiveDirectImg = scraped.imageUrl || String(imageUrl).trim();
+            effectiveOriginalUrl = (scraped.originalUrl && scraped.originalUrl !== effectiveDirectImg) ? scraped.originalUrl : String(imageUrl).trim();
+          }
+
           const updatedCaption = encodeSubmissionCaption(effectiveCaption, {
             status: parsed.status,
             approved_by: parsed.approved_by,
-            approved_at: parsed.approved_at
+            approved_at: parsed.approved_at,
+            original_url: effectiveOriginalUrl
           });
 
           const dbFields: any = { caption: updatedCaption };
 
-          if (imageUrl !== undefined && String(imageUrl).trim() !== '') {
-            dbFields.image_url = String(imageUrl).trim();
+          if (effectiveDirectImg !== undefined && String(effectiveDirectImg).trim() !== '') {
+            dbFields.image_url = String(effectiveDirectImg).trim();
           }
           if (gameName !== undefined && String(gameName).trim() !== '') {
             dbFields.game_name = String(gameName).trim();
