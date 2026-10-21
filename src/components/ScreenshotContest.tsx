@@ -5,7 +5,7 @@ import {
   Trash2, Edit2, Edit3, Lock, Settings, RefreshCw, Send, Plus, X, Layers,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, Users, BarChart3, UserCheck, Search, ListFilter,
   Clock, XCircle, Check, LayoutGrid, List, Calendar, ChevronDown, ExternalLink,
-  Archive, Medal, CheckSquare, Square, Loader2
+  Archive, Medal, CheckSquare, Square
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { TEAM_COLORS, Team } from '@/types';
@@ -24,7 +24,6 @@ interface ScreenshotSubmission {
   user_avatar: string;
   user_team: Team;
   image_url: string;
-  original_url?: string | null;
   caption: string;
   game_name: string;
   is_spoiler: boolean;
@@ -216,18 +215,6 @@ export const isExternalLinkImage = (url: string | null | undefined): boolean => 
   return /^https?:\/\//i.test(trimmed);
 };
 
-export const isWebpageUrl = (url: string | null | undefined): boolean => {
-  if (!url || typeof url !== 'string') return false;
-  const trimmed = url.trim();
-  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return false;
-  if (!/^https?:\/\//i.test(trimmed)) return false;
-  if (/\.(png|jpe?g|webp|gif|avif)(\?.*)?$/i.test(trimmed) && !trimmed.includes('steamcommunity.com')) return false;
-  if (trimmed.includes('images.steamusercontent.com/ugc/')) return false;
-  if (trimmed.includes('i.imgur.com/')) return false;
-  if (trimmed.includes('i.gyazo.com/')) return false;
-  return true;
-};
-
 export const normalizeEmbedImageUrl = (url: string | null | undefined): string => {
   if (!url) return '';
   const trimmed = url.trim();
@@ -246,32 +233,6 @@ export const normalizeEmbedImageUrl = (url: string | null | undefined): string =
   }
 
   return trimmed;
-};
-
-export const scrapeLinkForImage = async (url: string | null | undefined): Promise<{ imageUrl: string; originalUrl: string; gameTitle?: string } | null> => {
-  if (!url || typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return { imageUrl: trimmed, originalUrl: trimmed };
-  if (/\.(png|jpe?g|webp|gif|avif)(\?.*)?$/i.test(trimmed) && !trimmed.includes('steamcommunity.com')) {
-    return { imageUrl: trimmed, originalUrl: trimmed };
-  }
-
-  try {
-    const res = await fetch(`/api/screenshots?action=scrape-image&url=${encodeURIComponent(trimmed)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.imageUrl) {
-        return {
-          imageUrl: data.imageUrl,
-          originalUrl: data.originalUrl || trimmed,
-          gameTitle: data.gameTitle
-        };
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to scrape link:', e);
-  }
-  return null;
 };
 
 export default function ScreenshotContest({ 
@@ -342,6 +303,18 @@ export default function ScreenshotContest({
   const [isDragging, setIsDragging] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
 
+  // Pagination state (15, 30, 45, or 60 items per page with localStorage persistence)
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('screenshot_page_size');
+      if (saved && [15, 30, 45, 60].includes(Number(saved))) {
+        return Number(saved);
+      }
+    }
+    return 30;
+  });
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
   // Lightbox state
   const [lightboxSubId, setLightboxSubId] = useState<string | null>(null);
   const [lightboxMobileView, setLightboxMobileView] = useState<'split' | 'image-only'>('split');
@@ -384,92 +357,9 @@ export default function ScreenshotContest({
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Real-time link scraping state in Submit and Edit modals
-  const [isScrapingSubmitUrl, setIsScrapingSubmitUrl] = useState(false);
-  const [isScrapingEditUrl, setIsScrapingEditUrl] = useState(false);
-
-  const handleImageUrlChange = async (val: string) => {
-    setImageUrlInput(val);
-    setImagePreview(val);
-    setImageFile(null);
-    setSubmitError('');
-
-    if (val && isExternalLinkImage(val) && isWebpageUrl(val)) {
-      setIsScrapingSubmitUrl(true);
-      const scraped = await scrapeLinkForImage(val);
-      setIsScrapingSubmitUrl(false);
-      if (scraped && scraped.imageUrl) {
-        setImagePreview(scraped.imageUrl);
-        if (!gameNameInput && scraped.gameTitle) {
-          setGameNameInput(scraped.gameTitle);
-        }
-      }
-    }
-  };
-
-  const handleEditUrlChange = async (val: string) => {
-    setEditImageUrl(val);
-    setEditImagePreview(val);
-    setEditImageFile(null);
-    setEditError(null);
-
-    if (val && isExternalLinkImage(val) && isWebpageUrl(val)) {
-      setIsScrapingEditUrl(true);
-      const scraped = await scrapeLinkForImage(val);
-      setIsScrapingEditUrl(false);
-      if (scraped && scraped.imageUrl) {
-        setEditImagePreview(scraped.imageUrl);
-        if (!editGameName && scraped.gameTitle) {
-          setEditGameName(scraped.gameTitle);
-        }
-      }
-    }
-  };
-
-  // Track external image loading errors gracefully to show an interactive fallback card or auto-scrape
+  // Track external image loading errors gracefully to show an interactive fallback card
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
-  const [scrapingSubmissions, setScrapingSubmissions] = useState<Record<string, boolean>>({});
-
-  const handleImageError = async (subId: string) => {
-    const sub = submissions.find(s => s.id === subId);
-    if (!sub) return;
-
-    const currentImg = sub.image_url;
-    const origUrl = sub.original_url || sub.image_url;
-
-    // 1. If it's a webpage URL or has an external link, scrape it!
-    if (origUrl && (isWebpageUrl(origUrl) || isWebpageUrl(currentImg)) && !scrapingSubmissions[subId]) {
-      setScrapingSubmissions(prev => ({ ...prev, [subId]: true }));
-      const scraped = await scrapeLinkForImage(origUrl || currentImg);
-      setScrapingSubmissions(prev => ({ ...prev, [subId]: false }));
-
-      if (scraped && scraped.imageUrl && scraped.imageUrl !== currentImg) {
-        setSubmissions(prev => prev.map(s => s.id === subId ? {
-          ...s,
-          image_url: scraped.imageUrl,
-          original_url: origUrl
-        } : s));
-        setBrokenImages(prev => {
-          const next = { ...prev };
-          delete next[subId];
-          return next;
-        });
-        return;
-      }
-    }
-
-    // 2. If direct image failed to load (e.g. cross-origin blocking or hotlink restriction on CDN), try proxy!
-    if (currentImg && !currentImg.includes('/api/screenshots?action=proxy-image') && !currentImg.startsWith('data:')) {
-      const proxyUrl = `/api/screenshots?action=proxy-image&url=${encodeURIComponent(currentImg)}`;
-      setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, image_url: proxyUrl } : s));
-      setBrokenImages(prev => {
-        const next = { ...prev };
-        delete next[subId];
-        return next;
-      });
-      return;
-    }
-
+  const handleImageError = (subId: string) => {
     setBrokenImages(prev => ({ ...prev, [subId]: true }));
   };
 
@@ -682,30 +572,6 @@ export default function ScreenshotContest({
       }
     }
   }, [targetSubmission, initialSubmissionId, submissions]);
-
-  // Auto-scrape any loaded submission that has a webpage URL (like Steam screenshot page)
-  useEffect(() => {
-    submissions.forEach(async (sub) => {
-      const url = sub.image_url;
-      if (url && isWebpageUrl(url) && !scrapingSubmissions[sub.id]) {
-        setScrapingSubmissions(prev => ({ ...prev, [sub.id]: true }));
-        const scraped = await scrapeLinkForImage(url);
-        setScrapingSubmissions(prev => ({ ...prev, [sub.id]: false }));
-        if (scraped && scraped.imageUrl && scraped.imageUrl !== url) {
-          setSubmissions(prev => prev.map(s => s.id === sub.id ? {
-            ...s,
-            image_url: scraped.imageUrl,
-            original_url: url
-          } : s));
-          setBrokenImages(prev => {
-            const next = { ...prev };
-            delete next[sub.id];
-            return next;
-          });
-        }
-      }
-    });
-  }, [submissions.length]);
 
   // Event scoped submissions (based on selectedEventId filter)
   const eventScopedSubmissions = useMemo(() => {
@@ -1596,44 +1462,11 @@ interface UserSubmissionStat {
 
   const handleAdminDelete = (subId: string) => handleDeleteSubmission(subId);
 
-  const [isScrapingUrl, setIsScrapingUrl] = useState(false);
-
-  const handleUrlChangeWithScrape = async (url: string, isEdit: boolean = false) => {
-    const trimmed = url.trim();
-    if (isEdit) {
-      setEditImageUrl(url);
-      setEditImagePreview(url);
-      setEditImageFile(null);
-      setEditError(null);
-    } else {
-      setImageUrlInput(url);
-      setImagePreview(url);
-      setImageFile(null);
-      setSubmitError('');
-    }
-
-    if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return;
-    if (/\.(png|jpe?g|webp|gif|avif)(\?.*)?$/i.test(trimmed)) return;
-
-    if (isExternalLinkImage(trimmed)) {
-      setIsScrapingUrl(true);
-      const scraped = await scrapeLinkForImage(trimmed);
-      setIsScrapingUrl(false);
-      if (scraped && scraped.imageUrl) {
-        if (isEdit) {
-          setEditImagePreview(scraped.imageUrl);
-        } else {
-          setImagePreview(scraped.imageUrl);
-        }
-      }
-    }
-  };
-
   const openEditSubmissionModal = (sub: ScreenshotSubmission) => {
     setEditingSub(sub);
     setEditCaption(sub.caption || '');
     setEditGameName(sub.game_name || '');
-    setEditImageUrl(sub.original_url || sub.image_url || '');
+    setEditImageUrl(sub.image_url || '');
     setEditImagePreview(sub.image_url || '');
     setEditImageFile(null);
     setEditIsSpoiler(Boolean(sub.is_spoiler));
@@ -1682,7 +1515,7 @@ interface UserSubmissionStat {
 
       const payload: any = {
         submissionId: editingSub.id,
-        imageUrl: editImageUrl || finalUrl,
+        imageUrl: finalUrl,
         gameName: editGameName.trim(),
         caption: editCaption.trim(),
         isSpoiler: editIsSpoiler,
@@ -1715,11 +1548,9 @@ interface UserSubmissionStat {
         // Optimistic local update
         setSubmissions(prev => prev.map(s => {
           if (s.id !== editingSub.id) return s;
-          const returnedSub = data.submission;
           return {
             ...s,
-            image_url: returnedSub?.image_url || editImagePreview || finalUrl,
-            original_url: returnedSub?.original_url || (editImageUrl !== editImagePreview ? editImageUrl : s.original_url),
+            image_url: finalUrl,
             game_name: editGameName.trim(),
             caption: editCaption.trim(),
             is_spoiler: editIsSpoiler,
@@ -2025,6 +1856,20 @@ interface UserSubmissionStat {
       return true;
     });
   }, [eventScopedSubmissions, activeTab, currentUserId, searchGame, adminFilterUserId, user?.isAdmin, adminStatusFilter]);
+
+  // Reset pagination to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchGame, adminStatusFilter, adminFilterUserId, selectedEventId, pageSize]);
+
+  // Pagination calculation
+  const totalPages = Math.max(1, Math.ceil(filteredSubmissions.length / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedSubmissions = useMemo(() => {
+    const start = (safeCurrentPage - 1) * pageSize;
+    return filteredSubmissions.slice(start, start + pageSize);
+  }, [filteredSubmissions, safeCurrentPage, pageSize]);
 
   // Lightbox Navigation Handlers
   const handlePrevLightbox = () => {
@@ -2871,6 +2716,30 @@ interface UserSubmissionStat {
               </button>
             </div>
 
+            {/* Items Per Page Selector (15, 30, 45, 60) */}
+            <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl p-1 shrink-0">
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-white/40 px-1.5 hidden md:inline">Per page:</span>
+              {[15, 30, 45, 60].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    setPageSize(size);
+                    localStorage.setItem('screenshot_page_size', String(size));
+                  }}
+                  className={cn(
+                    "px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    pageSize === size
+                      ? teamActiveTab
+                      : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
+                  )}
+                  title={`Show ${size} screenshots per page`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+
             {/* Search Input */}
             <div className="relative w-full sm:w-60 md:w-64">
               <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" />
@@ -2964,7 +2833,7 @@ interface UserSubmissionStat {
       ) : viewMode === 'gallery' ? (
         /* GALLERY VIEW: Large Card-Based Grid */
         <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-2.5 sm:gap-6 md:gap-7">
-          {filteredSubmissions.map((sub) => {
+          {paginatedSubmissions.map((sub) => {
             const isSpoilerHidden = sub.is_spoiler && !revealedSpoilers[sub.id];
             const voteCount = voteCounts[sub.id] || 0;
             const hasVoted = myVotedSubIds.has(sub.id);
@@ -2986,47 +2855,27 @@ interface UserSubmissionStat {
                   onClick={() => setLightboxSubId(sub.id)}
                   className="relative aspect-video bg-black/90 overflow-hidden flex items-center justify-center cursor-pointer group/img"
                 >
-                  {scrapingSubmissions[sub.id] ? (
-                    <div className="w-full h-full bg-slate-900/95 flex flex-col items-center justify-center p-3 text-center gap-2">
-                      <RefreshCw size={22} className="text-sky-400 animate-spin" />
-                      <span className="text-[11px] font-bold text-white/80">Scraping image from link...</span>
-                      <span className="text-[10px] text-white/50 line-clamp-1">{sub.game_name}</span>
-                    </div>
-                  ) : brokenImages[sub.id] ? (
+                  {brokenImages[sub.id] ? (
                     <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-3 text-center gap-2">
                       <ExternalLink size={24} className="text-sky-400 opacity-80" />
                       <span className="text-[11px] font-bold text-white/80 line-clamp-1">{sub.game_name}</span>
-                      <div className="flex items-center gap-1.5">
-                        <a
-                          href={sub.original_url || sub.image_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
-                        >
-                          <ExternalLink size={10} />
-                          <span>Open in Another Tab</span>
-                        </a>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleImageError(sub.id);
-                          }}
-                          className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Retry scraping"
-                        >
-                          <RefreshCw size={10} />
-                          <span>Retry</span>
-                        </button>
-                      </div>
+                      <a
+                        href={sub.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                      >
+                        <ExternalLink size={10} />
+                        <span>Open in Another Tab</span>
+                      </a>
                     </div>
                   ) : (
                     <img
                       src={normalizeEmbedImageUrl(sub.image_url)}
                       alt={sub.caption || sub.game_name}
-                      referrerPolicy="no-referrer"
                       loading="lazy"
+                      decoding="async"
                       onError={() => handleImageError(sub.id)}
                       className={cn(
                         "w-full h-full object-cover transition-transform duration-500 group-hover:scale-105",
@@ -3089,9 +2938,9 @@ interface UserSubmissionStat {
                     </div>
 
                     <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto">
-                      {isExternalLinkImage(sub.original_url || sub.image_url) && (
+                      {isExternalLinkImage(sub.image_url) && (
                         <a
-                          href={sub.original_url || sub.image_url}
+                          href={sub.image_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -3460,7 +3309,7 @@ interface UserSubmissionStat {
       ) : (
         /* LIST VIEW: Streamlined Horizontal Rows */
         <div className="flex flex-col space-y-3.5">
-          {filteredSubmissions.map((sub) => {
+          {paginatedSubmissions.map((sub) => {
             const isSpoilerHidden = sub.is_spoiler && !revealedSpoilers[sub.id];
             const voteCount = voteCounts[sub.id] || 0;
             const hasVoted = myVotedSubIds.has(sub.id);
@@ -3503,17 +3352,12 @@ interface UserSubmissionStat {
                   onClick={() => setLightboxSubId(sub.id)}
                   className="w-full sm:w-48 md:w-56 aspect-video shrink-0 rounded-xl overflow-hidden relative bg-black/90 cursor-pointer group/thumb border border-black/10 dark:border-white/10"
                 >
-                  {scrapingSubmissions[sub.id] ? (
-                    <div className="w-full h-full bg-slate-900/95 flex flex-col items-center justify-center p-2 text-center gap-1">
-                      <RefreshCw size={18} className="text-sky-400 animate-spin" />
-                      <span className="text-[10px] font-bold text-white/80">Scraping image...</span>
-                    </div>
-                  ) : brokenImages[sub.id] ? (
+                  {brokenImages[sub.id] ? (
                     <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-3 text-center gap-1.5">
                       <ExternalLink size={20} className="text-sky-400 opacity-80" />
                       <span className="text-[10px] font-bold text-white/80 line-clamp-1">{sub.game_name}</span>
                       <a
-                        href={sub.original_url || sub.image_url}
+                        href={sub.image_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -3527,8 +3371,8 @@ interface UserSubmissionStat {
                     <img
                       src={normalizeEmbedImageUrl(sub.image_url)}
                       alt={sub.caption || sub.game_name}
-                      referrerPolicy="no-referrer"
                       loading="lazy"
+                      decoding="async"
                       onError={() => handleImageError(sub.id)}
                       className={cn(
                         "w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105",
@@ -3697,9 +3541,9 @@ interface UserSubmissionStat {
                       <p className="text-xs font-semibold dark:text-white/90 text-slate-700">
                         {sub.game_name}
                       </p>
-                      {isExternalLinkImage(sub.original_url || sub.image_url) && (
+                      {isExternalLinkImage(sub.image_url) && (
                         <a
-                          href={sub.original_url || sub.image_url}
+                          href={sub.image_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -3920,6 +3764,156 @@ interface UserSubmissionStat {
         </div>
       )}
 
+      {/* Bottom Pagination Bar */}
+      {filteredSubmissions.length > 0 && (
+        <div className="bg-black/5 dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm mt-8">
+          {/* Showing range text */}
+          <div className="text-xs font-medium text-slate-500 dark:text-white/60">
+            Showing{' '}
+            <span className="font-bold text-slate-900 dark:text-white">
+              {(safeCurrentPage - 1) * pageSize + 1}
+            </span>
+            {' '}–{' '}
+            <span className="font-bold text-slate-900 dark:text-white">
+              {Math.min(safeCurrentPage * pageSize, filteredSubmissions.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-900 dark:text-white">
+              {filteredSubmissions.length}
+            </span>
+            {' '}screenshots
+            {totalPages > 1 && (
+              <span className="ml-1 text-slate-400 dark:text-white/40">
+                (Page {safeCurrentPage} of {totalPages})
+              </span>
+            )}
+          </div>
+
+          {/* Page navigation controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap justify-center">
+              {/* Prev Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (safeCurrentPage > 1) {
+                    setCurrentPage(safeCurrentPage - 1);
+                    window.scrollTo({ top: 350, behavior: 'smooth' });
+                  }
+                }}
+                disabled={safeCurrentPage <= 1}
+                className={cn(
+                  "p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 border",
+                  safeCurrentPage <= 1
+                    ? "opacity-30 cursor-not-allowed border-black/5 dark:border-white/5 text-slate-400 dark:text-white/30"
+                    : "cursor-pointer border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 text-slate-700 dark:text-white"
+                )}
+                title="Previous page"
+              >
+                <ChevronLeft size={16} />
+                <span className="hidden sm:inline">Prev</span>
+              </button>
+
+              {/* Page numbers with ellipsis logic */}
+              {(() => {
+                const pages: (number | string)[] = [];
+                if (totalPages <= 7) {
+                  for (let i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                  pages.push(1);
+                  if (safeCurrentPage > 3) pages.push('ellipsis-start');
+                  const start = Math.max(2, safeCurrentPage - 1);
+                  const end = Math.min(totalPages - 1, safeCurrentPage + 1);
+                  for (let i = start; i <= end; i++) {
+                    if (!pages.includes(i)) pages.push(i);
+                  }
+                  if (safeCurrentPage < totalPages - 2) pages.push('ellipsis-end');
+                  if (!pages.includes(totalPages)) pages.push(totalPages);
+                }
+
+                return pages.map((p, idx) => {
+                  if (typeof p === 'string') {
+                    return (
+                      <span key={`el-${idx}`} className="px-2 py-1 text-xs text-slate-400 dark:text-white/40 font-bold select-none">
+                        ...
+                      </span>
+                    );
+                  }
+
+                  const isActive = p === safeCurrentPage;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        setCurrentPage(p);
+                        window.scrollTo({ top: 350, behavior: 'smooth' });
+                      }}
+                      className={cn(
+                        "min-w-8 h-8 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center",
+                        isActive
+                          ? teamActiveTab
+                          : "border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 text-slate-700 dark:text-white/80"
+                      )}
+                    >
+                      {p}
+                    </button>
+                  );
+                });
+              })()}
+
+              {/* Next Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (safeCurrentPage < totalPages) {
+                    setCurrentPage(safeCurrentPage + 1);
+                    window.scrollTo({ top: 350, behavior: 'smooth' });
+                  }
+                }}
+                disabled={safeCurrentPage >= totalPages}
+                className={cn(
+                  "p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 border",
+                  safeCurrentPage >= totalPages
+                    ? "opacity-30 cursor-not-allowed border-black/5 dark:border-white/5 text-slate-400 dark:text-white/30"
+                    : "cursor-pointer border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 text-slate-700 dark:text-white"
+                )}
+                title="Next page"
+              >
+                <span className="hidden sm:inline">Next</span>
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Page size buttons */}
+          <div className="flex items-center gap-1.5 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl p-1 shrink-0">
+            <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-white/40 px-1.5">Per page:</span>
+            {[15, 30, 45, 60].map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => {
+                  setPageSize(size);
+                  localStorage.setItem('screenshot_page_size', String(size));
+                  setCurrentPage(1);
+                  window.scrollTo({ top: 350, behavior: 'smooth' });
+                }}
+                className={cn(
+                  "px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                  pageSize === size
+                    ? teamActiveTab
+                    : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
+                )}
+                title={`Show ${size} screenshots per page`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* SUBMIT SCREENSHOT MODAL */}
       <AnimatePresence>
         {isSubmitModalOpen && (
@@ -3961,15 +3955,9 @@ interface UserSubmissionStat {
                   <label className="block text-xs font-bold text-white/70 mb-2">
                     Screenshot File or Image
                   </label>
-                  {isScrapingSubmitUrl ? (
-                    <div className="rounded-2xl aspect-video bg-black/60 border border-sky-500/30 flex flex-col items-center justify-center p-4 text-center gap-2">
-                      <RefreshCw size={24} className="text-sky-400 animate-spin" />
-                      <span className="text-xs font-bold text-white">Scraping image from external link...</span>
-                      <span className="text-[10px] text-white/50">Extracting high-resolution screenshot</span>
-                    </div>
-                  ) : imagePreview ? (
+                  {imagePreview ? (
                     <div className="relative rounded-2xl overflow-hidden aspect-video bg-black border border-white/10 group flex items-center justify-center">
-                      <img src={normalizeEmbedImageUrl(imagePreview)} referrerPolicy="no-referrer" alt="Preview" className="w-full h-full object-contain bg-black" />
+                      <img src={imagePreview} alt="Preview" className="w-full h-full object-contain bg-black" />
                       {imageFile && (
                         <div className="absolute bottom-2 left-2 bg-black/85 backdrop-blur-sm text-[10px] text-white/90 font-mono px-2.5 py-1 rounded-lg border border-white/15 shadow-lg flex items-center gap-1.5">
                           <Check size={11} className="text-emerald-400" />
@@ -3978,7 +3966,7 @@ interface UserSubmissionStat {
                       )}
                       <button
                         type="button"
-                        onClick={() => { setImagePreview(''); setImageFile(null); setImageUrlInput(''); }}
+                        onClick={() => { setImagePreview(''); setImageFile(null); }}
                         className="absolute top-2 right-2 bg-black/80 text-white p-1.5 rounded-xl border border-white/20 hover:bg-red-600 transition-colors cursor-pointer"
                         title="Remove image"
                       >
@@ -4019,32 +4007,23 @@ interface UserSubmissionStat {
                   </label>
                   <input
                     type="url"
-                    placeholder="https://... (Steam screenshot, Imgur, Gyazo, or direct image link)"
+                    placeholder="https://..."
                     value={imageUrlInput}
-                    onChange={(e) => handleImageUrlChange(e.target.value)}
+                    onChange={(e) => setImageUrlInput(e.target.value)}
                     className={cn("w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none", teamFocusBorder)}
                   />
-                  {isScrapingSubmitUrl && (
-                    <div className="mt-1.5 flex items-center gap-2 text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2.5 py-1.5 rounded-lg">
-                      <RefreshCw size={12} className="animate-spin text-sky-400" />
-                      <span>Scraping screenshot image from link...</span>
-                    </div>
-                  )}
-                  {!isScrapingSubmitUrl && isExternalLinkImage(imageUrlInput) && (
+                  {isExternalLinkImage(imageUrlInput) && (
                     <div className="mt-1.5 flex items-center justify-between text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2.5 py-1.5 rounded-lg">
-                      <span className="text-[10px] text-white/70 flex items-center gap-1">
-                        <CheckCircle size={11} className="text-emerald-400" />
-                        {imagePreview && imagePreview !== imageUrlInput ? "Scraped image embedded" : "External URL"}
-                      </span>
+                      <span className="text-[10px] text-white/70">External URL</span>
                       <a
                         href={imageUrlInput}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 font-bold text-sky-300 hover:text-white text-[10px] transition-colors"
-                        title="Open external link in another tab"
+                        title="External URL (opens in new tab)"
                       >
-                        <span>Open in Another Tab</span>
                         <ExternalLink size={10} />
+                         
                       </a>
                     </div>
                   )}
@@ -4389,23 +4368,23 @@ interface UserSubmissionStat {
                   <input
                     type="url"
                     value={editImageUrl}
-                    onChange={(e) => handleEditUrlChange(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditImageUrl(val);
+                      setEditImagePreview(val);
+                      setEditImageFile(null);
+                      setEditError(null);
+                    }}
                     placeholder="https://... (Steam screenshot URL, direct image link, etc.)"
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-sky-400 transition-colors font-mono"
                   />
 
                   {/* External Link Notice & Option to Open in Another Tab */}
-                  {isScrapingEditUrl && (
-                    <div className="flex items-center gap-2 p-2 rounded-xl bg-sky-500/10 border border-sky-500/25 text-xs text-sky-300">
-                      <RefreshCw size={12} className="animate-spin text-sky-400" />
-                      <span>Scraping screenshot image from external link...</span>
-                    </div>
-                  )}
-                  {!isScrapingEditUrl && isExternalLinkImage(editImageUrl) && (
+                  {isExternalLinkImage(editImageUrl) && (
                     <div className="flex items-center justify-between p-2 rounded-xl bg-sky-500/10 border border-sky-500/25 text-xs">
                       <span className="text-[11px] text-sky-300 flex items-center gap-1.5 font-medium truncate max-w-[240px]">
-                        <CheckCircle size={12} className="text-emerald-400 shrink-0" />
-                        <span>{editImagePreview && editImagePreview !== editImageUrl ? "Scraped image embedded" : "External Link Detected"}</span>
+                        <ExternalLink size={12} className="shrink-0" />
+                        <span>External Link Detected</span>
                       </span>
                       <a
                         href={editImageUrl}
@@ -4422,24 +4401,13 @@ interface UserSubmissionStat {
 
                   {/* Image Preview Box */}
                   <div className="relative rounded-2xl overflow-hidden aspect-video bg-black/80 border border-white/10 flex items-center justify-center group">
-                    {isScrapingEditUrl ? (
-                      <div className="flex flex-col items-center justify-center p-4 text-center gap-2">
-                        <RefreshCw size={24} className="text-sky-400 animate-spin" />
-                        <span className="text-xs font-bold text-white">Scraping image from external link...</span>
-                        <span className="text-[10px] text-white/50">Extracting high-resolution screenshot</span>
-                      </div>
-                    ) : editImagePreview ? (
+                    {editImagePreview ? (
                       <img
                         src={normalizeEmbedImageUrl(editImagePreview)}
                         alt="Screenshot preview"
-                        referrerPolicy="no-referrer"
                         className="w-full h-full object-contain"
                         onError={() => {
-                          if (!editImagePreview.includes('/api/screenshots?action=proxy-image')) {
-                            setEditImagePreview(`/api/screenshots?action=proxy-image&url=${encodeURIComponent(editImagePreview)}`);
-                          } else {
-                            setEditError('Unable to embed image from this URL. If it is an external page, you can open it in another tab or paste a direct image URL.');
-                          }
+                          setEditError('Unable to embed image from this URL. If it is an external page, you can open it in another tab or paste a direct image URL.');
                         }}
                       />
                     ) : (
@@ -5082,9 +5050,9 @@ interface UserSubmissionStat {
                     </button>
                   )}
 
-                  {isExternalLinkImage(currentSub.original_url || currentSub.image_url) && (
+                  {isExternalLinkImage(currentSub.image_url) && (
                     <a
-                      href={currentSub.original_url || currentSub.image_url}
+                      href={currentSub.image_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
@@ -5155,10 +5123,10 @@ interface UserSubmissionStat {
                   )}
 
                   {/* Floating external link button over image */}
-                  {isExternalLinkImage(currentSub.original_url || currentSub.image_url) && (
+                  {isExternalLinkImage(currentSub.image_url) && (
                     <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 pointer-events-auto">
                       <a
-                        href={currentSub.original_url || currentSub.image_url}
+                        href={currentSub.image_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -5173,13 +5141,7 @@ interface UserSubmissionStat {
 
                   {/* Full Image */}
                   <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
-                    {scrapingSubmissions[currentSub.id] ? (
-                      <div className="flex flex-col items-center justify-center p-8 bg-slate-900/90 border border-white/10 rounded-2xl max-w-md text-center gap-3 pointer-events-auto shadow-2xl">
-                        <RefreshCw size={32} className="text-sky-400 animate-spin" />
-                        <h4 className="text-sm font-bold text-white">Scraping screenshot image...</h4>
-                        <p className="text-xs text-white/60">Fetching high-resolution image from link</p>
-                      </div>
-                    ) : brokenImages[currentSub.id] ? (
+                    {brokenImages[currentSub.id] ? (
                       <div className="flex flex-col items-center justify-center p-8 bg-slate-900/90 border border-white/10 rounded-2xl max-w-md text-center gap-3 pointer-events-auto shadow-2xl">
                         <div className="w-12 h-12 rounded-2xl bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/30">
                           <ExternalLink size={24} />
@@ -5190,7 +5152,7 @@ interface UserSubmissionStat {
                         </p>
                         <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                           <a
-                            href={currentSub.original_url || currentSub.image_url}
+                            href={currentSub.image_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg"
@@ -5198,15 +5160,6 @@ interface UserSubmissionStat {
                             <ExternalLink size={14} />
                             <span>Open in Another Tab</span>
                           </a>
-                          <button
-                            type="button"
-                            onClick={() => handleImageError(currentSub.id)}
-                            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/20"
-                            title="Retry scraping"
-                          >
-                            <RefreshCw size={14} />
-                            <span>Retry</span>
-                          </button>
                           {(user?.isAdmin || isUserSubmission(currentSub.user_id)) && (
                             <button
                               type="button"
@@ -5226,7 +5179,6 @@ interface UserSubmissionStat {
                       <img
                         src={normalizeEmbedImageUrl(currentSub.image_url)}
                         alt={currentSub.caption || currentSub.game_name}
-                        referrerPolicy="no-referrer"
                         onError={() => handleImageError(currentSub.id)}
                         className={cn(
                           "max-w-full max-h-full object-contain rounded-lg sm:rounded-xl shadow-2xl transition-all duration-300 pointer-events-auto",

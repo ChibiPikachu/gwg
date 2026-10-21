@@ -1941,11 +1941,26 @@ async function createServer() {
           finalAvatar = profileData.discord_avatar;
         }
 
+        // Resolve effective team: prefer activeEventTeam, fallback to profileData.team
+        const effectiveTeam = (activeEventTeam && activeEventTeam !== 'none')
+          ? activeEventTeam
+          : ((profileData.team && profileData.team !== 'none') ? profileData.team : 'none');
+
+        // Keep profiles.team in sync if user was assigned in user_event_teams
+        if (effectiveTeam !== 'none' && profileData.team !== effectiveTeam) {
+          if (profileData.id) {
+            supabase.from('profiles').update({ team: effectiveTeam }).eq('id', profileData.id).then();
+          }
+          if (profileData.steamid) {
+            supabase.from('profiles').update({ team: effectiveTeam }).eq('steamid', profileData.steamid).then();
+          }
+        }
+
         // Merge database data with session data for the frontend
         return res.json({
           ...user,
           ...profileData,
-          team: activeEventTeam || 'none',
+          team: effectiveTeam,
           points: activeEventPoints,
           steam_avatar: finalAvatar,
           isAdmin: profileData.role === 'admin' || profileData.role === 'admins',
@@ -3862,21 +3877,31 @@ async function createServer() {
         targetEventId = activeEvent?.id;
       }
 
-      if (!targetEventId) {
-        return res.status(400).json({ error: 'No active or target event found' });
-      }
-
       // 2. Perform atomic team update: write to profiles table, user_event_teams, and synchronize screenshot submissions
       const updatedRecords: any[] = [];
       for (const id of rawIds) {
         const cleanId = String(id).trim();
         const cleanDiscord = cleanId.startsWith('discord_') ? cleanId.replace('discord_', '') : cleanId;
 
-        // Resolve profile to satisfy foreign key constraint on user_event_teams(steamid)
+        // Resolve profile safely without UUID cast syntax errors
+        const profOrParts: string[] = [
+          `steamid.eq.${cleanId}`,
+          `steamid.eq.${cleanDiscord}`,
+          `steamid.eq.discord_${cleanDiscord}`,
+          `discord_id.eq.${cleanId}`,
+          `discord_id.eq.${cleanDiscord}`
+        ];
+        if (isUuid(cleanId)) {
+          profOrParts.unshift(`id.eq.${cleanId}`);
+        }
+        if (isUuid(cleanDiscord)) {
+          profOrParts.unshift(`id.eq.${cleanDiscord}`);
+        }
+
         const { data: prof } = await supabase
           .from('profiles')
-          .select('id, steamid, discord_id, team')
-          .or(`steamid.eq.${cleanId},steamid.eq.${cleanDiscord},discord_id.eq.${cleanId},discord_id.eq.${cleanDiscord},id.eq.${cleanId}`)
+          .select('id, steamid, discord_id, team, steam_name, discord_name')
+          .or(profOrParts.join(','))
           .maybeSingle();
 
         const primarySteamId = prof?.steamid ? String(prof.steamid).trim() : cleanId;
@@ -3887,17 +3912,30 @@ async function createServer() {
           `discord_${cleanDiscord}`,
           prof?.steamid ? String(prof.steamid).trim() : null,
           prof?.discord_id ? String(prof.discord_id).trim() : null,
-          prof?.discord_id ? `discord_${String(prof.discord_id).trim()}` : null,
+          prof?.discord_id ? `discord_${String(prof.discord_id).trim().replace('discord_', '')}` : null,
           prof?.id ? String(prof.id).trim() : null
         ].filter(Boolean))) as string[];
 
-        // A. Update user's profile team in profiles table
+        // A. Update user's profile team in profiles table safely
         try {
-          const profileOrParts = candidateKeys.map(k => `steamid.eq.${k},discord_id.eq.${k},id.eq.${k}`).join(',');
-          await supabase
-            .from('profiles')
-            .update({ team: dbTeam })
-            .or(profileOrParts);
+          if (prof?.id) {
+            await supabase.from('profiles').update({ team: dbTeam }).eq('id', prof.id);
+          }
+          if (prof?.steamid) {
+            await supabase.from('profiles').update({ team: dbTeam }).eq('steamid', prof.steamid);
+          }
+          if (prof?.discord_id) {
+            await supabase.from('profiles').update({ team: dbTeam }).eq('discord_id', prof.discord_id);
+          }
+          if (cleanId && /^\d{15,20}$/.test(cleanId)) {
+            await supabase.from('profiles').update({ team: dbTeam }).eq('steamid', cleanId);
+          }
+          if (cleanDiscord && /^\d{16,21}$/.test(cleanDiscord)) {
+            await supabase.from('profiles').update({ team: dbTeam }).eq('discord_id', cleanDiscord);
+          }
+          if (isUuid(cleanId)) {
+            await supabase.from('profiles').update({ team: dbTeam }).eq('id', cleanId);
+          }
         } catch (profErr) {
           console.warn('[Admin] Failed to update profile team in profiles table:', profErr);
         }
@@ -3914,27 +3952,27 @@ async function createServer() {
                 .eq('event_id', targetEventId);
             }
           } else {
-            // Atomic UPSERT on user_event_teams
-            const { error: upsertErr } = await supabase
-              .from('user_event_teams')
-              .upsert({
-                steamid: primarySteamId,
-                event_id: targetEventId,
-                team: dbTeam
-              }, { onConflict: 'steamid,event_id' });
+            // Atomic UPSERT on user_event_teams for all relevant candidate keys
+            const keysToUpsert = Array.from(new Set([
+              primarySteamId,
+              prof?.steamid,
+              cleanId,
+              cleanDiscord,
+              prof?.discord_id
+            ].filter(Boolean).map(String)));
 
-            if (upsertErr) {
-              console.error('[Admin] Error upserting user_event_teams:', upsertErr);
-            }
-
-            if (cleanDiscord && cleanDiscord !== primarySteamId) {
-              await supabase
-                .from('user_event_teams')
-                .upsert({
-                  steamid: cleanDiscord,
-                  event_id: targetEventId,
-                  team: dbTeam
-                }, { onConflict: 'steamid,event_id' });
+            for (const key of keysToUpsert) {
+              try {
+                await supabase
+                  .from('user_event_teams')
+                  .upsert({
+                    steamid: key,
+                    event_id: targetEventId,
+                    team: dbTeam
+                  }, { onConflict: 'steamid,event_id' });
+              } catch (e) {
+                console.warn('[Admin] user_event_teams upsert note:', e);
+              }
             }
           }
         }
@@ -3942,21 +3980,30 @@ async function createServer() {
         // C. Synchronize user's screenshot submissions to reflect the newly assigned team
         try {
           const teamForSub = dbTeam || 'none';
-          const subFilterOr = candidateKeys.map(k => `user_id.eq.${k}`).join(',');
+          const subFilterParts = candidateKeys.map(k => `user_id.eq.${k}`).join(',');
 
-          if (targetEventId) {
+          if (subFilterParts) {
+            if (targetEventId) {
+              await supabase
+                .from('screenshot_submissions')
+                .update({ user_team: teamForSub })
+                .eq('event_id', targetEventId)
+                .or(subFilterParts);
+            }
+
+            // Also update all screenshot submissions for this user (including untagged)
             await supabase
               .from('screenshot_submissions')
               .update({ user_team: teamForSub })
-              .eq('event_id', targetEventId)
-              .or(subFilterOr);
+              .or(subFilterParts);
           }
 
-          // Also update all screenshot submissions for this user (including active event or untagged)
-          await supabase
-            .from('screenshot_submissions')
-            .update({ user_team: teamForSub })
-            .or(subFilterOr);
+          for (const k of candidateKeys) {
+            await supabase
+              .from('screenshot_submissions')
+              .update({ user_team: teamForSub })
+              .eq('user_id', k);
+          }
         } catch (syncErr) {
           console.warn('[Admin] Failed to synchronize screenshot submissions on team change:', syncErr);
         }
@@ -3965,10 +4012,12 @@ async function createServer() {
       }
 
       // Synchronize event score snapshot to migrate points to target team
-      try {
-        await ensureEventScoresSaved(supabase, targetEventId, true);
-      } catch (snapErr) {
-        console.warn('[Admin] Failed to refresh event snapshot on team change:', snapErr);
+      if (targetEventId) {
+        try {
+          await ensureEventScoresSaved(supabase, targetEventId, true);
+        } catch (snapErr) {
+          console.warn('[Admin] Failed to refresh event snapshot on team change:', snapErr);
+        }
       }
 
       console.log(`[Admin] Successfully updated team for ${rawIds.length} user(s). Records:`, updatedRecords);

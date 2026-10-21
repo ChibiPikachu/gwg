@@ -325,6 +325,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const effectiveSteamId = realSteamId || dbProfile.id || targetUserId;
           const hasRealSteam = Boolean(realSteamId);
 
+          // Resolve active event team from user_event_teams first, falling back to profiles.team
+          const rawTarget = String(targetUserId).trim();
+          const cleanTarget = rawTarget.startsWith('discord_') ? rawTarget.replace('discord_', '') : rawTarget;
+          const candidateKeys = Array.from(new Set([
+            rawTarget,
+            cleanTarget,
+            `discord_${cleanTarget}`,
+            dbProfile?.steamid ? String(dbProfile.steamid).trim() : null,
+            dbProfile?.discord_id ? String(dbProfile.discord_id).trim() : null,
+            dbProfile?.discord_id ? `discord_${String(dbProfile.discord_id).trim().replace('discord_', '')}` : null,
+            dbProfile?.id ? String(dbProfile.id).trim() : null
+          ].filter(Boolean))) as string[];
+
+          let activeTeam = (dbProfile.team && dbProfile.team !== 'none') ? dbProfile.team : (cachedParsed?.team && cachedParsed.team !== 'none' ? cachedParsed.team : 'none');
+
+          try {
+            // Check active competition event
+            const { data: activeEvt } = await supabase
+              .from('events')
+              .select('id')
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (activeEvt?.id) {
+              const { data: uetRows } = await supabase
+                .from('user_event_teams')
+                .select('team, steamid')
+                .eq('event_id', activeEvt.id)
+                .in('steamid', candidateKeys);
+
+              const assignedUet = uetRows?.find((r: any) => r.team && r.team !== 'none');
+              if (assignedUet?.team) {
+                activeTeam = assignedUet.team;
+              }
+            }
+          } catch (teamCheckErr) {
+            console.warn('Could not resolve active event team in AuthProvider:', teamCheckErr);
+          }
+
+          // If active team was found in user_event_teams but profiles.team is not set, sync it asynchronously
+          if (activeTeam !== 'none' && dbProfile.team !== activeTeam) {
+            if (dbProfile.id) {
+              supabase.from('profiles').update({ team: activeTeam }).eq('id', dbProfile.id).then();
+            }
+            if (dbProfile.steamid) {
+              supabase.from('profiles').update({ team: activeTeam }).eq('steamid', dbProfile.steamid).then();
+            }
+          }
+
           const updatedUser = {
             uid: String(effectiveSteamId),
             steamId: String(effectiveSteamId),
@@ -332,7 +381,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             steamAvatar: (dbProfile.active_avatar === 'discord' && dbProfile.discord_avatar)
               ? dbProfile.discord_avatar
               : (dbProfile.steam_avatar || dbProfile.discord_avatar || cachedParsed?.steamAvatar || 'https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg'),
-            team: dbProfile.team || cachedParsed?.team || 'none',
+            team: activeTeam,
             isAdmin: Boolean(isAdmin),
             role: dbProfile.role || (isAdmin ? 'admin' : 'member'),
             status: dbProfile.status || cachedParsed?.status || 'Ready for Event',
@@ -563,12 +612,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'profiles',
-        filter: `steamid=eq.${user.steamId}`
+        table: 'profiles'
       }, (payload) => {
-        console.log('Real-time profile update:', payload);
         const newData = payload.new as any;
-        if (newData) {
+        if (!newData) return;
+        const myIds = [user.steamId, user.uid, user.discordId].filter(Boolean).map(String);
+        const matchesMe = myIds.some(id => {
+          const clean = id.replace('discord_', '');
+          return (newData.steamid && (newData.steamid === id || newData.steamid.replace('discord_', '') === clean)) ||
+                 (newData.discord_id && (newData.discord_id === id || newData.discord_id.replace('discord_', '') === clean)) ||
+                 (newData.id && newData.id === id);
+        });
+        if (matchesMe) {
+          console.log('Real-time profile update for me:', newData);
           setUser(prev => prev ? {
             ...prev,
             steamName: newData.steam_name ?? prev.steamName,
@@ -584,6 +640,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } : null);
         }
       })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'user_event_teams'
+      }, (payload) => {
+        const newData = payload.new as any;
+        if (!newData || !newData.steamid) return;
+        const uetSid = String(newData.steamid).trim();
+        const cleanUet = uetSid.replace('discord_', '');
+        const myIds = [user.steamId, user.uid, user.discordId].filter(Boolean).map(String);
+        const matchesMe = myIds.some(id => {
+          const clean = id.replace('discord_', '');
+          return id === uetSid || clean === cleanUet;
+        });
+        if (matchesMe && newData.team) {
+          console.log('Real-time team update from user_event_teams:', newData.team);
+          setUser(prev => prev ? {
+            ...prev,
+            team: newData.team
+          } : null);
+        }
+      })
       .subscribe();
 
     return () => {
@@ -596,12 +674,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleTeamUpdate = (e: any) => {
       const detail = e?.detail;
       if (!detail) return;
-      const targetId = String(detail.targetSteamId || '').trim();
+      const targetIds: string[] = Array.isArray(detail.targetSteamIds)
+        ? detail.targetSteamIds.map(String)
+        : (detail.targetSteamId ? [String(detail.targetSteamId)] : []);
+
       const myIds = [user?.steamId, user?.uid, user?.discordId, user?.id].filter(Boolean).map(String);
-      const matchesMe = !targetId || myIds.some(id => {
+      const matchesMe = targetIds.length === 0 || myIds.some(id => {
         const clean = id.replace('discord_', '');
-        const targetClean = targetId.replace('discord_', '');
-        return id === targetId || clean === targetClean;
+        return targetIds.some(tid => {
+          const targetClean = tid.replace('discord_', '');
+          return id === tid || clean === targetClean;
+        });
       });
 
       if (matchesMe) {
