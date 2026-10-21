@@ -2492,193 +2492,79 @@ interface UserSubmissionStat {
         </div>
       </div>
 
-      {/* Navigation and Controls Bar */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-black/5 dark:border-white/5 pb-4">
-        {/* Tabs */}
-        <div className="flex items-center gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
+      {/* Primary User Navigation & View Controls Bar */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 border-b border-black/5 dark:border-white/5 pb-4">
+        {/* Left: View Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 xl:pb-0 scrollbar-none w-full xl:w-auto">
+          {/* All Submissions */}
           <button
             onClick={() => setActiveTab('all')}
             className={cn(
-              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+              "px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 shadow-sm",
               activeTab === 'all'
                 ? teamActiveTab
-                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+                : "text-slate-500 dark:text-white/60 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
             )}
           >
             <Layers size={14} />
-            All Submissions ({eventScopedSubmissions.filter(s => s.status !== 'rejected').length})
+            <span>All Submissions</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-black/5 dark:bg-white/10 opacity-80">
+              {eventScopedSubmissions.filter(s => s.status !== 'rejected').length}
+            </span>
           </button>
 
+          {/* My Screenshots */}
           <button
             onClick={() => setActiveTab('mine')}
             className={cn(
-              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+              "px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 shadow-sm",
               activeTab === 'mine'
                 ? teamActiveTab
-                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+                : "text-slate-500 dark:text-white/60 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
             )}
           >
             <ImageIcon size={14} />
-            My Screenshots ({mySubmissions.filter(s => s.status !== 'rejected').length}/10)
+            <span>My Screenshots</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-black/5 dark:bg-white/10 opacity-80">
+              {mySubmissions.filter(s => s.status !== 'rejected').length}/10
+            </span>
           </button>
 
+          {/* For Voting */}
           <button
             onClick={() => setActiveTab('voting')}
             className={cn(
-              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+              "px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 shadow-sm",
               activeTab === 'voting'
                 ? teamActiveTab
-                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+                : "text-slate-500 dark:text-white/60 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
             )}
           >
             <Star size={14} className={currentTeamStyle.iconText} />
-            For Voting ({eventScopedSubmissions.filter(s => s.is_selected && s.status !== 'rejected').length})
+            <span>For Voting</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-black/5 dark:bg-white/10 opacity-80">
+              {eventScopedSubmissions.filter(s => s.is_selected && s.status !== 'rejected').length}
+            </span>
           </button>
 
+          {/* Theme Archive */}
           <button
             onClick={() => setActiveTab('archive')}
             className={cn(
-              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap",
+              "px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 shadow-sm",
               activeTab === 'archive'
                 ? teamActiveTab
-                : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+                : "text-slate-500 dark:text-white/60 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
             )}
           >
             <Archive size={14} className={currentTeamStyle.iconText} />
-            Theme Archive
+            <span>Theme Archive</span>
           </button>
         </div>
 
-        {/* Right Controls: Admin Status Filter, View Switcher, and Search Bar */}
+        {/* Right: User Display Controls (View Mode, Per Page, Search) */}
         {activeTab !== 'archive' && (
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3 w-full lg:w-auto justify-between lg:justify-end">
-            {/* Admin Status Filter (Approve / Pending / Reject) */}
-            {user?.isAdmin && (
-              <>
-                {/* Desktop / Tablet Segmented Pill Filter */}
-                <div className="hidden md:flex items-center bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/10 dark:border-white/10 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setAdminStatusFilter('all')}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
-                      adminStatusFilter === 'all'
-                        ? "bg-white dark:bg-white/15 text-slate-900 dark:text-white shadow-sm"
-                        : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
-                    )}
-                  >
-                    <span>All</span>
-                    <span className={cn(
-                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
-                      adminStatusFilter === 'all'
-                        ? "bg-black/10 dark:bg-white/20 text-slate-900 dark:text-white"
-                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
-                    )}>
-                      {statusCounts.all}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAdminStatusFilter('approved')}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
-                      adminStatusFilter === 'approved'
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
-                        : "text-slate-500 dark:text-white/50 hover:text-emerald-400"
-                    )}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                    <span>Approved</span>
-                    <span className={cn(
-                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
-                      adminStatusFilter === 'approved'
-                        ? "bg-emerald-500/30 text-emerald-200"
-                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
-                    )}>
-                      {statusCounts.approved}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAdminStatusFilter('pending')}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
-                      adminStatusFilter === 'pending'
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
-                        : "text-slate-500 dark:text-white/50 hover:text-amber-400"
-                    )}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                    <span>Pending</span>
-                    <span className={cn(
-                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
-                      adminStatusFilter === 'pending'
-                        ? "bg-amber-500/30 text-amber-200"
-                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
-                    )}>
-                      {statusCounts.pending}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAdminStatusFilter('rejected')}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
-                      adminStatusFilter === 'rejected'
-                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
-                        : "text-slate-500 dark:text-white/50 hover:text-rose-400"
-                    )}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                    <span>Rejected</span>
-                    <span className={cn(
-                      "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
-                      adminStatusFilter === 'rejected'
-                        ? "bg-rose-500/30 text-rose-200"
-                        : "bg-black/5 dark:bg-white/5 text-slate-400 dark:text-white/40"
-                    )}>
-                      {statusCounts.rejected}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Mobile Compact Dropdown Status Filter */}
-                <div className="md:hidden relative flex items-center shrink-0">
-                  <div className={cn(
-                    "flex items-center gap-1.5 bg-black/5 dark:bg-white/5 border rounded-xl pl-2.5 pr-2 py-1.5 transition-all text-xs font-bold",
-                    adminStatusFilter === 'all'
-                      ? "border-black/10 dark:border-white/10 text-slate-700 dark:text-white"
-                      : adminStatusFilter === 'approved'
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                      : adminStatusFilter === 'pending'
-                      ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                      : "border-rose-500/40 bg-rose-500/10 text-rose-300"
-                  )}>
-                    <span className={cn(
-                      "w-2 h-2 rounded-full shrink-0",
-                      adminStatusFilter === 'all' ? "bg-slate-400 dark:bg-white/60" :
-                      adminStatusFilter === 'approved' ? "bg-emerald-400" :
-                      adminStatusFilter === 'pending' ? "bg-amber-400" : "bg-rose-400"
-                    )} />
-                    <select
-                      value={adminStatusFilter}
-                      onChange={(e) => setAdminStatusFilter(e.target.value as any)}
-                      className="bg-transparent font-bold focus:outline-none cursor-pointer appearance-none pr-4 text-xs text-inherit"
-                    >
-                      <option value="all" className="bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white">All ({statusCounts.all})</option>
-                      <option value="approved" className="bg-white dark:bg-[#1a1a1a] text-emerald-600 dark:text-emerald-400 font-bold">Approved ({statusCounts.approved})</option>
-                      <option value="pending" className="bg-white dark:bg-[#1a1a1a] text-amber-600 dark:text-amber-400 font-bold">Pending ({statusCounts.pending})</option>
-                      <option value="rejected" className="bg-white dark:bg-[#1a1a1a] text-rose-600 dark:text-rose-400 font-bold">Rejected ({statusCounts.rejected})</option>
-                    </select>
-                    <ChevronDown size={12} className="text-slate-400 dark:text-white/40 pointer-events-none -ml-3" />
-                  </div>
-                </div>
-              </>
-            )}
-
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full xl:w-auto justify-between xl:justify-end shrink-0">
             {/* View Mode Toggle: Gallery vs List */}
             <div className="flex items-center bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/10 dark:border-white/10 shrink-0">
               <button
@@ -2718,7 +2604,7 @@ interface UserSubmissionStat {
 
             {/* Items Per Page Selector (15, 30, 45, 60) */}
             <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl p-1 shrink-0">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-white/40 px-1.5 hidden md:inline">Per page:</span>
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-white/40 px-1.5 hidden sm:inline">Per page:</span>
               {[15, 30, 45, 60].map((size) => (
                 <button
                   key={size}
@@ -2728,7 +2614,7 @@ interface UserSubmissionStat {
                     localStorage.setItem('screenshot_page_size', String(size));
                   }}
                   className={cn(
-                    "px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    "px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer",
                     pageSize === size
                       ? teamActiveTab
                       : "text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
@@ -2741,47 +2627,200 @@ interface UserSubmissionStat {
             </div>
 
             {/* Search Input */}
-            <div className="relative w-full sm:w-60 md:w-64">
-              <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30" />
+            <div className="relative w-full sm:w-56 md:w-64">
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/30 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search game, caption, or user..."
+                placeholder="Search game, user, or caption..."
                 value={searchGame}
                 onChange={(e) => setSearchGame(e.target.value)}
-                className={cn("w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-medium dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none transition-colors", teamFocusBorder)}
+                className={cn(
+                  "w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs font-medium dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none transition-colors",
+                  teamFocusBorder
+                )}
               />
+              {searchGame && (
+                <button
+                  type="button"
+                  onClick={() => setSearchGame('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer p-0.5"
+                  title="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* Active Admin Status Filter Notice Banner */}
-      {user?.isAdmin && activeTab !== 'archive' && adminStatusFilter !== 'all' && (
-        <div className={cn(
-          "flex items-center justify-between px-3.5 py-2 rounded-xl border text-xs shadow-sm transition-all animate-in fade-in slide-in-from-top-1",
-          adminStatusFilter === 'approved'
-            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-            : adminStatusFilter === 'pending'
-            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
-            : "bg-rose-500/10 border-rose-500/30 text-rose-300"
-        )}>
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              "w-2 h-2 rounded-full shrink-0",
-              adminStatusFilter === 'approved' ? "bg-emerald-400" :
-              adminStatusFilter === 'pending' ? "bg-amber-400" : "bg-rose-400"
-            )} />
-            <span>
-              Filtering by <strong>{adminStatusFilter === 'approved' ? 'Approved' : adminStatusFilter === 'pending' ? 'Pending Review' : 'Rejected'}</strong> ({filteredSubmissions.length} screenshot{filteredSubmissions.length !== 1 ? 's' : ''})
-            </span>
+      {/* Admin Moderation Tools Row (Dedicated row below user tools) */}
+      {user?.isAdmin && activeTab !== 'archive' && (
+        <div className="bg-slate-900/60 dark:bg-[#121318] border border-amber-500/20 rounded-2xl p-2.5 sm:px-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md animate-in fade-in slide-in-from-top-1">
+          {/* Left: Admin Moderation Title + Status Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            {/* Admin Badge */}
+            <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-500 dark:text-amber-400 shrink-0">
+              <ShieldCheck size={15} className="text-amber-400" />
+              <span className="hidden sm:inline">Admin Moderation:</span>
+              <span className="sm:hidden">Admin:</span>
+            </div>
+
+            {/* Segmented Status Filter Buttons */}
+            <div className="flex items-center bg-black/30 dark:bg-black/50 p-1 rounded-xl border border-white/10 flex-wrap gap-1">
+              {/* All */}
+              <button
+                type="button"
+                onClick={() => setAdminStatusFilter('all')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                  adminStatusFilter === 'all'
+                    ? "bg-white dark:bg-white/15 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white"
+                )}
+              >
+                <span>All</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                  adminStatusFilter === 'all'
+                    ? "bg-black/10 dark:bg-white/20 text-slate-900 dark:text-white"
+                    : "bg-black/20 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                )}>
+                  {statusCounts.all}
+                </span>
+              </button>
+
+              {/* Approved */}
+              <button
+                type="button"
+                onClick={() => setAdminStatusFilter('approved')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                  adminStatusFilter === 'approved'
+                    ? "bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                    : "text-slate-400 dark:text-white/50 hover:text-emerald-400"
+                )}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span>Approved</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                  adminStatusFilter === 'approved'
+                    ? "bg-emerald-500/30 text-emerald-200"
+                    : "bg-black/20 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                )}>
+                  {statusCounts.approved}
+                </span>
+              </button>
+
+              {/* Pending */}
+              <button
+                type="button"
+                onClick={() => setAdminStatusFilter('pending')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 relative",
+                  adminStatusFilter === 'pending'
+                    ? "bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-sm"
+                    : "text-slate-400 dark:text-white/50 hover:text-amber-400"
+                )}
+              >
+                <span className={cn(
+                  "w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0",
+                  statusCounts.pending > 0 && "animate-pulse"
+                )} />
+                <span>Pending</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                  adminStatusFilter === 'pending'
+                    ? "bg-amber-500/30 text-amber-200"
+                    : "bg-black/20 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                )}>
+                  {statusCounts.pending}
+                </span>
+              </button>
+
+              {/* Rejected */}
+              <button
+                type="button"
+                onClick={() => setAdminStatusFilter('rejected')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                  adminStatusFilter === 'rejected'
+                    ? "bg-rose-500/25 text-rose-300 border border-rose-500/40 shadow-sm"
+                    : "text-slate-400 dark:text-white/50 hover:text-rose-400"
+                )}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                <span>Rejected</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                  adminStatusFilter === 'rejected'
+                    ? "bg-rose-500/30 text-rose-200"
+                    : "bg-black/20 dark:bg-white/5 text-slate-400 dark:text-white/40"
+                )}>
+                  {statusCounts.rejected}
+                </span>
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setAdminStatusFilter('all')}
-            className="text-xs font-bold underline hover:opacity-80 cursor-pointer ml-3 shrink-0"
-          >
-            Show All Submissions
-          </button>
+
+          {/* Right: Quick Admin Utilities (User submissions overview & Select All / Reset) */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* If filter active, show reset button */}
+            {adminStatusFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setAdminStatusFilter('all')}
+                className="text-[11px] font-bold text-amber-400/90 hover:text-amber-300 hover:underline cursor-pointer flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-500/10 transition-colors"
+              >
+                <X size={12} />
+                <span>Clear Status Filter</span>
+              </button>
+            )}
+
+            {/* Quick Bulk Select Button for visible items */}
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedSubIds.length > 0) {
+                  handleClearSelection();
+                } else {
+                  handleSelectAllVisible();
+                }
+              }}
+              className={cn(
+                "px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border shadow-sm",
+                selectedSubIds.length > 0
+                  ? "bg-sky-500/20 text-sky-300 border-sky-500/40 hover:bg-sky-500/30"
+                  : "bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border-white/10"
+              )}
+              title={selectedSubIds.length > 0 ? "Clear all selected" : "Select all visible screenshots"}
+            >
+              {selectedSubIds.length > 0 ? (
+                <>
+                  <CheckSquare size={13} className="text-sky-400" />
+                  <span>{selectedSubIds.length} Selected</span>
+                </>
+              ) : (
+                <>
+                  <Square size={13} />
+                  <span>Select Visible</span>
+                </>
+              )}
+            </button>
+
+            {/* User Submissions Overview Shortcut */}
+            <button
+              type="button"
+              onClick={() => setAdminUserModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/10 shadow-sm"
+              title="View submission counts by user"
+            >
+              <Users size={13} />
+              <span className="hidden sm:inline">Users Breakdown ({userSubmissionsList.length})</span>
+              <span className="sm:hidden">Users ({userSubmissionsList.length})</span>
+            </button>
+          </div>
         </div>
       )}
 
