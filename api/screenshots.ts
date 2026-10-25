@@ -183,7 +183,199 @@ function encodeCommentContent(cleanContent: string | null | undefined, meta: { e
   return `${baseContent} ${metaTag}`;
 }
 
-async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string) {
+async function syncEventScoresSnapshot(supabaseClient: any, eventId: string) {
+  if (!supabaseClient || !eventId) return;
+  try {
+    const { data: event } = await supabaseClient.from('events').select('*').eq('id', eventId).maybeSingle();
+    if (!event) return;
+
+    const { data: allSubs } = await supabaseClient.from('submissions').select('*');
+    const verifiedSubs = (allSubs || []).filter((sub: any) => {
+      if (!sub.user_id || sub.user_id === 'system_notification' || sub.game_name === 'Event Update') return false;
+      const isVerified = sub.status === 'verified' || sub.status === 'approved' || !sub.status;
+      if (!isVerified) return false;
+      return Boolean(sub.event_id && String(sub.event_id) === String(eventId));
+    });
+
+    const { data: allAdjustments } = await supabaseClient.from('team_adjustments').select('*');
+    const eventAdjustments = (allAdjustments || []).filter((adj: any) => Boolean(adj.event_id && String(adj.event_id) === String(eventId)));
+
+    const { data: uets } = await supabaseClient.from('user_event_teams').select('steamid, team').eq('event_id', eventId);
+    const uetMap = new Map<string, string>();
+    (uets || []).forEach((u: any) => {
+      if (u.steamid && u.team) uetMap.set(String(u.steamid), u.team);
+    });
+
+    const { data: profiles } = await supabaseClient.from('profiles').select('steamid, discord_id, id, team, points, steam_name, discord_name');
+    const profileMap = new Map<string, any>();
+    (profiles || []).forEach((p: any) => {
+      if (p.steamid) profileMap.set(String(p.steamid).trim(), p);
+      if (p.discord_id) {
+        const rawDid = String(p.discord_id).trim();
+        const cleanDid = rawDid.startsWith('discord_') ? rawDid.replace('discord_', '') : rawDid;
+        profileMap.set(rawDid, p);
+        profileMap.set(cleanDid, p);
+        profileMap.set(`discord_${cleanDid}`, p);
+      }
+      if (p.id) profileMap.set(String(p.id).trim(), p);
+    });
+
+    let existingSaved: any = null;
+    if (event.description && event.description.includes('<!--EVENT_SCORES:')) {
+      try {
+        const match = event.description.match(/<!--EVENT_SCORES:(.*?)-->/s);
+        if (match && match[1]) existingSaved = JSON.parse(match[1]);
+      } catch (e) {}
+    }
+
+    const teamAdjustments: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0, ...(existingSaved?.teamAdjustments || {}) };
+    const profileLivePoints = new Map<any, number>();
+    const genericLivePoints = new Map<string, number>();
+
+    verifiedSubs.forEach((sub: any) => {
+      const pts = Number(sub.points !== undefined && sub.points !== null ? sub.points : sub.calculated_score) || 0;
+      if (String(sub.user_id).startsWith('team_pts_')) {
+        const team = String(sub.user_id).substring('team_pts_'.length);
+        if (teamAdjustments[team] !== undefined) teamAdjustments[team] += pts;
+        return;
+      }
+      const rawSid = String(sub.user_id).trim();
+      const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
+      const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
+      if (prof) {
+        profileLivePoints.set(prof, (profileLivePoints.get(prof) || 0) + pts);
+      } else {
+        genericLivePoints.set(cleanSid, (genericLivePoints.get(cleanSid) || 0) + pts);
+      }
+    });
+
+    eventAdjustments.forEach((adj: any) => {
+      const pts = Number(adj.points) || 0;
+      if (adj.user_id && String(adj.user_id).startsWith('team_pts_')) {
+        const team = String(adj.user_id).substring('team_pts_'.length);
+        if (teamAdjustments[team] !== undefined) teamAdjustments[team] += pts;
+        return;
+      }
+      if (adj.user_id) {
+        const rawSid = String(adj.user_id).trim();
+        const cleanSid = rawSid.startsWith('discord_') ? rawSid.replace('discord_', '') : rawSid;
+        const prof = profileMap.get(rawSid) || profileMap.get(cleanSid);
+        if (prof) {
+          profileLivePoints.set(prof, (profileLivePoints.get(prof) || 0) + pts);
+        } else {
+          genericLivePoints.set(cleanSid, (genericLivePoints.get(cleanSid) || 0) + pts);
+        }
+      }
+    });
+
+    const userScores: Record<string, number> = {};
+    const userTeams: Record<string, string> = { ...(existingSaved?.userTeams || {}) };
+
+    (profiles || []).forEach((p: any) => {
+      const primaryId = p.steamid ? String(p.steamid) : (p.discord_id ? `discord_${p.discord_id}` : String(p.id));
+      const candidateKeys = [
+        p.steamid ? String(p.steamid) : null,
+        p.discord_id ? String(p.discord_id) : null,
+        p.discord_id ? `discord_${p.discord_id}` : null,
+        p.id ? String(p.id) : null
+      ].filter(Boolean) as string[];
+
+      const livePts = profileLivePoints.get(p) || 0;
+      if (livePts > 0) {
+        userScores[primaryId] = livePts;
+        if (p.steamid) userScores[String(p.steamid)] = livePts;
+        if (p.discord_id) userScores[`discord_${p.discord_id}`] = livePts;
+      }
+
+      let team = 'none';
+      for (const k of candidateKeys) {
+        if (uetMap.get(k) && uetMap.get(k) !== 'none') {
+          team = uetMap.get(k)!;
+          break;
+        }
+        if (existingSaved?.userTeams?.[k] && existingSaved.userTeams[k] !== 'none') {
+          team = existingSaved.userTeams[k];
+          break;
+        }
+        if (p.team && p.team !== 'none') {
+          team = p.team;
+          break;
+        }
+      }
+      if (team !== 'none') {
+        userTeams[primaryId] = team;
+        if (p.steamid) userTeams[String(p.steamid)] = team;
+        if (p.discord_id) userTeams[`discord_${p.discord_id}`] = team;
+      }
+    });
+
+    genericLivePoints.forEach((pts, uid) => {
+      if (!userScores[uid] && pts > 0) userScores[uid] = pts;
+    });
+
+    const teamUserSums: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+    (profiles || []).forEach((p: any) => {
+      const primaryId = p.steamid ? String(p.steamid) : (p.discord_id ? `discord_${p.discord_id}` : String(p.id));
+      const pts = userScores[primaryId] || (p.steamid ? userScores[String(p.steamid)] : 0) || (p.discord_id ? userScores[`discord_${p.discord_id}`] : 0) || 0;
+      const team = userTeams[primaryId] || (p.steamid ? userTeams[String(p.steamid)] : null) || (p.discord_id ? userTeams[`discord_${p.discord_id}`] : null) || p.team;
+      if (team && teamUserSums[team] !== undefined) {
+        teamUserSums[team] += pts;
+      }
+    });
+
+    const teamTotals: Record<string, number> = { blue: 0, green: 0, purple: 0, red: 0 };
+    ['blue', 'green', 'purple', 'red'].forEach((t) => {
+      teamTotals[t] = (teamUserSums[t] || 0) + (teamAdjustments[t] || 0);
+    });
+
+    let winnerTeam: string | null = null;
+    let maxPts = -1;
+    for (const t of ['blue', 'purple', 'green', 'red']) {
+      if (teamTotals[t] > maxPts && teamTotals[t] > 0) {
+        maxPts = teamTotals[t];
+        winnerTeam = t;
+      }
+    }
+    if (!winnerTeam) winnerTeam = event.winner_team;
+
+    const newSnapshot = {
+      teamTotals,
+      userScores: (existingSaved?.forcedByAdmin && existingSaved?.userScores) ? { ...userScores, ...existingSaved.userScores } : userScores,
+      userTeams,
+      teamAdjustments,
+      winnerTeam: winnerTeam || existingSaved?.winnerTeam || event.winner_team,
+      forcedByAdmin: existingSaved?.forcedByAdmin ? true : undefined,
+      forcedAt: existingSaved?.forcedByAdmin ? existingSaved.forcedAt : undefined,
+      updatedAt: new Date().toISOString()
+    };
+
+    const snapshotStr = `<!--EVENT_SCORES:${JSON.stringify(newSnapshot)}-->`;
+    let updatedDesc = event.description || '';
+    if (updatedDesc.includes('<!--EVENT_SCORES:')) {
+      updatedDesc = updatedDesc.replace(/<!--EVENT_SCORES:.*?-->/s, snapshotStr);
+    } else {
+      updatedDesc = updatedDesc ? `${updatedDesc}\n${snapshotStr}` : snapshotStr;
+    }
+
+    if (winnerTeam) {
+      const winnerStr = `<!--WINNER:${winnerTeam}-->`;
+      if (updatedDesc.includes('<!--WINNER:')) {
+        updatedDesc = updatedDesc.replace(/<!--WINNER:.*?-->/, winnerStr);
+      } else {
+        updatedDesc = `${updatedDesc}\n${winnerStr}`;
+      }
+    }
+
+    await supabaseClient.from('events').update({
+      winner_team: winnerTeam || event.winner_team,
+      description: updatedDesc
+    }).eq('id', eventId);
+  } catch (err) {
+    console.warn('[Screenshot API] Error syncing event scores snapshot:', err);
+  }
+}
+
+async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: string, defaultPts?: number, targetEventId?: string) {
   if (!supabaseClient || !targetUserId) return;
   try {
     const rawTarget = String(targetUserId).trim();
@@ -208,10 +400,28 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
       userProfile?.id ? String(userProfile.id) : null
     ].filter(Boolean) as string[]);
 
+    // Determine points to award if not provided
+    let ptsToAward = (typeof defaultPts === 'number' && defaultPts > 0) ? defaultPts : getSavedSubmissionPoints();
+    let effectiveEventId = targetEventId || null;
+    let activeComp: any = null;
+    try {
+      const { data: actEvts } = await supabaseClient.from('events').select('*').eq('is_active', true);
+      activeComp = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+      if (activeComp?.id && !effectiveEventId) {
+        effectiveEventId = activeComp.id;
+      }
+      if ((!defaultPts || defaultPts <= 0) && effectiveEventId) {
+        const { data: se } = await supabaseClient.from('screenshot_events').select('*').eq('id', effectiveEventId).maybeSingle();
+        if (se) {
+          ptsToAward = extractSubmissionPoints(se);
+        }
+      }
+    } catch (e) {}
+
     // 1. Fetch current valid screenshot submissions for this user (only approved ones count toward verified points)
     const { data: allScreenshots } = await supabaseClient
       .from('screenshot_submissions')
-      .select('id, user_id, caption');
+      .select('id, user_id, caption, event_id, game_name, user_team, created_at');
     
     const userValidScreenshots = (allScreenshots || []).filter((s: any) => {
       const sUid = String(s.user_id || '').trim();
@@ -222,12 +432,12 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     });
 
     const validCount = userValidScreenshots.length;
-    const validScreenshotIds = new Set(userValidScreenshots.map((s: any) => String(s.id)));
+    const validScreenshotIds = new Set<string>(userValidScreenshots.map((s: any) => String(s.id)));
 
     // 2. Fetch all submissions for this user from submissions table
     const { data: allSubmissions } = await supabaseClient
       .from('submissions')
-      .select('id, user_id, points, calculated_score, notes, platform, game_name, status, created_at')
+      .select('id, user_id, points, calculated_score, notes, platform, game_name, status, event_id, created_at')
       .order('created_at', { ascending: false });
 
     const userAllSubs = (allSubmissions || []).filter((sub: any) => {
@@ -246,6 +456,50 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
         (sub.game_name && sub.game_name.startsWith('Screenshot Contest'));
       return isScreenshot;
     });
+
+    // GUARANTEE 1:1 PARITY: Every approved screenshot must have a corresponding verified point row in submissions
+    const matchedScreenshotIds = new Set<string>();
+    for (const pointRow of userScreenshotPointRows) {
+      if (pointRow.notes) {
+        for (const sId of Array.from(validScreenshotIds)) {
+          if (pointRow.notes.includes(sId)) {
+            matchedScreenshotIds.add(sId);
+            const updates: any = {};
+            if (pointRow.status !== 'verified') updates.status = 'verified';
+            if (!pointRow.event_id && effectiveEventId) updates.event_id = effectiveEventId;
+            if (Object.keys(updates).length > 0) {
+              await supabaseClient.from('submissions').update(updates).eq('id', pointRow.id);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // If any approved screenshot is missing its point row in submissions, insert it now!
+    for (const validSub of userValidScreenshots) {
+      const strSubId = String(validSub.id);
+      if (!matchedScreenshotIds.has(strSubId) && ptsToAward > 0) {
+        const rowEventId = validSub.event_id || effectiveEventId || null;
+        const insertPayload = {
+          user_id: validSub.user_id || userProfile?.steamid || rawTarget,
+          game_name: `Screenshot Submission (+${ptsToAward} pts)`,
+          platform: 'Screenshot Event',
+          points: ptsToAward,
+          calculated_score: ptsToAward,
+          status: 'verified',
+          event_id: rowEventId,
+          notes: `__META_START__${JSON.stringify({
+            screenshotId: validSub.id,
+            gameName: validSub.game_name || 'Game',
+            userNotes: `Submitted screenshot for ${validSub.game_name || 'Game'}`
+          })}__META_END__`,
+          created_at: validSub.created_at || new Date().toISOString()
+        };
+        await supabaseClient.from('submissions').insert([insertPayload]);
+        matchedScreenshotIds.add(strSubId);
+      }
+    }
 
     // If user has more point rows than valid screenshots, delete the excess or orphaned ones
     if (userScreenshotPointRows.length > validCount) {
@@ -288,7 +542,6 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     }
 
     // 3. Recalculate profile points from remaining verified submissions + adjustments
-    // Refetch verified subs to be 100% accurate
     const { data: updatedSubmissions } = await supabaseClient
       .from('submissions')
       .select('id, user_id, points, calculated_score, notes, platform, game_name, status, created_at')
@@ -348,6 +601,11 @@ async function reconcileUserScreenshotPoints(supabaseClient: any, targetUserId: 
     if (cleanId) {
       await supabaseClient.from('profiles').update({ points: newTotal }).eq('steamid', cleanId);
       await supabaseClient.from('profiles').update({ points: newTotal }).eq('discord_id', cleanId);
+    }
+
+    // Sync event scores snapshot if effectiveEventId is present
+    if (effectiveEventId) {
+      await syncEventScoresSnapshot(supabaseClient, effectiveEventId);
     }
   } catch (err) {
     console.warn('[Screenshot API] Error reconciling user screenshot points:', err);
@@ -1044,11 +1302,20 @@ export default async function handler(req: Request, res: Response) {
         const effectiveApprovedAt = validStatus === 'approved' ? new Date().toISOString() : null;
 
         if (supabase) {
+          let activeCompEvent: any = null;
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {}
+
           let ptsToAward = getSavedSubmissionPoints();
-          const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
-          if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
-            ptsToAward = Number(currentEvt.submission_points);
-          }
+          try {
+            const targetEvtId = activeCompEvent?.id || memoryEvent.id;
+            const { data: currentEvt } = await supabase.from('screenshot_events').select('*').eq('id', targetEvtId).maybeSingle();
+            if (currentEvt) {
+              ptsToAward = extractSubmissionPoints(currentEvt);
+            }
+          } catch (e) {}
 
           const affectedUserIds = new Set<string>();
           const updatedSubmissions: any[] = [];
@@ -1100,20 +1367,61 @@ export default async function handler(req: Request, res: Response) {
                 approved_at: effectiveApprovedAt
               });
 
+              const resolvedEventId = targetSub.event_id || activeCompEvent?.id || null;
+
+              // Resolve user's team if missing or 'none'
+              let resolvedTeam = targetSub.user_team && targetSub.user_team !== 'none' ? targetSub.user_team : null;
+              if (!resolvedTeam && targetSub.user_id) {
+                const cleanUId = String(targetSub.user_id).replace('discord_', '');
+                if (resolvedEventId) {
+                  const { data: uetRow } = await supabase
+                    .from('user_event_teams')
+                    .select('team')
+                    .eq('event_id', resolvedEventId)
+                    .or(`steamid.eq.${cleanUId},steamid.eq.${targetSub.user_id},steamid.eq.discord_${cleanUId}`)
+                    .maybeSingle();
+                  if (uetRow?.team && uetRow.team !== 'none') {
+                    resolvedTeam = uetRow.team;
+                  }
+                }
+                if (!resolvedTeam) {
+                  const { data: profRow } = await supabase
+                    .from('profiles')
+                    .select('team')
+                    .or(`steamid.eq.${cleanUId},steamid.eq.${targetSub.user_id},discord_id.eq.${cleanUId},discord_id.eq.${targetSub.user_id}`)
+                    .maybeSingle();
+                  if (profRow?.team && profRow.team !== 'none') {
+                    resolvedTeam = profRow.team;
+                  }
+                }
+              }
+
+              const subDbUpdates: any = { caption: newCaption };
+              if (resolvedTeam && resolvedTeam !== targetSub.user_team) {
+                subDbUpdates.user_team = resolvedTeam;
+              }
+              if (!targetSub.event_id && resolvedEventId) {
+                subDbUpdates.event_id = resolvedEventId;
+              }
+
               await supabase
                 .from('screenshot_submissions')
-                .update({ caption: newCaption })
+                .update(subDbUpdates)
                 .eq('id', subId);
 
-              // Verify linked submission points in submissions table
+              // Verify or insert linked submission points in submissions table
               const { data: existingPoints } = await supabase
                 .from('submissions')
-                .select('id, status')
+                .select('id, status, event_id')
                 .ilike('notes', `%${subId}%`);
 
               if (existingPoints && existingPoints.length > 0) {
-                await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${subId}%`);
-              } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
+                for (const ep of existingPoints) {
+                  const epUpdates: any = { status: 'verified' };
+                  if (!ep.event_id && resolvedEventId) epUpdates.event_id = resolvedEventId;
+                  await supabase.from('submissions').update(epUpdates).eq('id', ep.id);
+                }
+              } else if (ptsToAward > 0) {
                 await supabase.from('submissions').insert([{
                   user_id: targetSub.user_id,
                   game_name: `Screenshot Submission (+${ptsToAward} pts)`,
@@ -1121,6 +1429,7 @@ export default async function handler(req: Request, res: Response) {
                   points: ptsToAward,
                   calculated_score: ptsToAward,
                   status: 'verified',
+                  event_id: resolvedEventId,
                   notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${targetSub.game_name || 'Game'}` })}__META_END__`,
                   created_at: new Date().toISOString()
                 }]);
@@ -1169,6 +1478,8 @@ export default async function handler(req: Request, res: Response) {
 
               updatedSubmissions.push({
                 ...targetSub,
+                user_team: resolvedTeam || targetSub.user_team || 'none',
+                event_id: resolvedEventId,
                 caption: parsed.caption,
                 status: 'approved',
                 approved_by: effectiveAdmin,
@@ -1202,9 +1513,13 @@ export default async function handler(req: Request, res: Response) {
             }
           }
 
-          // Reconcile points for all affected users
+          // Reconcile points for all affected users (adds missing rows, recalculates profile points, and snapshots event scores)
           for (const uid of affectedUserIds) {
-            await reconcileUserScreenshotPoints(supabase, uid);
+            await reconcileUserScreenshotPoints(supabase, uid, ptsToAward, activeCompEvent?.id);
+          }
+
+          if (activeCompEvent?.id) {
+            await syncEventScoresSnapshot(supabase, activeCompEvent.id);
           }
 
           return res.status(200).json({
@@ -1584,11 +1899,20 @@ export default async function handler(req: Request, res: Response) {
         }
 
         if (supabase) {
+          let activeCompEvent: any = null;
+          try {
+            const { data: actEvts } = await supabase.from('events').select('*').eq('is_active', true);
+            activeCompEvent = (actEvts && actEvts.length > 0) ? actEvts[0] : null;
+          } catch (e) {}
+
           let ptsToAward = getSavedSubmissionPoints();
-          const { data: currentEvt } = await supabase.from('screenshot_events').select('submission_points').eq('id', memoryEvent.id).maybeSingle();
-          if (currentEvt && currentEvt.submission_points !== undefined && currentEvt.submission_points !== null) {
-            ptsToAward = Number(currentEvt.submission_points);
-          }
+          try {
+            const targetEvtId = activeCompEvent?.id || memoryEvent.id;
+            const { data: currentEvt } = await supabase.from('screenshot_events').select('*').eq('id', targetEvtId).maybeSingle();
+            if (currentEvt) {
+              ptsToAward = extractSubmissionPoints(currentEvt);
+            }
+          } catch (e) {}
 
           const affectedUserIds = new Set<string>();
           const updatedSubmissions: any[] = [];
@@ -1625,7 +1949,42 @@ export default async function handler(req: Request, res: Response) {
               approved_at: parsed.approved_at || (effectiveStatus === 'approved' ? new Date().toISOString() : null)
             });
 
+            const resolvedEventId = targetSub.event_id || activeCompEvent?.id || null;
+            let resolvedTeam = targetSub.user_team && targetSub.user_team !== 'none' ? targetSub.user_team : null;
+
+            if (effectiveStatus === 'approved' && !resolvedTeam && targetSub.user_id) {
+              const cleanUId = String(targetSub.user_id).replace('discord_', '');
+              if (resolvedEventId) {
+                const { data: uetRow } = await supabase
+                  .from('user_event_teams')
+                  .select('team')
+                  .eq('event_id', resolvedEventId)
+                  .or(`steamid.eq.${cleanUId},steamid.eq.${targetSub.user_id},steamid.eq.discord_${cleanUId}`)
+                  .maybeSingle();
+                if (uetRow?.team && uetRow.team !== 'none') {
+                  resolvedTeam = uetRow.team;
+                }
+              }
+              if (!resolvedTeam) {
+                const { data: profRow } = await supabase
+                  .from('profiles')
+                  .select('team')
+                  .or(`steamid.eq.${cleanUId},steamid.eq.${targetSub.user_id},discord_id.eq.${cleanUId},discord_id.eq.${targetSub.user_id}`)
+                  .maybeSingle();
+                if (profRow?.team && profRow.team !== 'none') {
+                  resolvedTeam = profRow.team;
+                }
+              }
+            }
+
             const dbFields: any = { caption: updatedCaption };
+            if (resolvedTeam && resolvedTeam !== targetSub.user_team) {
+              dbFields.user_team = resolvedTeam;
+            }
+            if (!targetSub.event_id && resolvedEventId) {
+              dbFields.event_id = resolvedEventId;
+            }
+
             if (effectiveStatus === 'rejected') {
               dbFields.is_selected = false;
               try { await supabase.from('screenshot_votes').delete().eq('submission_id', subId); } catch (e) {}
@@ -1635,12 +1994,16 @@ export default async function handler(req: Request, res: Response) {
               try {
                 const { data: existingPoints } = await supabase
                   .from('submissions')
-                  .select('id, status')
+                  .select('id, status, event_id')
                   .ilike('notes', `%${subId}%`);
 
                 if (existingPoints && existingPoints.length > 0) {
-                  await supabase.from('submissions').update({ status: 'verified' }).ilike('notes', `%${subId}%`);
-                } else if (targetSub.user_team && targetSub.user_team !== 'none' && ptsToAward > 0) {
+                  for (const ep of existingPoints) {
+                    const epUpdates: any = { status: 'verified' };
+                    if (!ep.event_id && resolvedEventId) epUpdates.event_id = resolvedEventId;
+                    await supabase.from('submissions').update(epUpdates).eq('id', ep.id);
+                  }
+                } else if (ptsToAward > 0) {
                   await supabase.from('submissions').insert([{
                     user_id: targetSub.user_id,
                     game_name: `Screenshot Submission (+${ptsToAward} pts)`,
@@ -1648,6 +2011,7 @@ export default async function handler(req: Request, res: Response) {
                     points: ptsToAward,
                     calculated_score: ptsToAward,
                     status: 'verified',
+                    event_id: resolvedEventId,
                     notes: `__META_START__${JSON.stringify({ screenshotId: targetSub.id, gameName: gameName || targetSub.game_name || 'Game', userNotes: `Submitted screenshot for ${gameName || targetSub.game_name || 'Game'}` })}__META_END__`,
                     created_at: new Date().toISOString()
                   }]);
@@ -1706,7 +2070,11 @@ export default async function handler(req: Request, res: Response) {
           }
 
           for (const uid of affectedUserIds) {
-            await reconcileUserScreenshotPoints(supabase, uid);
+            await reconcileUserScreenshotPoints(supabase, uid, ptsToAward, activeCompEvent?.id);
+          }
+
+          if (activeCompEvent?.id) {
+            await syncEventScoresSnapshot(supabase, activeCompEvent.id);
           }
 
           return res.status(200).json({

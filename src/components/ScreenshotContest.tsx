@@ -1426,6 +1426,7 @@ interface UserSubmissionStat {
       if (res.ok) {
         fetchData();
         window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
       }
     } catch (err) {
       console.error('Failed to update submission status:', err);
@@ -1634,6 +1635,7 @@ interface UserSubmissionStat {
         setTimeout(() => setBulkFeedbackToast(null), 4000);
         fetchData();
         window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
       } else {
         const d = await safeParseResponse(res);
         setBulkFeedbackToast({ type: 'error', message: `Bulk approve failed: ${d.error || 'Server error'}` });
@@ -1750,6 +1752,7 @@ interface UserSubmissionStat {
         setTimeout(() => setBulkFeedbackToast(null), 4000);
         fetchData();
         window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
       } else {
         const d = await safeParseResponse(res);
         setBulkFeedbackToast({ type: 'error', message: `Bulk edit failed: ${d.error || 'Server error'}` });
