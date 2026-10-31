@@ -132,3 +132,109 @@ export const TEAM_COLORS: Record<Team, { primary: string; secondary: string; bor
     glow: 'shadow-none border-white/10' 
   }
 };
+
+// SteamGifts Group Win Tracker Interfaces
+export interface SgUserMapping {
+  steamid: string;
+  profile_id?: string | null;
+  sg_username?: string | null;
+  has_sg_account: boolean;
+  in_sg_group: boolean;
+  last_checked_at: string;
+}
+
+export interface SgGroupGiveaway {
+  code: string;
+  slug?: string | null;
+  name: string;
+  app_id?: number | null;
+  sub_id?: number | null;
+  copies: number;
+  points: number;
+  creator_username?: string | null;
+  start_timestamp?: number | null;
+  end_timestamp?: number | null;
+  is_completed: boolean;
+  synced_at: string;
+  winners?: SgGiveawayWinner[];
+}
+
+export interface SgPlayStats {
+  minutes: number;
+  earned: number;
+  total: number;
+  percent: number;
+  status: 'zero' | 'started' | 'played' | 'completed';
+  updated_at: string;
+}
+
+export interface SgGiveawayWinner {
+  id: string;
+  giveaway_code: string;
+  sg_username: string;
+  steamid?: string | null;
+  profile_id?: string | null;
+  status: 'Received' | 'Awaiting Feedback' | 'Not Received' | 'Unknown';
+  created_at?: string;
+  play_stats?: SgPlayStats | null;
+  // Hydrated giveaway data if joined
+  giveaway?: SgGroupGiveaway;
+}
+
+export interface SgLedgerEntry {
+  id: string;
+  giveaway_code: string;
+  slug?: string | null;
+  name: string;
+  app_id?: number | null;
+  sub_id?: number | null;
+  copies: number;
+  points: number;
+  creator_username?: string | null;
+  end_timestamp?: number | null;
+  winner_sg_username: string;
+  winner_steamid?: string | null;
+  winner_steam_name?: string | null;
+  winner_profile_id?: string | null;
+  status: 'Received' | 'Awaiting Feedback' | 'Not Received' | 'Unknown';
+  created_at: string;
+  play_stats?: SgPlayStats | null;
+  type: 'won' | 'sent';
+}
+
+export interface SgMemberSummary {
+  steamid: string;
+  steam_name: string;
+  steam_avatar?: string | null;
+  discord_name?: string | null;
+  discord_avatar?: string | null;
+  active_avatar?: string | null;
+  team?: Team | string;
+  role?: string;
+  sg_username?: string | null;
+  has_sg_account: boolean;
+  in_sg_group: boolean;
+  last_checked_at?: string | null;
+  total_wins: number;
+  total_sent?: number;
+  wins?: Array<{
+    id: string;
+    giveaway_code: string;
+    sg_username: string;
+    status: string;
+    play_stats?: SgPlayStats | null;
+    giveaway: SgGroupGiveaway;
+  }>;
+}
+
+export interface SgSyncResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  sessionHealthy: boolean;
+  syncedPages?: number;
+  giveawaysSynced?: number;
+  winnersRecorded?: number;
+  appIdsBackfilled?: number;
+  timestamp: string;
+}

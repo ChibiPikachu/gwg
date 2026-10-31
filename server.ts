@@ -11,6 +11,7 @@ import screenshotHandler from './api/screenshots.js';
 import leaderboardsHandler from './api/leaderboards.js';
 import gamesHandler from './api/games.js';
 import teamsHandler from './api/teams.js';
+import steamgiftsHandler from './api/steamgifts.js';
 import { savePreviousEventAndResetTeams } from './api/events.js';
 
 let supabaseClient: any = null;
@@ -936,7 +937,9 @@ const hltbCache = new Map<string, any>();
 
 async function createServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PRIMARY_PORT = 3000;
+  const ENV_PORT = process.env.PORT ? Number(process.env.PORT) : null;
+  const PORT = PRIMARY_PORT;
 
   // Middleware
   app.set('trust proxy', 1);
@@ -2130,6 +2133,9 @@ async function createServer() {
   };
 
   app.use('/api/admin', adminOnly);
+
+  // SteamGifts Admin-Only Endpoints
+  app.all(['/api/admin/steamgifts', '/api/steamgifts'], adminOnly, steamgiftsHandler);
 
   app.get('/api/admin/users', async (req, res) => {
     const supabase = getSupabase();
@@ -6390,14 +6396,24 @@ async function createServer() {
     });
   }
 
-  return { app, PORT };
+  return { app, PORT, ENV_PORT };
 }
 
 // Start standalone server
-createServer().then(({ app, PORT }) => {
+createServer().then(({ app, PORT, ENV_PORT }) => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on port ${PORT}`);
   });
+
+  if (ENV_PORT && ENV_PORT !== PORT) {
+    try {
+      app.listen(ENV_PORT, '0.0.0.0', () => {
+        console.log(`Secondary listener on port ${ENV_PORT}`);
+      });
+    } catch (e) {
+      console.warn(`Could not start secondary listener on port ${ENV_PORT}:`, e);
+    }
+  }
 }).catch(err => {
   console.error('Failed to start server:', err);
   process.exit(1);

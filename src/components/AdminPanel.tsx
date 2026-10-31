@@ -1,9 +1,10 @@
 import React from 'react';
 import { UserProfile, Team, TEAM_COLORS } from '@/types';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Settings, Shield, Clock, CheckCircle, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare, Calendar, Filter, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Search, Settings, Shield, Clock, CheckCircle, CheckCircle2, XCircle, ExternalLink, Plus, ChevronDown, Trophy, Database, Copy, Check, Download, Trash2, History, ShieldCheck, Camera, Grid, Users, CheckSquare, Calendar, Filter, RotateCcw, AlertTriangle, Gift } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase, isSupabaseConfigured, buildProfileOrFilter } from '@/lib/supabase';
+import AdminSteamgifts from '@/components/AdminSteamgifts';
 
 export interface SubmissionNotesMeta {
   hasNoAchievements: boolean;
@@ -75,7 +76,7 @@ export function calculateNonAchievementPoints(level: number, hoursPlayed: number
   }
 }
 
-type AdminTab = 'users' | 'submissions' | 'previous_submissions' | 'team_points' | 'activity_log';
+type AdminTab = 'users' | 'submissions' | 'previous_submissions' | 'team_points' | 'activity_log' | 'steamgifts';
 
 export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewProfile?: (id: string) => void, activeAdminTab?: AdminTab }) {
   const { user: currentUser, theme } = useAuth();
@@ -938,6 +939,15 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           }
           return u;
         }));
+        setSubmissions(prev => prev.map(s => {
+          const sUid = String(s.user_id || s.steamid || s.steamId || '').trim();
+          const cleanSUid = sUid.replace('discord_', '');
+          const cleanTarget = String(targetSteamId).replace('discord_', '');
+          if (sUid === targetSteamId || cleanSUid === cleanTarget) {
+            return { ...s, user_team: finalTeam || 'none', userTeam: finalTeam || 'none', team: finalTeam || 'none' };
+          }
+          return s;
+        }));
         window.dispatchEvent(new Event('leaderboard-updated'));
         window.dispatchEvent(new Event('active-event-updated'));
         window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamId, team, eventId: currentEventId } }));
@@ -1613,6 +1623,22 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       if (res.ok) {
         setMassAssignSuccessMsg(`Successfully assigned ${massTargetTeam.toUpperCase()} team to ${massSelectedUserIds.length} selected member(s)!`);
         await fetchUsers();
+        const finalMassTeam = massTargetTeam === 'none' ? null : massTargetTeam;
+        setSubmissions(prev => prev.map(s => {
+          const sUid = String(s.user_id || s.steamid || s.steamId || '').trim();
+          const cleanSUid = sUid.replace('discord_', '');
+          const matches = massSelectedUserIds.some(id => {
+            const cleanId = String(id).replace('discord_', '');
+            return sUid === id || cleanSUid === cleanId;
+          });
+          if (matches) {
+            return { ...s, user_team: finalMassTeam || 'none', userTeam: finalMassTeam || 'none', team: finalMassTeam || 'none' };
+          }
+          return s;
+        }));
+        window.dispatchEvent(new Event('leaderboard-updated'));
+        window.dispatchEvent(new Event('active-event-updated'));
+        window.dispatchEvent(new CustomEvent('team-updated', { detail: { targetSteamIds: massSelectedUserIds, team: massTargetTeam, eventId: targetEvId } }));
         setMassSelectedUserIds([]);
         setTimeout(() => setMassAssignSuccessMsg(null), 5000);
       } else {
@@ -1753,10 +1779,21 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             Activity Log
             {activeTab === 'activity_log' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
           </button>
+          <button 
+            onClick={() => setActiveTab('steamgifts')}
+            className={cn(
+              "flex-1 sm:flex-none px-6 md:px-8 py-3 md:py-4 font-bold text-xs md:text-sm transition-all relative flex items-center justify-center gap-2",
+              activeTab === 'steamgifts' ? theme.text : "dark:text-white/40 text-slate-500 hover:dark:text-white hover:text-slate-900"
+            )}
+          >
+            <Gift size={16} />
+            SteamGifts Tracker
+            {activeTab === 'steamgifts' && <div className={cn("absolute bottom-0 left-0 right-0 h-1 rounded-t-full", theme.bg, theme.glow)} />}
+          </button>
         </div>
       </div>
 
-      {activeTab !== 'team_points' && activeTab !== 'activity_log' && (
+      {activeTab !== 'team_points' && activeTab !== 'activity_log' && activeTab !== 'steamgifts' && (
         <section className="dark:bg-[#111111] bg-white border dark:border-white/5 border-black/5 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col gap-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex-1 w-full max-w-xl">
@@ -1923,8 +1960,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
         </section>
       )}
 
-      {activeTab !== 'team_points' ? (
-        activeTab === 'users' ? (
+      {activeTab === 'users' && (
         <>
           <TeamPointContributionChart 
             users={enrichedUsers} 
@@ -2229,7 +2265,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             </div>
           </section>
         </>
-      ) : (
+      )}
+
+      {(activeTab === 'submissions' || activeTab === 'previous_submissions') && (
         <section className="flex flex-col gap-6 md:gap-8">
           <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 md:gap-6">
             <div>
@@ -2917,8 +2955,9 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
             )}
           </div>
         </section>
-        )
-      ) : (
+      )}
+
+      {activeTab === 'team_points' && (
         <div className="space-y-6">
           {/* Mode Switcher Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl dark:bg-[#111111] bg-white border border-black/5 dark:border-white/5 shadow-md">
@@ -4231,6 +4270,10 @@ CREATE POLICY "Allow public read access" ON public.user_event_teams
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'steamgifts' && (
+        <AdminSteamgifts onViewProfile={onViewProfile} />
       )}
 
       {/* Modal to cleanup/purge old audit logs */}
