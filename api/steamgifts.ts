@@ -187,6 +187,73 @@ async function backfillGameAppId(gameName: string, appId: number | null): Promis
 }
 
 // -----------------------------------------------------------------------------
+// App Members & Mappings Lookup (Filter Out Non-Members)
+// -----------------------------------------------------------------------------
+export interface AppMemberMatch {
+  steamid: string;
+  profile_id: string | null;
+  steam_name?: string | null;
+}
+
+export async function getAppMembersLookup(): Promise<{
+  memberSteamIdSet: Set<string>;
+  sgToMemberMap: Map<string, AppMemberMatch>;
+  profNameMap: Map<string, string>;
+}> {
+  const memberSteamIdSet = new Set<string>();
+  const sgToMemberMap = new Map<string, AppMemberMatch>();
+  const profNameMap = new Map<string, string>();
+
+  if (!supabase) return { memberSteamIdSet, sgToMemberMap, profNameMap };
+
+  // 1. Fetch all profiles from public.profiles
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, steamid, steam_name, discord_name');
+
+  (profiles || []).forEach((p: any) => {
+    if (p.steamid) {
+      const sid = String(p.steamid).trim();
+      memberSteamIdSet.add(sid);
+      profNameMap.set(sid, p.steam_name || 'Member');
+
+      if (p.steam_name) {
+        sgToMemberMap.set(p.steam_name.toLowerCase().trim(), {
+          steamid: sid,
+          profile_id: p.id,
+          steam_name: p.steam_name
+        });
+      }
+      if (p.discord_name) {
+        sgToMemberMap.set(p.discord_name.toLowerCase().trim(), {
+          steamid: sid,
+          profile_id: p.id,
+          steam_name: p.steam_name
+        });
+      }
+    }
+  });
+
+  // 2. Fetch all mappings from public.sg_user_mappings
+  const { data: mappings } = await supabase
+    .from('sg_user_mappings')
+    .select('steamid, profile_id, sg_username');
+
+  (mappings || []).forEach((m: any) => {
+    if (m.steamid && memberSteamIdSet.has(String(m.steamid).trim()) && m.sg_username) {
+      const sid = String(m.steamid).trim();
+      sgToMemberMap.set(m.sg_username.toLowerCase().trim(), {
+        steamid: sid,
+        profile_id: m.profile_id || null,
+        steam_name: profNameMap.get(sid) || null
+      });
+    }
+  });
+
+  return { memberSteamIdSet, sgToMemberMap, profNameMap };
+}
+
+// -----------------------------------------------------------------------------
 // Cheerio HTML Parser for Raw SteamGifts HTML (.giveaway__row / .giveaway__row-outer-wrap)
 // -----------------------------------------------------------------------------
 export interface ParsedExtractedGiveaway {
@@ -316,20 +383,8 @@ export async function ingestSteamGiftsHtml(rawHtml: string) {
     };
   }
 
-  // Pre-fetch sg_user_mappings to connect steamid/profile_id
-  const { data: mappings } = await supabase
-    .from('sg_user_mappings')
-    .select('steamid, profile_id, sg_username');
-
-  const sgToSteamMap = new Map<string, { steamid: string; profile_id: string | null }>();
-  (mappings || []).forEach((m: any) => {
-    if (m.sg_username) {
-      sgToSteamMap.set(m.sg_username.toLowerCase(), {
-        steamid: m.steamid,
-        profile_id: m.profile_id
-      });
-    }
-  });
+  // Pre-fetch app members & mappings (ignore winners who are not app members)
+  const { sgToMemberMap } = await getAppMembersLookup();
 
   let totalGiveaways = 0;
   let totalWinners = 0;
@@ -360,14 +415,16 @@ export async function ingestSteamGiftsHtml(rawHtml: string) {
       if (backfilled) totalBackfilled++;
     }
 
-    // 3. Upsert winners
+    // 3. Upsert winners (strictly app members only)
     for (const w of g.winners) {
-      const mapping = sgToSteamMap.get(w.sg_username.toLowerCase());
+      const member = sgToMemberMap.get(w.sg_username.toLowerCase().trim());
+      if (!member) continue; // Skip non-app members
+
       const { error: wErr } = await supabase.from('sg_giveaway_winners').upsert({
         giveaway_code: g.code,
         sg_username: w.sg_username,
-        steamid: mapping?.steamid || null,
-        profile_id: mapping?.profile_id || null,
+        steamid: member.steamid,
+        profile_id: member.profile_id,
         status: w.status || 'Unknown'
       }, { onConflict: 'giveaway_code,sg_username' });
 
@@ -419,20 +476,8 @@ export async function syncGroupGiveaways(options: { maxPages?: number } = {}) {
   let pagesSynced = 0;
   let shouldStopPagination = false;
 
-  // Pre-fetch all user mappings into memory for fast lookup
-  const { data: mappings } = await supabase
-    .from('sg_user_mappings')
-    .select('steamid, profile_id, sg_username');
-  
-  const sgToSteamMap = new Map<string, { steamid: string; profile_id: string | null }>();
-  (mappings || []).forEach((m: any) => {
-    if (m.sg_username) {
-      sgToSteamMap.set(m.sg_username.toLowerCase(), {
-        steamid: m.steamid,
-        profile_id: m.profile_id
-      });
-    }
-  });
+  // Pre-fetch app members & mappings (ignore winners who are not app members)
+  const { sgToMemberMap } = await getAppMembersLookup();
 
   for (let page = 1; page <= maxPages; page++) {
     pagesSynced++;
@@ -564,14 +609,16 @@ export async function syncGroupGiveaways(options: { maxPages?: number } = {}) {
         }
       }
 
-      // Upsert winners into sg_giveaway_winners
+      // Upsert winners into sg_giveaway_winners (strictly app members only)
       for (const w of finalWinners) {
-        const mapping = sgToSteamMap.get(w.sg_username.toLowerCase());
+        const member = sgToMemberMap.get(w.sg_username.toLowerCase().trim());
+        if (!member) continue; // Skip non-app members
+
         await supabase.from('sg_giveaway_winners').upsert({
           giveaway_code: code,
           sg_username: w.sg_username,
-          steamid: mapping?.steamid || null,
-          profile_id: mapping?.profile_id || null,
+          steamid: member.steamid,
+          profile_id: member.profile_id,
           status: w.status || 'Unknown'
         }, { onConflict: 'giveaway_code,sg_username' });
         totalWinners++;
@@ -1044,6 +1091,8 @@ export async function scanPublicSgWins(sgUsername: string, mode: 'won' | 'sent' 
   let verifiedSteamId: string | null = null;
   const cleanUsername = sgUsername.trim();
 
+  const { sgToMemberMap, memberSteamIdSet } = await getAppMembersLookup();
+
   for (let page = 1; page <= maxPages; page++) {
     const url = mode === 'won'
       ? `https://www.steamgifts.com/user/${cleanUsername}/giveaways/won?format=json&page=${page}`
@@ -1110,22 +1159,33 @@ export async function scanPublicSgWins(sgUsername: string, mode: 'won' | 'sent' 
       }, { onConflict: 'code' });
 
       if (mode === 'won') {
+        const member = (verifiedSteamId && memberSteamIdSet.has(verifiedSteamId)) 
+          ? { steamid: verifiedSteamId, profile_id: null } 
+          : sgToMemberMap.get(cleanUsername.toLowerCase());
+        if (!member) continue; // Skip non-app members
+
         const receivedVal = item.received;
         const status = receivedVal === 1 ? 'Received' : (receivedVal === -1 ? 'Not Received' : 'Awaiting Feedback');
         await supabase.from('sg_giveaway_winners').upsert({
           giveaway_code: code,
           sg_username: cleanUsername,
-          steamid: verifiedSteamId,
+          steamid: member.steamid,
+          profile_id: member.profile_id,
           status
         }, { onConflict: 'giveaway_code,sg_username' });
       } else if (mode === 'sent' && item.winners && Array.isArray(item.winners)) {
         for (const w of item.winners) {
           const wName = w.username || w.user?.username;
           if (!wName) continue;
+          const member = sgToMemberMap.get(String(wName).toLowerCase().trim());
+          if (!member) continue; // Skip non-app members
+
           const status = w.received === 1 ? 'Received' : (w.received === -1 ? 'Not Received' : 'Awaiting Feedback');
           await supabase.from('sg_giveaway_winners').upsert({
             giveaway_code: code,
             sg_username: wName,
+            steamid: member.steamid,
+            profile_id: member.profile_id,
             status
           }, { onConflict: 'giveaway_code,sg_username' });
         }
@@ -1187,12 +1247,8 @@ export async function updateMemberSgUsername(steamid: string, sgUsername: string
 export async function getWinLedger(options: { type?: 'won' | 'sent'; steamid?: string; creator?: string }) {
   if (!supabase) throw new Error('Supabase client unavailable');
 
-  // 1. Fetch profiles for winner display names
-  const { data: profiles } = await supabase.from('profiles').select('id, steamid, steam_name');
-  const profNameMap = new Map<string, string>();
-  (profiles || []).forEach(p => {
-    if (p.steamid) profNameMap.set(p.steamid, p.steam_name || 'Member');
-  });
+  // 1. Fetch profiles and mappings for winner cross-referencing
+  const { memberSteamIdSet, sgToMemberMap, profNameMap } = await getAppMembersLookup();
 
   // 2. Fetch giveaways
   let gQuery = supabase.from('sg_group_giveaways').select('*');
@@ -1208,8 +1264,31 @@ export async function getWinLedger(options: { type?: 'won' | 'sent'; steamid?: s
   if (options.steamid) {
     wQuery = wQuery.eq('steamid', options.steamid);
   }
-  const { data: winners, error: wErr } = await wQuery.order('created_at', { ascending: false });
+  const { data: rawWinners, error: wErr } = await wQuery.order('created_at', { ascending: false });
   if (wErr) throw wErr;
+
+  // Filter out any winner who is not a registered member of our app (public.profiles)
+  const validMemberWinners: any[] = [];
+  (rawWinners || []).forEach((w: any) => {
+    let sid = w.steamid ? String(w.steamid).trim() : null;
+    let pid = w.profile_id || null;
+
+    if (!sid || !memberSteamIdSet.has(sid)) {
+      // Try resolving via sg_username in sgToMemberMap
+      const match = w.sg_username ? sgToMemberMap.get(w.sg_username.toLowerCase().trim()) : null;
+      if (match) {
+        sid = match.steamid;
+        pid = match.profile_id;
+        w.steamid = sid;
+        w.profile_id = pid;
+      }
+    }
+
+    // Strictly ignore winner if they do not belong to our app's public.profiles
+    if (sid && memberSteamIdSet.has(sid)) {
+      validMemberWinners.push(w);
+    }
+  });
 
   const entries: any[] = [];
   let startedCount = 0;
@@ -1221,7 +1300,7 @@ export async function getWinLedger(options: { type?: 'won' | 'sent'; steamid?: s
   let achievementEntriesCount = 0;
   const yearlyMap: Record<number, { count: number; played: number; completed: number; totalMinutes: number }> = {};
 
-  (winners || []).forEach((w: any) => {
+  validMemberWinners.forEach((w: any) => {
     const g = giveawayMap.get(w.giveaway_code) || {};
     const playStats = w.play_stats as SgPlayStats | null;
 
@@ -1394,6 +1473,8 @@ export async function importLedgerPayload(payload: string, format = 'auto', dryR
     };
   }
 
+  const { sgToMemberMap } = await getAppMembersLookup();
+
   let giveawaysUpserted = 0;
   let winnersUpserted = 0;
   let appIdsBackfilled = 0;
@@ -1416,10 +1497,16 @@ export async function importLedgerPayload(payload: string, format = 'auto', dryR
 
     if (item.winners && Array.isArray(item.winners)) {
       for (const w of item.winners) {
-        if (!w.sg_username) continue;
+        const uName = (w.sg_username || w.username || '').toString().trim();
+        if (!uName) continue;
+        const member = sgToMemberMap.get(uName.toLowerCase());
+        if (!member) continue; // Skip non-app members
+
         await supabase.from('sg_giveaway_winners').upsert({
           giveaway_code: item.code,
-          sg_username: w.sg_username,
+          sg_username: uName,
+          steamid: member.steamid,
+          profile_id: member.profile_id,
           status: w.status || 'Received'
         }, { onConflict: 'giveaway_code,sg_username' });
         winnersUpserted++;

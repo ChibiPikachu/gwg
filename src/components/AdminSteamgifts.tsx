@@ -62,9 +62,12 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
   const [filterMemberSteamId, setFilterMemberSteamId] = React.useState<string>('all');
   const [filterCreator, setFilterCreator] = React.useState<string>('all');
   const [filterYear, setFilterYear] = React.useState<string>('all');
-  const [filterStatus, setFilterStatus] = React.useState<string>('all');
   const [filterProgress, setFilterProgress] = React.useState<string>('all');
   const [searchLedgerQuery, setSearchLedgerQuery] = React.useState('');
+
+  // 25-Item Pagination / Endless Scrolling state
+  const [visibleCount, setVisibleCount] = React.useState<number>(25);
+  const observerRef = React.useRef<HTMLDivElement | null>(null);
 
   // Steam API Key & Playstats Scanner state
   const [steamApiKey, setSteamApiKey] = React.useState<string>(() => {
@@ -512,9 +515,28 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
     }
   };
 
-  // Filtered ledger entries
+  // Reset visibleCount back to 25 whenever filters change
+  React.useEffect(() => {
+    setVisibleCount(25);
+  }, [searchLedgerQuery, filterMemberSteamId, filterCreator, filterYear, filterProgress]);
+
+  // Set of valid member SteamIDs from registered app profiles (strictly ignore non-members)
+  const memberSteamIdSet = React.useMemo(() => {
+    const set = new Set<string>();
+    members.forEach(m => {
+      if (m.steamid) set.add(String(m.steamid).trim());
+    });
+    return set;
+  }, [members]);
+
+  // Filtered ledger entries (strictly app members only, points and status removed)
   const filteredLedgerEntries = React.useMemo(() => {
     return ledgerEntries.filter(entry => {
+      // Immediately ignore and exclude any entry where winner is not a member of our app
+      if (!entry.winner_steamid || !memberSteamIdSet.has(String(entry.winner_steamid).trim())) {
+        return false;
+      }
+
       // Search query
       if (searchLedgerQuery.trim()) {
         const q = searchLedgerQuery.toLowerCase().trim();
@@ -542,11 +564,6 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
         if (String(year) !== filterYear) return false;
       }
 
-      // Status filter
-      if (filterStatus !== 'all') {
-        if (entry.status !== filterStatus) return false;
-      }
-
       // Play progress filter
       if (filterProgress !== 'all') {
         const pStat = entry.play_stats?.status || 'zero';
@@ -560,7 +577,26 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
 
       return true;
     });
-  }, [ledgerEntries, searchLedgerQuery, filterMemberSteamId, filterCreator, filterYear, filterStatus, filterProgress]);
+  }, [ledgerEntries, memberSteamIdSet, searchLedgerQuery, filterMemberSteamId, filterCreator, filterYear, filterProgress]);
+
+  // 25-Item Sliced Entries for pagination/infinite scroll
+  const displayedLedgerEntries = React.useMemo(() => {
+    return filteredLedgerEntries.slice(0, visibleCount);
+  }, [filteredLedgerEntries, visibleCount]);
+
+  // IntersectionObserver for automatic endless scrolling
+  React.useEffect(() => {
+    const sentinel = observerRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount(prev => Math.min(prev + 25, filteredLedgerEntries.length));
+      }
+    }, { threshold: 0.1 });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [filteredLedgerEntries.length]);
 
   // Unique creators list for filter
   const uniqueCreators = React.useMemo(() => {
@@ -914,25 +950,12 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                   <option value="any">Any Playtime (&gt;0h)</option>
                 </select>
 
-                {/* Receipt Status Filter */}
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 rounded-xl text-xs font-bold dark:bg-black/40 bg-slate-50 border dark:border-white/10 border-black/10 dark:text-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="Received">Received</option>
-                  <option value="Awaiting Feedback">Awaiting Feedback</option>
-                  <option value="Not Received">Not Received</option>
-                </select>
-
                 <button
                   onClick={() => {
                     setSearchLedgerQuery('');
                     setFilterMemberSteamId('all');
                     setFilterCreator('all');
                     setFilterYear('all');
-                    setFilterStatus('all');
                     setFilterProgress('all');
                   }}
                   className="px-2.5 py-1.5 rounded-xl text-xs font-bold opacity-60 hover:opacity-100 dark:hover:bg-white/10 hover:bg-slate-200 transition-all cursor-pointer"
@@ -943,7 +966,7 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
             </div>
 
             <div className="flex items-center justify-between text-xs opacity-60 border-t dark:border-white/5 border-black/5 pt-2">
-              <span>Showing {filteredLedgerEntries.length} of {ledgerEntries.length} giveaways</span>
+              <span>Showing {Math.min(visibleCount, filteredLedgerEntries.length)} of {filteredLedgerEntries.length} member wins</span>
               {filterMemberSteamId !== 'all' && (
                 <button
                   onClick={() => handleScanPlaystats(filterMemberSteamId)}
@@ -979,13 +1002,11 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                       <th className="py-3 px-4">Achievement Progress</th>
                       <th className="py-3 px-4">Playtime</th>
                       <th className="py-3 px-4">Creator</th>
-                      <th className="py-3 px-4">Points</th>
-                      <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y dark:divide-white/5 divide-black/5">
-                    {filteredLedgerEntries.map((entry) => {
+                    {displayedLedgerEntries.map((entry) => {
                       const steamAppId = entry.app_id;
                       const headerImg = steamAppId 
                         ? `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/header.jpg`
@@ -1138,24 +1159,6 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                             {entry.creator_username ? `@${entry.creator_username}` : '—'}
                           </td>
 
-                          {/* Points */}
-                          <td className="py-3 px-4 font-mono font-bold text-xs">
-                            {entry.points > 0 ? `${entry.points}P` : '0P'}
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-3 px-4">
-                            <span className={cn(
-                              "text-[10px] font-black uppercase px-2 py-0.5 rounded-full border whitespace-nowrap",
-                              entry.status === 'Received' && "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-                              entry.status === 'Awaiting Feedback' && "bg-amber-500/15 text-amber-400 border-amber-500/30",
-                              entry.status === 'Not Received' && "bg-rose-500/15 text-rose-400 border-rose-500/30",
-                              entry.status === 'Unknown' && "bg-black/10 dark:bg-white/10 text-slate-400 dark:text-white/40 border-black/10 dark:border-white/10"
-                            )}>
-                              {entry.status}
-                            </span>
-                          </td>
-
                           {/* Actions */}
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
@@ -1188,6 +1191,26 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                 </table>
               </div>
             )}
+
+            {/* Pagination & Infinite Scroll Footer */}
+            {filteredLedgerEntries.length > 0 && (
+              <div className="p-4 border-t dark:border-white/5 border-black/5 flex flex-col sm:flex-row items-center justify-between gap-3 bg-black/[0.02] dark:bg-white/[0.01]">
+                <div className="text-xs opacity-60">
+                  Showing <span className="font-bold font-mono text-purple-400">{Math.min(visibleCount, filteredLedgerEntries.length)}</span> of <span className="font-bold font-mono">{filteredLedgerEntries.length}</span> member wins
+                </div>
+
+                {visibleCount < filteredLedgerEntries.length && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(prev => Math.min(prev + 25, filteredLedgerEntries.length))}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Load More (25)</span>
+                  </button>
+                )}
+              </div>
+            )}
+            <div ref={observerRef} className="h-2 w-full pointer-events-none opacity-0" />
           </div>
         </div>
       )}
@@ -1555,7 +1578,7 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                     {importPreview.preview.map((p: any, idx: number) => (
                       <div key={idx} className="flex items-center justify-between border-b border-amber-500/10 py-1">
                         <span>{p.name} ({p.code})</span>
-                        <span>{p.creator_username ? `Created by @${p.creator_username}` : ''} {p.points ? `• ${p.points}P` : ''}</span>
+                        <span>{p.creator_username ? `Created by @${p.creator_username}` : ''}</span>
                       </div>
                     ))}
                   </div>
@@ -1731,7 +1754,6 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                           </span>
                           <div className="flex items-center gap-2 text-[10px] opacity-60 mt-0.5 flex-wrap">
                             {g.creator_username && <span>Created by <strong>{g.creator_username}</strong></span>}
-                            {g.points > 0 && <span>• {g.points}P</span>}
                             {g.copies > 1 && <span>• {g.copies} Copies</span>}
                             {g.end_timestamp && <span>• {new Date(g.end_timestamp * 1000).toLocaleDateString()}</span>}
                           </div>
@@ -1739,15 +1761,6 @@ export default function AdminSteamgifts({ onViewProfile }: AdminSteamgiftsProps)
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
-                        <span className={cn(
-                          "text-[10px] font-black uppercase px-2 py-0.5 rounded-full border",
-                          winRecord.status === 'Received' && "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-                          winRecord.status === 'Awaiting Feedback' && "bg-amber-500/15 text-amber-400 border-amber-500/30",
-                          winRecord.status === 'Not Received' && "bg-rose-500/15 text-rose-400 border-rose-500/30",
-                          winRecord.status === 'Unknown' && "bg-black/10 dark:bg-white/10 text-slate-400 dark:text-white/40 border-black/10 dark:border-white/10"
-                        )}>
-                          {winRecord.status || 'Winner'}
-                        </span>
 
                         <a
                           href={sgUrl}
