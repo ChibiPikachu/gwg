@@ -54,6 +54,9 @@ export interface Submission {
   createdAt: number;
   verifierId?: string;
   rejectionReason?: string;
+  steam_appid?: number | null;
+  totalAchievements?: number;
+  total_achievements?: number;
 }
 
 export type EventStatus = 'DRAFT' | 'ACTIVE' | 'SUBMISSIONS_CLOSED' | 'COMPLETED';

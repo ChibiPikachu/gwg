@@ -789,6 +789,8 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
     return 'none';
   }, [users]);
 
+  const steamTotalAchCacheRef = React.useRef<Record<string, number>>({});
+
   const fetchSubmissions = React.useCallback(async () => {
     if (isSupabaseConfigured && supabase) {
       try {
@@ -798,14 +800,27 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          const { data: profs } = await supabase
-            .from('profiles')
-            .select('steamid, discord_id, team, steam_name, steam_avatar, discord_name, discord_avatar');
+          const gameIds = Array.from(new Set(data.map((s: any) => s.game_id).filter(Boolean)));
+          const [profsRes, gamesRes] = await Promise.all([
+            supabase.from('profiles').select('steamid, discord_id, team, steam_name, steam_avatar, discord_name, discord_avatar'),
+            gameIds.length > 0
+              ? supabase.from('games').select('id, steam_appid, total_achievements, title, hltb_main, hltb_extras, hltb_completionist').in('id', gameIds)
+              : { data: [] }
+          ]);
+
+          const profs = profsRes.data || [];
+          const games = gamesRes.data || [];
 
           const profMap: Record<string, any> = {};
           (profs || []).forEach((p: any) => {
             if (p.steamid) profMap[String(p.steamid)] = p;
             if (p.discord_id) profMap[String(p.discord_id)] = p;
+          });
+
+          const gamesMap: Record<string, any> = {};
+          (games || []).forEach((g: any) => {
+            if (g.id) gamesMap[String(g.id)] = g;
+            if (g.steam_appid) gamesMap[String(g.steam_appid)] = g;
           });
 
           const enriched = data.map((s: any) => {
@@ -816,14 +831,25 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               (uId.startsWith('discord_') && String(prof.discord_id) === uId.replace('discord_', ''))
             );
 
+            const g = gamesMap[String(s.game_id || '')] || gamesMap[String(s.steam_appid || '')];
+            const resolvedSteamAppId = s.steam_appid || g?.steam_appid || (String(s.game_id || '').startsWith('steam_') ? parseInt(String(s.game_id).replace('steam_', '')) : (/^\d+$/.test(String(s.game_id || '')) ? parseInt(String(s.game_id)) : null));
+            const cachedTotal = resolvedSteamAppId ? steamTotalAchCacheRef.current[String(resolvedSteamAppId)] : 0;
+            const totalAch = Number(s.totalAchievements || s.total_achievements || g?.total_achievements || cachedTotal || 0);
+
             const team = s.userTeam || s.user_team || p?.team || 'none';
 
             return {
               ...s,
+              steam_appid: resolvedSteamAppId,
+              totalAchievements: totalAch,
+              total_achievements: totalAch,
               user_name: p?.steam_name || p?.discord_name || s.user_name,
               user_avatar: p?.steam_avatar || p?.discord_avatar || s.user_avatar,
               userTeam: team,
-              user_team: team
+              user_team: team,
+              hltb_main: s.hltb_main || g?.hltb_main || 0,
+              hltb_extras: s.hltb_extras || g?.hltb_extras || 0,
+              hltb_completionist: s.hltb_completionist || g?.hltb_completionist || 0
             };
           });
 
@@ -847,6 +873,52 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
       console.warn('Failed to fetch submissions:', err);
     }
   }, [getAdminHeaders]);
+
+  // Background resolver for Steam submissions with missing total achievements
+  React.useEffect(() => {
+    if (!submissions || submissions.length === 0) return;
+
+    const missingAppIds = Array.from(new Set(
+      submissions
+        .map(s => {
+          const appId = s.steam_appid || (String(s.game_id || '').startsWith('steam_') ? String(s.game_id).replace('steam_', '') : (/^\d+$/.test(String(s.game_id || '')) ? String(s.game_id) : null));
+          const total = Number(s.totalAchievements || s.total_achievements || 0);
+          return total === 0 && appId ? String(appId) : null;
+        })
+        .filter((id): id is string => Boolean(id) && !steamTotalAchCacheRef.current[id!])
+    ));
+
+    if (missingAppIds.length === 0) return;
+
+    let isMounted = true;
+    (async () => {
+      for (const appId of missingAppIds.slice(0, 10)) {
+        try {
+          const res = await fetch(`/api/steam/game/${appId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const total = typeof data.totalAchievements === 'number' ? data.totalAchievements : 0;
+            if (total > 0 && isMounted) {
+              steamTotalAchCacheRef.current[appId] = total;
+              setSubmissions(prev => prev.map(sub => {
+                const subAppId = sub.steam_appid || (String(sub.game_id || '').startsWith('steam_') ? String(sub.game_id).replace('steam_', '') : (/^\d+$/.test(String(sub.game_id || '')) ? String(sub.game_id) : null));
+                if (String(subAppId) === appId && Number(sub.totalAchievements || sub.total_achievements || 0) === 0) {
+                  return { ...sub, totalAchievements: total, total_achievements: total };
+                }
+                return sub;
+              }));
+            }
+          }
+        } catch (e) {
+          // ignore transient error
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [submissions]);
 
   const isInitialLoadRef = React.useRef(true);
   const fetchData = React.useCallback(async (forceLoading = false) => {
@@ -2444,6 +2516,13 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
               filteredSubmissions.map(sub => {
                 const subTeam = getSubmissionUserTeam(sub);
                 const previewInfo = getSubmissionPreviewInfo(sub);
+                const subAchievementsBefore = Number(sub.achievements_before || 0);
+                const subAchievementsDuring = Number(sub.achievements_during || 0);
+                const unlockedAchievements = subAchievementsBefore + subAchievementsDuring;
+                const totalSteamAch = Number(sub.totalAchievements || sub.total_achievements || 0);
+                const hasTotal = totalSteamAch > 0;
+                const achPct = hasTotal ? Math.min(100, Math.round((unlockedAchievements / totalSteamAch) * 100)) : null;
+
                 // Custom Outer Glow Mapping
                 let outerGlowClass = "shadow-[0_0_20px_-5px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_-5px_rgba(255,255,255,0.05)] hover:dark:shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)] border-black/5 dark:border-white/5";
                 
@@ -2557,7 +2636,7 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         </div>
                       </div>
 
-                      {/* HowLongToBeat Dynamic Link */}
+                      {/* HowLongToBeat Dynamic Link & Mini Stats */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 md:gap-3 w-full xl:w-auto min-w-0 overflow-hidden">
                          <div className="flex overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-hide items-center gap-2">
                             <a
@@ -2572,56 +2651,93 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                             </a>
                          </div>
 
-                         <div className="hidden bg-black/5 dark:bg-white/5 px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center gap-3 md:gap-6 border border-black/5 dark:border-white/5 shrink-0 w-full sm:w-auto justify-between sm:justify-start">
-                          <div className="flex flex-col">
-                            <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🏆</span>
-                            <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">
-                              {sub.achievements_during}
-                              {sub.totalAchievements > 0 ? <span className="text-xs md:text-sm font-normal opacity-50">/{sub.totalAchievements}</span> : ''}
+                         <div className="flex bg-black/5 dark:bg-white/5 px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl items-center gap-2.5 md:gap-4 border border-black/5 dark:border-white/5 shrink-0 w-full sm:w-auto justify-between sm:justify-start">
+                          <div className="flex flex-col" title={`Steam Achievements: ${hasTotal ? `${unlockedAchievements}/${totalSteamAch} unlocked` : `${unlockedAchievements} unlocked`}`}>
+                            <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-500">🏆 Steam</span>
+                            <span className="text-xs md:text-sm font-black dark:text-white text-slate-800 font-mono text-amber-500 dark:text-amber-400">
+                              {hasTotal ? `${unlockedAchievements}/${totalSteamAch}` : unlockedAchievements}
                             </span>
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">🕒</span>
-                            <span className="text-sm md:text-lg font-bold dark:text-white text-slate-800">{Number(sub.hours_during || 0).toFixed(1)}h</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800 font-mono">{Number(sub.hours_during || 0).toFixed(1)}h</span>
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[8px] md:text-[10px] uppercase font-bold opacity-30 dark:text-white text-slate-500">Pts</span>
-                            <span className={cn("text-sm md:text-lg font-bold", theme.text)}>{previewInfo.points}</span>
+                            <span className={cn("text-xs md:text-sm font-black font-mono", theme.text)}>{previewInfo.points}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Game Title */}
-                    <div className="flex flex-col min-w-0">
+                    {/* Game Title & Steam Achievements Ratio Badge */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
                        <h4 className="text-base sm:text-lg md:text-xl font-bold tracking-tight truncate dark:text-white text-slate-900 capitalize">{sub.game_name}</h4>
+                       
+                       <div 
+                         className={cn(
+                           "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold border shrink-0 transition-all shadow-sm",
+                           hasTotal && unlockedAchievements >= totalSteamAch
+                             ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-300"
+                             : "bg-slate-100 dark:bg-white/10 border-slate-300 dark:border-white/15 text-slate-800 dark:text-white"
+                         )}
+                         title={`User has unlocked ${unlockedAchievements} out of ${hasTotal ? totalSteamAch : 'unknown'} total Steam achievements`}
+                       >
+                         <span className="text-amber-500 select-none">🏆</span>
+                         <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-white/60">Unlocked:</span>
+                         <span className="text-xs sm:text-sm font-black tracking-tight text-amber-600 dark:text-amber-400">
+                           {hasTotal ? `${unlockedAchievements}/${totalSteamAch}` : `${unlockedAchievements}`}
+                         </span>
+                         {hasTotal && (
+                           <span className="text-[10px] font-medium opacity-60">
+                             ({achPct}%)
+                           </span>
+                         )}
+                       </div>
                     </div>
 
                     {/* Detailed Stats Tracking Grid (Slightly bigger per user request) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full bg-slate-50 dark:bg-white/[0.04] p-4 rounded-xl border border-black/5 dark:border-white/5 opacity-90">
                       {/* Achievements section */}
                       <div className="space-y-1.5 flex flex-col justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm">🏆</span>
-                          <span className="text-[10px] md:text-xs font-bold text-slate-500 dark:text-white/45 uppercase tracking-widest">Achievements</span>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">🏆</span>
+                            <span className="text-[10px] md:text-xs font-bold text-slate-500 dark:text-white/45 uppercase tracking-widest">Achievements</span>
+                          </div>
+                          {hasTotal && (
+                            <span className="text-[10px] font-mono font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                              {unlockedAchievements}/{totalSteamAch}
+                            </span>
+                          )}
                         </div>
                         <div className="grid grid-cols-3 gap-1.5 text-center font-mono rounded-lg">
                           <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
                             <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Before</span>
-                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{sub.achievements_before || 0}</span>
+                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">{subAchievementsBefore}</span>
                           </div>
                           <div className="p-2 rounded-xl border bg-emerald-500/10 border-emerald-500/20">
                             <span className="block text-[8px] uppercase tracking-tighter text-emerald-600 dark:text-emerald-400 font-bold font-sans">During</span>
-                            <span className="text-xs md:text-sm font-black text-emerald-600 dark:text-emerald-400">+{sub.achievements_during}</span>
+                            <span className="text-xs md:text-sm font-black text-emerald-600 dark:text-emerald-400">+{subAchievementsDuring}</span>
                           </div>
                           <div className="bg-slate-200/50 dark:bg-white/5 p-2 rounded-xl border border-black/5 dark:border-white/5">
-                            <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Current</span>
-                            <span className="text-xs md:text-sm font-bold dark:text-white text-slate-800">
-                              {(sub.achievements_before || 0) + sub.achievements_during}
-                              {sub.totalAchievements > 0 && <span className="text-[9.5px] opacity-40">/{sub.totalAchievements}</span>}
+                            <span className="block text-[8px] uppercase tracking-tighter opacity-50 dark:text-white text-slate-600">Unlocked</span>
+                            <span className="text-xs md:text-sm font-black text-amber-600 dark:text-amber-400">
+                              {hasTotal ? `${unlockedAchievements}/${totalSteamAch}` : unlockedAchievements}
                             </span>
                           </div>
                         </div>
+                        {hasTotal && (
+                          <div className="w-full bg-slate-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden mt-1" title={`${unlockedAchievements} of ${totalSteamAch} (${achPct}%)`}>
+                            <div 
+                              className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                unlockedAchievements >= totalSteamAch ? "bg-amber-500" : "bg-emerald-500"
+                              )}
+                              style={{ width: `${achPct}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       {/* Play Time section - with deduction! */}
@@ -2854,7 +2970,17 @@ export default function AdminPanel({ onViewProfile, activeAdminTab }: { onViewPr
                         return (
                           <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4", reviewingMeta.hasNoAchievements ? "md:grid-cols-5" : "md:grid-cols-4")}>
                             <div className="space-y-1 md:space-y-2">
-                              <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-40 dark:text-white text-slate-300">Earned 🏆 {sub.totalAchievements > 0 && `(Total: ${sub.totalAchievements})`}</label>
+                              {(() => {
+                                const revBefore = Number(sub.achievements_before || 0);
+                                const revEarned = parseInt(editAchievements) || 0;
+                                const revUnlocked = revBefore + revEarned;
+                                const revTotal = Number(sub.totalAchievements || sub.total_achievements || 0);
+                                return (
+                                  <label className="text-[9px] md:text-[10px] uppercase font-bold opacity-60 dark:text-white text-slate-300">
+                                    Earned 🏆 {revTotal > 0 ? `(Unlocked: ${revUnlocked}/${revTotal})` : ''}
+                                  </label>
+                                );
+                              })()}
                               <input 
                                 type="number"
                                 className={cn("w-full bg-white/10 border border-white/10 rounded-lg md:rounded-xl p-2.5 md:p-3 focus:outline-none dark:text-white text-white text-sm", `focus:${theme.border}`)}

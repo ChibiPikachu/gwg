@@ -848,20 +848,42 @@ async function fetchSteamAchievementCountForUser(steamId: string, appId: number 
   }
 }
 
-async function fetchSteamAchievementCount(appId: number | string) {
+async function fetchSteamAchievementCount(appId: number | string): Promise<number> {
+  const numericAppId = String(appId).replace(/^steam_/, '').trim();
+  if (!numericAppId || !/^\d+$/.test(numericAppId)) return 0;
+
+  // 1. Try Steam Store appdetails API (no API key required, reliable for all public store games)
+  try {
+    const res = await fetch(`https://store.steampowered.com/api/appdetails?appids=${numericAppId}`);
+    if (res.ok) {
+      const data: any = await res.json();
+      if (data && data[numericAppId]?.success) {
+        const total = data[numericAppId].data?.achievements?.total;
+        if (typeof total === 'number' && total >= 0) {
+          return total;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[Steam Store] appdetails achievements lookup failed for App ID ${numericAppId}:`, err);
+  }
+
+  // 2. Fall back to Steam Web API if STEAM_API_KEY is configured
   const apiKey = process.env.STEAM_API_KEY;
   if (!apiKey) return 0;
   
   try {
-    console.log(`[Steam API] Fetching achievements for App ID ${appId}`);
-    const response = await fetch(`https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${apiKey}&appid=${appId}`);
-    const data: any = await response.json();
-    const achievements = data.game?.availableGameStats?.achievements || [];
-    return achievements.length;
+    console.log(`[Steam API] Fetching achievements schema for App ID ${numericAppId}`);
+    const response = await fetch(`https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${apiKey}&appid=${numericAppId}`);
+    if (response.ok) {
+      const data: any = await response.json();
+      const achievements = data.game?.availableGameStats?.achievements || [];
+      return achievements.length;
+    }
   } catch (err) {
-    console.error(`Failed to fetch achievements for App ID ${appId}:`, err);
-    return 0;
+    console.error(`Failed to fetch achievements for App ID ${numericAppId}:`, err);
   }
+  return 0;
 }
 
 const getAndSyncGameData = async (supabase: any, title: string, gameId: string, image: string, steamAppId?: number | string) => {
@@ -4714,12 +4736,14 @@ async function createServer() {
       }
 
       // Separately fetch profiles and games metadata
-      const userIds = Array.from(new Set(submissions.map((s: any) => s.user_id)));
-      const gameIds = Array.from(new Set(submissions.map((s: any) => s.game_id)));
+      const userIds = Array.from(new Set(submissions.map((s: any) => s.user_id).filter(Boolean)));
+      const gameIds = Array.from(new Set(submissions.map((s: any) => s.game_id).filter(Boolean)));
       
       const [profileRes, gamesRes] = await Promise.all([
         supabase.from('profiles').select('steamid, discord_id, team, steam_name, steam_avatar, discord_name, discord_avatar, active_avatar'),
-        supabase.from('games').select('id, total_achievements, hltb_main, hltb_extras, hltb_completionist').in('id', gameIds)
+        gameIds.length > 0
+          ? supabase.from('games').select('id, steam_appid, total_achievements, title, hltb_main, hltb_extras, hltb_completionist').in('id', gameIds)
+          : { data: [] }
       ]);
 
       const allProfiles = profileRes.data || [];
@@ -4733,12 +4757,56 @@ async function createServer() {
       const hltbMainMap: Record<string, number> = {};
       const hltbExtrasMap: Record<string, number> = {};
       const hltbCompMap: Record<string, number> = {};
+      const gamesMap: Record<string, any> = {};
+
       (gamesRes.data || []).forEach((g: any) => {
-        totalAchMap[g.id] = g.total_achievements || 0;
-        hltbMainMap[g.id] = g.hltb_main || 0;
-        hltbExtrasMap[g.id] = g.hltb_extras || 0;
-        hltbCompMap[g.id] = g.hltb_completionist || 0;
+        if (g.id) {
+          gamesMap[String(g.id)] = g;
+          totalAchMap[String(g.id)] = g.total_achievements || 0;
+          hltbMainMap[String(g.id)] = g.hltb_main || 0;
+          hltbExtrasMap[String(g.id)] = g.hltb_extras || 0;
+          hltbCompMap[String(g.id)] = g.hltb_completionist || 0;
+        }
+        if (g.steam_appid) {
+          const appStr = String(g.steam_appid);
+          gamesMap[appStr] = g;
+          totalAchMap[appStr] = g.total_achievements || 0;
+          totalAchMap[`steam_${appStr}`] = g.total_achievements || 0;
+        }
       });
+
+      // Find Steam games in submissions that have 0 or unpopulated total achievements and fetch from Steam
+      const pendingSteamAppIds = new Set<string>();
+      submissions.forEach((s: any) => {
+        const g = gamesMap[String(s.game_id || '')] || gamesMap[String(s.steam_appid || '')];
+        const appId = s.steam_appid || g?.steam_appid || (String(s.game_id || '').startsWith('steam_') ? String(s.game_id).replace('steam_', '') : (/^\d+$/.test(String(s.game_id || '')) ? String(s.game_id) : null));
+        const total = totalAchMap[String(s.game_id || '')] || (appId ? totalAchMap[String(appId)] : 0) || 0;
+        if (appId && total === 0) {
+          pendingSteamAppIds.add(String(appId));
+        }
+      });
+
+      if (pendingSteamAppIds.size > 0) {
+        // Resolve up to 12 missing Steam achievement schemas in parallel
+        await Promise.all(
+          Array.from(pendingSteamAppIds).slice(0, 12).map(async (appId) => {
+            try {
+              const count = await fetchSteamAchievementCount(appId);
+              if (count > 0) {
+                totalAchMap[appId] = count;
+                totalAchMap[`steam_${appId}`] = count;
+                // Update Supabase games table asynchronously
+                await supabase
+                  .from('games')
+                  .update({ total_achievements: count })
+                  .or(`id.eq.${appId},id.eq.steam_${appId},steam_appid.eq.${appId}`);
+              }
+            } catch (e: any) {
+              console.warn(`[Admin] Failed to backfill achievements for app ${appId}:`, e?.message);
+            }
+          })
+        );
+      }
 
       const enriched = submissions.map((s: any) => {
         const uId = String(s.user_id || '');
@@ -4765,19 +4833,25 @@ async function createServer() {
           finalAvatar = s.user_avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
         }
 
+        const g = gamesMap[String(s.game_id || '')] || gamesMap[String(s.steam_appid || '')];
+        const resolvedSteamAppId = s.steam_appid || g?.steam_appid || (String(s.game_id || '').startsWith('steam_') ? parseInt(String(s.game_id).replace('steam_', '')) : (/^\d+$/.test(String(s.game_id || '')) ? parseInt(String(s.game_id)) : null));
+        const totalAch = totalAchMap[String(s.game_id || '')] || (resolvedSteamAppId ? totalAchMap[String(resolvedSteamAppId)] : 0) || totalAchMap[`steam_${resolvedSteamAppId}`] || 0;
+
         return {
           ...s,
           user_name: finalName,
           user_avatar: finalAvatar,
           userTeam: p?.team || 'none',
-          totalAchievements: totalAchMap[s.game_id] || 0,
+          steam_appid: resolvedSteamAppId,
+          totalAchievements: totalAch,
+          total_achievements: totalAch,
           hltb_main: hltbMainMap[s.game_id] || 0,
           hltb_extras: hltbExtrasMap[s.game_id] || 0,
           hltb_completionist: hltbCompMap[s.game_id] || 0
         };
       });
 
-      console.log(`[Admin] Successfully returning ${enriched.length} submissions.`);
+      console.log(`[Admin] Successfully returning ${enriched.length} submissions with totalAchievements.`);
       res.json(enriched);
     } catch (err) {
       console.error('[Admin] Internal error:', err);
@@ -6212,19 +6286,34 @@ async function createServer() {
   });
 
 
-  // Keep existing steam proxy
+  // Steam game details proxy with achievements
   app.get('/api/steam/game/:appId', async (req, res) => {
-    const { appId } = req.params;
+    const rawAppId = req.params.appId;
+    const numericAppId = String(rawAppId).replace(/^steam_/, '').trim();
     try {
-      const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}`);
+      const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${numericAppId}`);
       const data: any = await response.json();
       
-      if (data[appId]?.success) {
-        const details = data[appId].data;
+      if (data[numericAppId]?.success) {
+        const details = data[numericAppId].data;
+        const totalAchievements = typeof details.achievements?.total === 'number' ? details.achievements.total : 0;
+        
+        // Cache total_achievements in Supabase games table asynchronously
+        const supabase = getSupabase();
+        if (supabase && totalAchievements > 0) {
+          supabase
+            .from('games')
+            .update({ total_achievements: totalAchievements })
+            .or(`id.eq.${numericAppId},id.eq.steam_${numericAppId},steam_appid.eq.${numericAppId}`)
+            .then(() => {})
+            .catch((e: any) => console.warn('[Steam Proxy] Supabase games update error:', e?.message));
+        }
+
         res.json({
-          id: appId,
+          id: numericAppId,
           title: details.name,
           image: details.header_image,
+          totalAchievements: totalAchievements
         });
       } else {
         res.status(404).json({ error: 'Game not found' });
